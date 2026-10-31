@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yoto & ABS Controller Prototype</title>
+  
+  <!-- Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Modular Design System -->
+  <link rel="stylesheet" href="/simulator/css/main.css">
+  <link rel="stylesheet" href="/simulator/css/profile.css">
+  <link rel="stylesheet" href="/simulator/css/catalog.css">
+  <link rel="stylesheet" href="/simulator/css/player.css">
+</head>
+<body>
+  <div class="note">
+    <span>Bedside ESP32 Controller Prototype (800×480)</span>
+    <span class="broker-badge connecting" id="brokerStatus">Connecting to Broker...</span>
+  </div>
+
+  <!-- Hardware Frame: 800x480 Waveshare ESP32-S3 Touchscreen Simulator -->
+  <div class="frame" id="app"></div>
+
+  <!-- Modular ES6 Application -->
+  <script type="module" src="/simulator/js/app.js"></script>
+
+</body>
+</html>

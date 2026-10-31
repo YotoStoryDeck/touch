@@ -1,0 +1,109 @@
+:root {
+  --red: #e5352b;
+  --red-deep: #b3211a;
+  --sun: #ffb02e;
+  --ink: #23303a;
+  --paper: #fbf7f0;
+  --accent: #4f46e5;
+  --bg-dark: #2b2622;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Fredoka', system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body {
+  background: var(--bg-dark);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+}
+
+.note {
+  font-size: 14px;
+  color: #d6cec2;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.broker-badge {
+  background: #16a34a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  transition: background .2s;
+}
+
+.broker-badge.connecting {
+  background: #ca8a04;
+}
+
+.broker-badge.error {
+  background: #dc2626;
+}
+
+/* 800x480 Embedded Touchscreen Frame */
+.frame {
+  width: 800px;
+  height: 480px;
+  background: var(--paper);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 18px 44px rgba(0,0,0,.5);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Common Text Utilities */
+.muted { color: #8a8276; }
+
+/* Kiosk & Responsive Tablet Scaling Mode (iPad / Tablet / Fullscreen) */
+body.kiosk-mode {
+  padding: 0;
+  margin: 0;
+  gap: 0;
+  background: var(--paper);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.kiosk-mode .note {
+  display: none !important;
+}
+
+body.kiosk-mode .frame {
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Fluid Touch Layout Adjustments for Kiosk / Tablet Displays */
+body.kiosk-mode .grid {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+body.kiosk-mode .nowbar {
+  height: 64px;
+}
+
+body.kiosk-mode .topnav {
+  height: 56px;
+  padding: 0 24px;
+}
