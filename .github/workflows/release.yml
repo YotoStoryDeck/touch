@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   release:
-    name: Build & Publish Release
+    name: Build & Package Firmware
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -29,10 +29,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python for PlatformIO (if needed)
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Install PlatformIO Core
+        run: |
+          pip install --upgrade platformio
 
       - name: Determine Tag & Release Classification
         id: meta
@@ -52,12 +56,14 @@ jobs:
           echo "prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
           echo "Resolved Tag: ${TAG} (Pre-release: ${IS_PRERELEASE})"
 
-      - name: Package Web-Touch Companion Asset Bundle
+      - name: Build Waveshare ESP32-S3 Firmware
         run: |
+          pio run -e waveshare-s3-43b
           mkdir -p dist
-          BUNDLE_NAME="storydeck-web-touch-${{ steps.meta.outputs.tag }}.tar.gz"
-          tar -czf "dist/${BUNDLE_NAME}" -C web-touch .
-          echo "Created web-touch distribution archive: dist/${BUNDLE_NAME}"
+          # Copy firmware binaries
+          cp .pio/build/waveshare-s3-43b/firmware.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-firmware.bin
+          cp .pio/build/waveshare-s3-43b/bootloader.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-bootloader.bin || true
+          cp .pio/build/waveshare-s3-43b/partitions.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-partitions.bin || true
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -69,4 +75,3 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*
-
