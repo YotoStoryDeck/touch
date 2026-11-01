@@ -1,0 +1,115 @@
+/* SCREEN 6: PARENT PIN SCREEN */
+.pin-screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper, #fbf7f0);
+  color: var(--ink, #23303a);
+  padding: 16px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.pin-close-btn {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #e2dad0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+
+.pin-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.pin-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--red, #e5352b);
+}
+
+.pin-subtitle {
+  font-size: 13px;
+  color: #71695f;
+  margin-top: 4px;
+}
+
+.pin-dots {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.pin-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #8c8272;
+  background: transparent;
+  transition: all .15s;
+}
+
+.pin-dot.filled {
+  background: var(--red, #e5352b);
+  border-color: var(--red, #e5352b);
+  transform: scale(1.1);
+}
+
+.pin-dots.shake {
+  animation: pin-shake 0.35s ease-in-out;
+}
+
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-10px); }
+  40%, 80% { transform: translateX(10px); }
+}
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 76px);
+  gap: 12px;
+  justify-content: center;
+}
+
+.pin-key {
+  height: 60px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1.5px solid #e2dad0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #23303a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  user-select: none;
+  touch-action: none;
+  transition: all .1s;
+}
+
+.pin-key:active {
+  background: #f1ece0;
+  transform: scale(0.94);
+}
+
+.pin-key.action-key {
+  font-size: 16px;
+  background: #fbf7f0;
+  border-color: #d8d0c0;
+}

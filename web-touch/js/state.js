@@ -28,6 +28,11 @@ export const state = {
     bedtime: '19:00',
     wakeTime: '07:00'
   },
+  parentPin: null, // 4-digit string
+  pinMode: 'unlock', // 'unlock' | 'setup' | 'confirm' | 'change'
+  currentEnteredPin: '',
+  tempSetupPin: '',
+  isPinError: false,
 
   init() {
     try {
@@ -41,6 +46,8 @@ export const state = {
       if (savedSettings) {
         this.parentSettings = Object.assign(this.parentSettings, JSON.parse(savedSettings));
       }
+      const savedPin = localStorage.getItem('storydeck_parent_pin');
+      if (savedPin) this.parentPin = savedPin;
     } catch (e) {
       console.warn('Could not read stored settings:', e);
     }
@@ -52,6 +59,7 @@ export const state = {
       localStorage.setItem('storydeck_lock_player', String(this.lockPlayer));
       if (this.lockedPlayerId) localStorage.setItem('storydeck_locked_player_id', this.lockedPlayerId);
       localStorage.setItem('storydeck_parent_settings', JSON.stringify(this.parentSettings));
+      if (this.parentPin) localStorage.setItem('storydeck_parent_pin', this.parentPin);
     } catch (e) {
       console.warn('Could not persist settings:', e);
     }

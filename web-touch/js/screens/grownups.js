@@ -4,8 +4,7 @@ import { BrokerApi } from '../broker-api.js';
 
 /**
  * Screen 5: Grown-Ups Settings Screen Component
- * Opened by holding the gear icon in the home/catalog bar for 2.5 seconds.
- * Replaces manual JSON settings editing with in-app configuration.
+ * Opened by holding the gear icon in the home/catalog bar for 2.5 seconds (PIN-protected).
  */
 export const GrownUpsScreen = {
   render() {
@@ -19,6 +18,7 @@ export const GrownUpsScreen = {
         <div class="gu-header">
           <div class="gu-back" data-act="gu-close" title="Back">&#8592;</div>
           <div class="gu-title">&#9881; Grown-ups Settings</div>
+          <button class="gu-pill-btn" style="margin-left:auto; font-size:12px; padding:6px 12px;" data-act="gu-change-pin">🔒 Change PIN</button>
         </div>
 
         <div class="gu-scroll">
@@ -39,32 +39,44 @@ export const GrownUpsScreen = {
             </div>
           </div>
 
-          <!-- 2. Target Player & Lock-in -->
-          <div class="gu-section">
-            <div class="gu-sec-title">
-              <span>Target Player Assignment</span>
-              <span style="font-size:12px; font-weight:600; color:#8c8272;">${isLocked ? '🔒 Locked' : '🌐 Roaming'}</span>
-            </div>
-            <div class="gu-row">
-              <button class="gu-pill-btn ${!isLocked ? 'active' : ''}" data-act="gu-set-lock" data-lock="false">Choose on the fly (Roaming)</button>
-              <button class="gu-pill-btn ${isLocked ? 'active' : ''}" data-act="gu-set-lock" data-lock="true">Lock to Specific Player</button>
-            </div>
-            ${isLocked ? `
-              <div style="margin-top:4px;">
-                <label style="font-size:13px; font-weight:600; color:#4a453e; display:block; margin-bottom:4px;">Assigned Player for this Screen:</label>
-                <select class="gu-select" data-act="gu-select-lock-player">
-                  ${allPlayers.map(p => `
-                    <option value="${Utils.esc(p.id)}" ${p.id === activeDev?.id ? 'selected' : ''}>
-                      ${Utils.esc(p.name)} (${p.online ? 'Online' : 'Offline'})
-                    </option>
-                  `).join('')}
-                </select>
+          <!-- 2. Target Player Assignment (ONLY VISIBLE IN STANDALONE MODE) -->
+          ${isStandalone ? `
+            <div class="gu-section">
+              <div class="gu-sec-title">
+                <span>Target Player Assignment</span>
+                <span style="font-size:12px; font-weight:600; color:#8c8272;">${isLocked ? '🔒 Locked' : '🌐 Roaming'}</span>
               </div>
-            ` : ''}
-            <div class="gu-info-text">
-              When locked, this controller acts as a dedicated bedside remote for that specific Yoto player.
+              <div class="gu-row">
+                <button class="gu-pill-btn ${!isLocked ? 'active' : ''}" data-act="gu-set-lock" data-lock="false">Choose on the fly (Roaming)</button>
+                <button class="gu-pill-btn ${isLocked ? 'active' : ''}" data-act="gu-set-lock" data-lock="true">Lock to Specific Player</button>
+              </div>
+              ${isLocked ? `
+                <div style="margin-top:4px;">
+                  <label style="font-size:13px; font-weight:600; color:#4a453e; display:block; margin-bottom:4px;">Assigned Player for this Screen:</label>
+                  <select class="gu-select" data-act="gu-select-lock-player">
+                    ${allPlayers.map(p => `
+                      <option value="${Utils.esc(p.id)}" ${p.id === activeDev?.id ? 'selected' : ''}>
+                        ${Utils.esc(p.name)} (${p.online ? 'Online' : 'Offline'})
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
+              <div class="gu-info-text">
+                When locked, this controller acts as a dedicated bedside remote for that specific Yoto player.
+              </div>
             </div>
-          </div>
+          ` : `
+            <div class="gu-section" style="background:#faf8f3; border-style:dashed;">
+              <div class="gu-sec-title" style="color:#71695f;">
+                <span>Target Player Assignment</span>
+                <span style="font-size:11px; font-weight:600; color:#16a34a;">Managed by Core Profile</span>
+              </div>
+              <div class="gu-info-text">
+                In <b>Core Managed Mode</b>, active playback and device assignments are managed automatically by your StoryDeck Core child profile (<code>${Utils.esc(state.activeProfile?.display_name || 'Active Profile')}</code>) and Hardware settings.
+              </div>
+            </div>
+          `}
 
           <!-- 3. Parent Volume Ceiling -->
           <div class="gu-section">
@@ -152,4 +164,3 @@ export const GrownUpsScreen = {
     `;
   }
 };
-

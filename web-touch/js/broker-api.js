@@ -104,6 +104,9 @@ export const BrokerApi = {
 
 
     state.deviceConfig = conf;
+    if (conf.parent_pin) {
+      state.parentPin = conf.parent_pin;
+    }
 
         if (conf.profiles && conf.profiles.length > 0) {
       state.profiles = conf.profiles.map(p => {

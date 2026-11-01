@@ -6,6 +6,7 @@ import { CatalogScreen } from './screens/catalog.js';
 import { DetailScreen } from './screens/detail.js';
 import { PlayerScreen } from './screens/player.js';
 import { GrownUpsScreen } from './screens/grownups.js';
+import { PinScreen } from './screens/pin.js';
 
 /**
  * Main Controller & Event Router
@@ -100,6 +101,9 @@ const App = {
         break;
       case 'now':
         this.container.innerHTML = PlayerScreen.render();
+        break;
+      case 'pin':
+        this.container.innerHTML = PinScreen.render();
         break;
       case 'grownups':
         this.container.innerHTML = GrownUpsScreen.render();
@@ -296,6 +300,113 @@ const App = {
                 }
               }
             });
+          }
+        }
+        return;
+      }
+
+      // Change PIN button inside Grown-ups screen
+      const guChangePin = e.target.closest('[data-act="gu-change-pin"]');
+      if (guChangePin) {
+        state.previousScreen = 'grownups';
+        state.currentEnteredPin = '';
+        state.isPinError = false;
+        state.pinMode = 'change';
+        state.setScreen('pin');
+        this.render();
+        return;
+      }
+
+      // PIN Cancel Button
+      const pinCancel = e.target.closest('[data-act="pin-cancel"]');
+      if (pinCancel) {
+        const returnScreen = state.previousScreen || (state.mode === 'standalone' ? 'catalog' : 'profile');
+        state.previousScreen = null;
+        state.currentEnteredPin = '';
+        state.isPinError = false;
+        state.setScreen(returnScreen);
+        this.render();
+        return;
+      }
+
+      // PIN Keypad Tap
+      const pinKeyBtn = e.target.closest('.pin-key');
+      if (pinKeyBtn && state.screen === 'pin') {
+        const key = pinKeyBtn.dataset.key;
+        if (key === 'clear') {
+          state.currentEnteredPin = '';
+          state.isPinError = false;
+          this.render();
+          return;
+        }
+        if (key === 'back') {
+          state.currentEnteredPin = (state.currentEnteredPin || '').slice(0, -1);
+          state.isPinError = false;
+          this.render();
+          return;
+        }
+        if (key != null && (state.currentEnteredPin || '').length < 4) {
+          state.currentEnteredPin = (state.currentEnteredPin || '') + key;
+          state.isPinError = false;
+          this.render();
+
+          // Check if 4 digits reached
+          if (state.currentEnteredPin.length === 4) {
+            const entered = state.currentEnteredPin;
+            setTimeout(() => {
+              if (state.pinMode === 'unlock') {
+                if (entered === state.parentPin) {
+                  state.currentEnteredPin = '';
+                  state.setScreen('grownups');
+                  this.render();
+                } else {
+                  state.isPinError = true;
+                  state.currentEnteredPin = '';
+                  this.render();
+                  setTimeout(() => {
+                    state.isPinError = false;
+                    this.render();
+                  }, 400);
+                }
+              } else if (state.pinMode === 'setup') {
+                state.tempSetupPin = entered;
+                state.currentEnteredPin = '';
+                state.pinMode = 'confirm';
+                this.render();
+              } else if (state.pinMode === 'confirm') {
+                if (entered === state.tempSetupPin) {
+                  state.parentPin = entered;
+                  state.persistParentSettings();
+                  state.tempSetupPin = '';
+                  state.currentEnteredPin = '';
+                  state.setScreen('grownups');
+                  this.render();
+                } else {
+                  state.isPinError = true;
+                  state.currentEnteredPin = '';
+                  this.render();
+                  setTimeout(() => {
+                    state.pinMode = 'setup';
+                    state.isPinError = false;
+                    this.render();
+                  }, 500);
+                }
+              } else if (state.pinMode === 'change') {
+                if (entered === state.parentPin) {
+                  state.currentEnteredPin = '';
+                  state.pinMode = 'setup';
+                  this.render();
+                } else {
+                  state.isPinError = true;
+                  state.currentEnteredPin = '';
+                  this.render();
+                  setTimeout(() => {
+                    state.isPinError = false;
+                    this.render();
+                  }, 400);
+                }
+              }
+            }, 100);
           }
         }
         return;
@@ -538,7 +649,14 @@ const App = {
         gearBtn.classList.remove('pressing');
         holdTimeout = null;
         state.previousScreen = state.screen;
-        state.setScreen('grownups');
+        state.currentEnteredPin = '';
+        state.isPinError = false;
+        if (!state.parentPin) {
+          state.pinMode = 'setup';
+        } else {
+          state.pinMode = 'unlock';
+        }
+        state.setScreen('pin');
         this.render();
       }, 2500);
     };
