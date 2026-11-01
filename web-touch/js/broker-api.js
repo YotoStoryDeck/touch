@@ -339,7 +339,8 @@ export const BrokerApi = {
       console.error('Playback dispatch failed:', err);
       return { ok: false, error: err.message };
     }
-  }
+  },
+
   /**
    * Dispatches transport / player commands (pause, resume, stop, next, prev, volume)
    * to the broker /api/player/control endpoint.

@@ -15,6 +15,17 @@
   <link rel="stylesheet" href="/simulator/css/profile.css">
   <link rel="stylesheet" href="/simulator/css/catalog.css">
   <link rel="stylesheet" href="/simulator/css/player.css">
+  <script>
+    (function() {
+      var p = new URLSearchParams(window.location.search);
+      if (p.get('kiosk') === '1' || p.get('kiosk') === 'true' || p.get('fullscreen') === '1' || p.get('tablet') === '1') {
+        document.documentElement.classList.add('kiosk-mode');
+        document.addEventListener('DOMContentLoaded', function() {
+          document.body.classList.add('kiosk-mode');
+        });
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="note">
