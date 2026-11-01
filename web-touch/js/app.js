@@ -131,8 +131,10 @@ const App = {
 
   syncActiveDevicePlayback() {
     const dev = state.activeDevice;
-    if (dev && dev.is_playing) {
-      state.isPlaying = true;
+    const hasCard = dev && (dev.has_card || dev.is_playing || dev.now_playing || dev.item_id);
+
+    if (hasCard) {
+      state.isPlaying = Boolean(dev.is_playing);
 
       // Find matching item in catalog by ID or Title
       const matched = state.catalog.find(c => 
@@ -143,7 +145,7 @@ const App = {
 
       const coverUrl = (matched && (matched.cover || matched.img))
         ? (matched.cover || matched.img)
-        : (dev.item_id ? `${CONFIG.BROKER_BASE}/api/thumb?type=abs&id=${encodeURIComponent(dev.item_id)}&size=300` : null);
+        : (dev.cover_url || (dev.item_id ? `${CONFIG.BROKER_BASE}/api/thumb?type=abs&id=${encodeURIComponent(dev.item_id)}&size=300` : null));
 
       const fullTitle = dev.now_playing || matched?.title || 'Audiobook';
       const chapterTitle = dev.chapter_title || (matched?.chapters?.[state.chapterIndex]?.title) || 'Playing Track';
@@ -162,8 +164,12 @@ const App = {
         };
       }
     } else {
-      // If nothing is playing on this device, clear isPlaying state
+      // No card in player: clear card & playing state; return to catalog if currently on Now Playing
       state.isPlaying = false;
+      state.card = null;
+      if (state.screen === 'now') {
+        state.setScreen('catalog');
+      }
     }
   },
 
@@ -267,30 +273,97 @@ const App = {
       }
 
       // 7. Player Action Controls
-      const act = e.target.closest('[data-act]')?.dataset.act;
-      if (act === 'playstart') {
-        const btn = document.getElementById('btn-play-book') || e.target.closest('[data-act]');
-        this.initiatePlayback(state.card, 0, btn);
-        return;
-      }
-      if (act === 'toggle') {
-        state.setPlaying(!state.isPlaying);
-        this.render();
-        return;
-      }
-      if (act === 'next') {
-        if (state.card && state.chapterIndex < (state.card.chapters || []).length - 1) {
-          state.setChapter(state.chapterIndex + 1);
-          this.render();
+      const actBtn = e.target.closest('[data-act]');
+      const act = actBtn?.dataset.act;
+      if (act) {
+        // Prevent clicking nowbar play from opening the now screen
+        if (act === 'toggle' && actBtn.classList.contains('nb-play')) {
+          e.stopPropagation();
         }
-        return;
-      }
-      if (act === 'prev') {
-        if (state.chapterIndex > 0) {
-          state.setChapter(state.chapterIndex - 1);
-          this.render();
+
+        if (act === 'playstart') {
+          const btn = document.getElementById('btn-play-book') || actBtn;
+          this.initiatePlayback(state.card, 0, btn);
+          return;
         }
-        return;
+
+        if (act === 'toggle') {
+          const nextState = !state.isPlaying;
+          state.setPlaying(nextState);
+          this.render();
+          const targetAction = nextState ? 'resume' : 'pause';
+          BrokerApi.sendPlayerControl(targetAction).then(res => {
+            if (!res || !res.ok) {
+              console.warn(`Failed to execute ${targetAction}, reverting UI state:`, res);
+              state.setPlaying(!nextState);
+              this.render();
+            }
+          });
+          return;
+        }
+
+        if (act === 'next') {
+          BrokerApi.sendPlayerControl('next').then(res => {
+            if (res && res.ok) {
+              if (state.card && state.chapterIndex < (state.card.chapters || []).length - 1) {
+                state.setChapter(state.chapterIndex + 1);
+              }
+              BrokerApi.getDeviceConfig().then(() => {
+                this.syncActiveDevicePlayback();
+                this.render();
+              });
+            } else {
+              console.warn('Next track error:', res);
+            }
+          });
+          return;
+        }
+
+        if (act === 'prev') {
+          BrokerApi.sendPlayerControl('prev').then(res => {
+            if (res && res.ok) {
+              if (res.data?.track) {
+                state.setChapter(Math.max(0, res.data.track - 1));
+              } else if (state.chapterIndex > 0) {
+                state.setChapter(state.chapterIndex - 1);
+              }
+              BrokerApi.getDeviceConfig().then(() => {
+                this.syncActiveDevicePlayback();
+                this.render();
+              });
+            } else {
+              console.warn('Prev track error:', res);
+            }
+          });
+          return;
+        }
+
+        if (act === 'vol-down') {
+          const newVol = Math.max(0, (state.volume != null ? state.volume : 50) - 10);
+          state.volume = newVol;
+          this.render();
+          BrokerApi.sendPlayerControl('volume', { volume: newVol });
+          return;
+        }
+
+        if (act === 'vol-up') {
+          const newVol = Math.min(100, (state.volume != null ? state.volume : 50) + 10);
+          state.volume = newVol;
+          this.render();
+          BrokerApi.sendPlayerControl('volume', { volume: newVol });
+          return;
+        }
+
+        if (act === 'vol-set') {
+          const rect = actBtn.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+          const newVol = Math.round(ratio * 100);
+          state.volume = newVol;
+          this.render();
+          BrokerApi.sendPlayerControl('volume', { volume: newVol });
+          return;
+        }
       }
     });
   },

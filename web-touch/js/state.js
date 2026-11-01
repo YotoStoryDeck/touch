@@ -16,6 +16,8 @@ export const state = {
   card: null,
   chapterIndex: 0,
   isPlaying: false,
+  volume: 50,
+
 
   setScreen(newScreen) {
     this.screen = newScreen;

@@ -340,6 +340,40 @@ export const BrokerApi = {
       return { ok: false, error: err.message };
     }
   }
+  /**
+   * Dispatches transport / player commands (pause, resume, stop, next, prev, volume)
+   * to the broker /api/player/control endpoint.
+   */
+  async sendPlayerControl(action, payload = {}) {
+    const deviceId = state.activeDevice?.id || state.activeProfile?.default_player_id;
+    if (!deviceId) return { ok: false, error: 'No active device selected' };
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.deviceToken) {
+      headers['Authorization'] = `Bearer ${state.deviceToken}`;
+    }
+
+    const body = {
+      device_id: deviceId,
+      action: action,
+      ...payload
+    };
+
+    try {
+      const res = await fetch(`${CONFIG.BROKER_BASE}/api/player/control`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+      if (!res.ok) {
+        console.warn('Player control command error:', res.status, data);
+        return { ok: false, status: res.status, ...data };
+      }
+      return data;
+    } catch (err) {
+      console.error('Player control fetch failed:', err);
+      return { ok: false, error: err.message };
+    }
+  }
 };
-
-
