@@ -6,8 +6,20 @@ import { Utils } from '../config.js';
  */
 export const PlayerScreen = {
   renderNowbar() {
-    const devName = state.activeDevice?.name || state.activeProfile?.display_name || 'Player';
-    if (state.card && (state.isPlaying || state.activeDevice?.has_card)) {
+    const dev = state.activeDevice;
+    const devName = dev?.name || state.activeProfile?.display_name || 'Player';
+    const isOnline = Boolean(dev?.online);
+    const isPlaying = Boolean(state.isPlaying || dev?.is_playing);
+
+    // Live status dot styling reflecting real device status
+    let dotStyle = 'background:#9ca3af; box-shadow:none;'; // default offline
+    if (isPlaying) {
+      dotStyle = 'background:#e5352b; box-shadow:0 0 8px #e5352b;'; // red / playing
+    } else if (isOnline) {
+      dotStyle = 'background:#16a34a; box-shadow:0 0 8px #16a34a;'; // green / online
+    }
+
+    if (state.card && (isPlaying || dev?.has_card)) {
       const ch = (state.card.chapters || [])[state.chapterIndex] || {};
       const trackTitle = state.card.chapter_title || ch.title || 'Playing';
       const author = state.card.author || '';
@@ -23,19 +35,25 @@ export const PlayerScreen = {
 
       return `
         <div class="nowbar" data-go="now">
-          <div class="status"><span class="dot" style="${state.isPlaying ? '' : 'background:#eab308; box-shadow:0 0 8px #eab308;'}"></span>${Utils.esc(devName)}</div>
+          <div class="status" title="${isOnline ? (isPlaying ? 'Playing' : 'Online') : 'Offline'}">
+            <span class="dot" style="${dotStyle}"></span>
+            ${Utils.esc(devName)}
+          </div>
           <img class="nb-thumb" src="${Utils.esc(state.card.cover || state.card.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Playing'">
           <div class="nb-txt">
             <div class="nb-title">${Utils.esc(bookTitle)}</div>
             <div class="nb-sub">${bottomLine}</div>
           </div>
-          <div class="nb-play" data-act="toggle">${state.isPlaying ? '&#10074;&#10074;' : '&#9654;'}</div>
+          <div class="nb-play" data-act="toggle">${isPlaying ? '&#10074;&#10074;' : '&#9654;'}</div>
         </div>
       `;
     }
     return `
       <div class="nowbar">
-        <div class="status"><span class="dot" style="background:#9ca3af; box-shadow:none;"></span>${Utils.esc(devName)}</div>
+        <div class="status" title="${isOnline ? 'Online' : 'Offline'}">
+          <span class="dot" style="${dotStyle}"></span>
+          ${Utils.esc(devName)}
+        </div>
         <div class="nb-mini">&#9835;</div>
         <div class="nb-txt muted">Nothing playing &mdash; tap a book to listen</div>
       </div>
