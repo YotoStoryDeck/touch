@@ -29,6 +29,8 @@ export const state = {
     wakeTime: '07:00'
   },
   sleepTimerRemainingSec: 0, // countdown ticker in seconds
+  localSessionActive: false, // true ONLY if current audio was initiated/controlled on this screen
+  blockRemotePlayback: true, // guard against accidental playback to away/traveling players
   parentPin: null, // 4-digit string
   pinMode: 'unlock', // 'unlock' | 'setup' | 'confirm' | 'change'
   currentEnteredPin: '',

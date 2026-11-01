@@ -11,9 +11,12 @@ export const PlayerScreen = {
     const isOnline = Boolean(dev?.online);
     const isPlaying = Boolean(state.isPlaying || dev?.is_playing);
 
-    // Live status dot styling reflecting real device status
+    // Live status dot styling reflecting real device status and location
+    const isAway = isOnline && dev?.is_home === false;
     let dotStyle = 'background:#9ca3af; box-shadow:none;'; // default offline
-    if (isPlaying) {
+    if (isAway) {
+      dotStyle = 'background:#ea580c; box-shadow:0 0 8px #ea580c;'; // orange / away
+    } else if (isPlaying) {
       dotStyle = 'background:#e5352b; box-shadow:0 0 8px #e5352b;'; // red / playing
     } else if (isOnline) {
       dotStyle = 'background:#16a34a; box-shadow:0 0 8px #16a34a;'; // green / online
@@ -37,7 +40,7 @@ export const PlayerScreen = {
         <div class="nowbar" data-go="now">
           <div class="status" title="${isOnline ? (isPlaying ? 'Playing' : 'Online') : 'Offline'}">
             <span class="dot" style="${dotStyle}"></span>
-            ${Utils.esc(devName)}
+            ${Utils.esc(devName)}${isAway ? ' <span style="font-size:11px;">✈️ AWAY</span>' : ''}
           </div>
           <img class="nb-thumb" src="${Utils.esc(state.card.cover || state.card.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Playing'">
           <div class="nb-txt">

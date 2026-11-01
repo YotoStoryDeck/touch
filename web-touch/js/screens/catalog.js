@@ -14,8 +14,9 @@ export const CatalogScreen = {
     const activeDev = state.activeDevice || state.resolveActiveDevice(isStandalone ? null : p);
     const hasMultiple = players.length > 1;
 
-    const devStatusIcon = activeDev?.is_playing ? '▶' : (activeDev?.online ? '●' : '○');
-    const devStatusClass = activeDev?.is_playing ? 'status-playing' : (activeDev?.online ? 'status-online' : 'status-offline');
+    const isAway = activeDev && activeDev.online && activeDev.is_home === false;
+    const devStatusIcon = isAway ? '✈️' : (activeDev?.is_playing ? '▶' : (activeDev?.online ? '●' : '○'));
+    const devStatusClass = isAway ? 'status-away' : (activeDev?.is_playing ? 'status-playing' : (activeDev?.online ? 'status-online' : 'status-offline'));
 
     // Dropdown options if picker is open (and player is not locked)
     const pickerDropdown = (state.isDevicePickerOpen && hasMultiple && !isLocked) ? `
@@ -25,12 +26,14 @@ export const CatalogScreen = {
           const isSelected = d.id === activeDev?.id;
           const isPlay = d.is_playing;
           const isOnline = d.online;
+          const dAway = isOnline && d.is_home === false;
           return `
             <div class="device-opt ${isSelected ? 'selected' : ''}" data-act="select-device" data-device-id="${Utils.esc(d.id)}">
-              <span class="dev-dot ${isPlay ? 'dot-play' : (isOnline ? 'dot-on' : 'dot-off')}">
-                ${isPlay ? '▶' : '●'}
+              <span class="dev-dot ${dAway ? 'dot-away' : (isPlay ? 'dot-play' : (isOnline ? 'dot-on' : 'dot-off'))}">
+                ${dAway ? '✈️' : (isPlay ? '▶' : '●')}
               </span>
               <span class="dev-name">${Utils.esc(d.name)}</span>
+              ${dAway ? '<span class="dev-tag" style="background:#ea580c; color:#fff;">AWAY</span>' : ''}
               ${d.id === p.default_player_id ? '<span class="dev-tag">DEFAULT</span>' : ''}
               ${isPlay ? '<span class="dev-tag play">PLAYING</span>' : ''}
             </div>

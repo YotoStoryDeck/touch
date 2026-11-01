@@ -110,6 +110,23 @@ export const GrownUpsScreen = {
             </div>
           </div>
 
+          <!-- 4b. Remote / Travel Player Protection -->
+          <div class="gu-section">
+            <div class="gu-sec-title">
+              <span>Travel & Away Player Protection</span>
+              <span style="font-size:12px; font-weight:600; color:${state.blockRemotePlayback ? '#16a34a' : '#ea580c'};">
+                ${state.blockRemotePlayback ? '🛡️ Protected (Blocked)' : '⚠️ Prompts on Away'}
+              </span>
+            </div>
+            <div class="gu-row">
+              <button class="gu-pill-btn ${state.blockRemotePlayback ? 'active' : ''}" data-act="gu-set-remote-block" data-val="true">Block Away Players</button>
+              <button class="gu-pill-btn ${!state.blockRemotePlayback ? 'active' : ''}" data-act="gu-set-remote-block" data-val="false">Prompt Before Playing</button>
+            </div>
+            <div class="gu-info-text">
+              Prevents bedtime sleep timers and accidental card taps from stopping or playing audio on Yoto players traveling away from home (in the car or at a hotel).
+            </div>
+          </div>
+
           <!-- 5. Night Clock & Screensaver Delay -->
           <div class="gu-section">
             <div class="gu-sec-title">

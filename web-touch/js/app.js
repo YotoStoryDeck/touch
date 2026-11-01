@@ -38,6 +38,22 @@ const App = {
    */
   async initiatePlayback(card, chapterIndex = 0, triggerEl = null) {
     if (!card) return;
+
+    // Safety Interlock: Away/Traveling Player Guard
+    const activeDev = state.activeDevice;
+    if (activeDev && activeDev.online && activeDev.is_home === false) {
+      if (state.blockRemotePlayback) {
+        alert(`${activeDev.name} is currently away from home (traveling).
+
+Remote playback from this bedside controller is blocked to avoid disturbing someone traveling.`);
+        return;
+      } else {
+        const proceed = confirm(`${activeDev.name} is currently away from home (traveling).
+
+Are you sure you want to start audio playback on this remote player?`);
+        if (!proceed) return;
+      }
+    }
     const originalText = triggerEl ? triggerEl.innerHTML : null;
     if (triggerEl) {
       triggerEl.style.opacity = '0.6';
@@ -54,6 +70,7 @@ const App = {
         state.setPreviewCard(card);
         state.setChapter(chapterIndex);
         state.setPlaying(true);
+        state.localSessionActive = true;
         
         // Immediately fetch fresh device status to verify live playback
         await BrokerApi.getDeviceConfig();
@@ -492,6 +509,15 @@ const App = {
         return;
       }
 
+      // Grown-ups Remote/Travel Block Toggle
+      const guRemoteBlockBtn = e.target.closest('[data-act="gu-set-remote-block"]');
+      if (guRemoteBlockBtn) {
+        state.blockRemotePlayback = (guRemoteBlockBtn.dataset.val === 'true');
+        state.persistParentSettings();
+        this.render();
+        return;
+      }
+
       // Grown-ups Screensaver Delay
       const guSaverBtn = e.target.closest('[data-act="gu-set-saver"]');
       if (guSaverBtn) {
@@ -900,6 +926,20 @@ const App = {
         return;
       }
 
+      // Safety Gate 1: Never arm or stop an away/traveling player
+      if (state.activeDevice && state.activeDevice.is_home === false) {
+        if (state.sleepTimerRemainingSec > 0) {
+          console.warn(`[SleepTimer] Active player ${state.activeDevice.name} is AWAY from home. Sleep timer aborted.`);
+          state.sleepTimerRemainingSec = 0;
+        }
+        return;
+      }
+
+      // Safety Gate 2: Never stop an external session not initiated on this controller
+      if (!state.localSessionActive) {
+        return;
+      }
+
       const mins = state.parentSettings.sleepTimerMin || 0;
       if (mins <= 0) {
         state.sleepTimerRemainingSec = 0;
@@ -917,13 +957,14 @@ const App = {
         if (state.sleepTimerRemainingSec === 0) {
           console.log('[SleepTimer] Timer reached 0! Stopping player playback...');
           state.setPlaying(false);
+          state.localSessionActive = false;
           this.render();
           BrokerApi.sendPlayerControl('stop').then(res => {
             console.log('[SleepTimer] Stop command executed:', res);
           });
         }
       } else if (state.sleepTimerRemainingSec <= 0 && isPlaying) {
-        // Arm if playback began during active window
+        // Arm if playback began during active window on this controller
         this.checkAndArmSleepTimer(false);
       }
     }, 1000);
