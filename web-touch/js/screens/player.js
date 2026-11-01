@@ -2,16 +2,16 @@ import { state } from '../state.js';
 import { Utils } from '../config.js';
 
 /**
- * Screen 4: Now Playing & Persistent Nowbar Component
+ * Screen 3: Now Playing / Player Screen Component
  */
 export const PlayerScreen = {
   renderNowbar() {
     const devName = state.activeDevice?.name || state.activeProfile?.display_name || 'Player';
     if (state.card && (state.isPlaying || state.activeDevice?.has_card)) {
       const ch = (state.card.chapters || [])[state.chapterIndex] || {};
-      const bookTitle = state.card.title || 'Audiobook';
       const trackTitle = state.card.chapter_title || ch.title || 'Playing';
       const author = state.card.author || '';
+      const bookTitle = state.card.title || 'Now Playing';
 
       // Format bottom line as "Author • Chapter Title"
       let bottomLine = Utils.esc(trackTitle);
@@ -44,7 +44,15 @@ export const PlayerScreen = {
 
   render() {
     const c = state.card;
-    if (!c) return '<div class="frame">Nothing is currently playing.</div>';
+    if (!c) {
+      return `
+        <div class="frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+          <div style="font-size:42px;">📻</div>
+          <div style="font-size:18px; font-weight:600; color:#4a453e;">Nothing is currently playing.</div>
+          <button class="gu-pill-btn active" data-go="catalog" style="padding:10px 20px;">&#8592; Back to Library</button>
+        </div>
+      `;
+    }
 
     const ch = (c.chapters || [])[state.chapterIndex] || {};
     const dur = state.activeDevice?.duration || c.duration || ch.duration || 1800;
@@ -67,13 +75,13 @@ export const PlayerScreen = {
     return `
       <div class="np">
         <div class="nptop">
-          <span class="chev" data-go="catalog">&#8964;</span>
-          <span class="label">Playing for ${Utils.esc(state.activeProfile?.display_name || 'Kiddo')}</span>
+          <div class="np-back-btn" data-go="catalog" title="Return to Library">&#8592; Back</div>
+          <span class="label">Playing on ${Utils.esc(state.activeDevice?.name || state.activeProfile?.display_name || 'Yoto')}</span>
         </div>
         <div class="npmid">
-          <img class="npcover" src="${Utils.esc(c.cover || c.img)}">
+          <img class="npcover clickable-card" data-act="inspect-card" src="${Utils.esc(c.cover || c.img)}" title="View book details and tracklist">
           <div class="npinfo">
-            <div class="t">${Utils.esc(c.title)}</div>
+            <div class="t clickable-card" data-act="inspect-card" title="View book details and tracklist">${Utils.esc(c.title)}</div>
             <div class="c">${subLine}</div>
             <div class="bar">
               <i style="width: ${pct}%;"></i>
@@ -81,9 +89,9 @@ export const PlayerScreen = {
             </div>
             <div class="times"><span>${Utils.mmss(pos)}</span><span>-${Utils.mmss(dur - pos)}</span></div>
             <div class="ctrls">
-              <span class="ic" data-act="prev">&#9198;</span>
-              <div class="big" data-act="toggle">${state.isPlaying ? '&#10074;&#10074;' : '&#9654;'}</div>
-              <span class="ic" data-act="next">&#9197;</span>
+              <span class="ic" data-act="prev" title="Previous Chapter">&#9198;</span>
+              <div class="big" data-act="toggle" title="${state.isPlaying ? 'Pause' : 'Play'}">${state.isPlaying ? '&#10074;&#10074;' : '&#9654;'}</div>
+              <span class="ic" data-act="next" title="Next Chapter">&#9197;</span>
               <span class="vol">
                 <span data-act="vol-down" style="cursor:pointer;" title="Volume Down">&#128264;</span>
                 <div class="volbar-wrap" style="position:relative; display:inline-block;">

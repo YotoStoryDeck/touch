@@ -378,6 +378,34 @@ const App = {
         return;
       }
 
+      // 4b. Inspect Active Card (Tap Cover or Title in Player Screen)
+      const inspectCard = e.target.closest('[data-act="inspect-card"]');
+      if (inspectCard) {
+        if (state.card) {
+          state.setPreviewCard(state.card);
+          state.setScreen('detail');
+          this.render();
+
+          // Fetch tracks if needed
+          const id = state.card.id || state.card.cardId;
+          if (id && (!state.card.chapters || state.card.chapters.length === 0)) {
+            BrokerApi.fetchMediaTracks(id).then(tracks => {
+              if (tracks && tracks.length > 0) {
+                state.card.chapters = tracks.map(t => ({
+                  title: t.title,
+                  duration: t.duration_seconds || 0,
+                  icon_url: t.icon_url
+                }));
+                state.card.duration = tracks.reduce((sum, t) => sum + (t.duration_seconds || 0), 0);
+                state.previewCard = { ...state.card };
+                this.render();
+              }
+            });
+          }
+        }
+        return;
+      }
+
       // 5. Back / Screen Navigation Links
       const go = e.target.closest('[data-go]');
       if (go) {

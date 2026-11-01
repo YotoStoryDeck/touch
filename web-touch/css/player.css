@@ -104,19 +104,54 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  height: 26px;
+  height: 38px;
+  margin-bottom: 8px;
 }
 
 .nptop .label {
   font-size: 15px;
   font-weight: 600;
+  color: #d1c7b7;
 }
 
-.nptop .chev {
+.np-back-btn {
   position: absolute;
   left: 0;
-  font-size: 22px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .12s;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  user-select: none;
+}
+
+.np-back-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+
+.np-back-btn:active {
+  background: var(--red);
+  border-color: var(--red);
+  transform: translateY(0);
+}
+
+.clickable-card {
+  cursor: pointer;
+  transition: transform .12s, opacity .12s;
+}
+
+.clickable-card:hover {
+  opacity: 0.88;
+  transform: scale(1.015);
 }
 
 .npmid {
