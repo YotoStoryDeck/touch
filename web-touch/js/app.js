@@ -5,6 +5,7 @@ import { ProfileScreen } from './screens/profile.js';
 import { CatalogScreen } from './screens/catalog.js';
 import { DetailScreen } from './screens/detail.js';
 import { PlayerScreen } from './screens/player.js';
+import { GrownUpsScreen } from './screens/grownups.js';
 
 /**
  * Main Controller & Event Router
@@ -26,6 +27,7 @@ const App = {
     }
 
     this.bindEvents();
+    this.bindGearHoldTimer();
     this.bootstrap();
   },
 
@@ -98,6 +100,10 @@ const App = {
         break;
       case 'now':
         this.container.innerHTML = PlayerScreen.render();
+        break;
+      case 'grownups':
+        this.container.innerHTML = GrownUpsScreen.render();
+        this.bindGrownUpsEvents();
         break;
       case 'offline':
         this.container.innerHTML = `
@@ -194,6 +200,21 @@ const App = {
   },
 
   bindEvents() {
+    this.container.addEventListener('change', (e) => {
+      const guLockSelect = e.target.closest('[data-act="gu-select-lock-player"]');
+      if (guLockSelect) {
+        const did = guLockSelect.value;
+        const allPlayers = state.getAllAvailablePlayers();
+        const found = allPlayers.find(p => p.id === did);
+        if (found) {
+          state.setActiveDevice(found);
+          state.lockedPlayerId = found.id;
+          state.persistParentSettings();
+          this.syncActiveDevicePlayback();
+        }
+      }
+    });
+
     this.container.addEventListener('click', (e) => {
       // 1. Profile Card Selection
       const card = e.target.closest('[data-profile]');
@@ -277,6 +298,83 @@ const App = {
             });
           }
         }
+        return;
+      }
+
+      // Grown-ups Close Button
+      const guClose = e.target.closest('[data-act="gu-close"]');
+      if (guClose) {
+        const returnScreen = state.previousScreen || (state.mode === 'standalone' ? 'catalog' : 'profile');
+        state.previousScreen = null;
+        state.setScreen(returnScreen);
+        this.render();
+        return;
+      }
+
+      // Grown-ups Mode Switch
+      const guModeBtn = e.target.closest('[data-act="gu-set-mode"]');
+      if (guModeBtn) {
+        const newMode = guModeBtn.dataset.mode;
+        state.mode = newMode;
+        state.persistParentSettings();
+        if (newMode === 'standalone') {
+          // Switch directly to catalog without profile requirement
+          const allPlayers = state.getAllAvailablePlayers();
+          if (!state.activeDevice && allPlayers.length > 0) {
+            state.setActiveDevice(allPlayers[0]);
+          }
+          if (state.profiles.length > 0) {
+            BrokerApi.fetchLiveCatalog(state.profiles[0].id).then(() => {
+              this.syncActiveDevicePlayback();
+            });
+          }
+        }
+        this.render();
+        return;
+      }
+
+      // Grown-ups Lock Player Toggle
+      const guLockBtn = e.target.closest('[data-act="gu-set-lock"]');
+      if (guLockBtn) {
+        state.lockPlayer = (guLockBtn.dataset.lock === 'true');
+        if (state.lockPlayer && state.activeDevice) {
+          state.lockedPlayerId = state.activeDevice.id;
+        }
+        state.persistParentSettings();
+        this.render();
+        return;
+      }
+
+      // Grown-ups Lock Player Selection
+      const guLockSelect = e.target.closest('[data-act="gu-select-lock-player"]');
+      if (guLockSelect && e.type === 'change') {
+        const did = guLockSelect.value;
+        const allPlayers = state.getAllAvailablePlayers();
+        const found = allPlayers.find(p => p.id === did);
+        if (found) {
+          state.setActiveDevice(found);
+          state.lockedPlayerId = found.id;
+          state.persistParentSettings();
+          this.syncActiveDevicePlayback();
+        }
+        return;
+      }
+
+      // Grown-ups Sleep Timer
+      const guSleepBtn = e.target.closest('[data-act="gu-set-sleep"]');
+      if (guSleepBtn) {
+        state.parentSettings.sleepTimerMin = parseInt(guSleepBtn.dataset.val, 10);
+        state.persistParentSettings();
+        this.render();
+        return;
+      }
+
+      // Grown-ups Screensaver Delay
+      const guSaverBtn = e.target.closest('[data-act="gu-set-saver"]');
+      if (guSaverBtn) {
+        state.parentSettings.screensaverMin = parseInt(guSaverBtn.dataset.val, 10);
+        state.persistParentSettings();
+        this.render();
         return;
       }
 
@@ -400,6 +498,67 @@ const App = {
     });
   },
 
+  bindGearHoldTimer() {
+    let holdTimeout = null;
+
+    const startHold = (e) => {
+      const gearBtn = e.target.closest('[data-act="gear-button"]');
+      if (!gearBtn) return;
+      gearBtn.classList.add('pressing');
+      if (holdTimeout) clearTimeout(holdTimeout);
+      holdTimeout = setTimeout(() => {
+        gearBtn.classList.remove('pressing');
+        holdTimeout = null;
+        state.previousScreen = state.screen;
+        state.setScreen('grownups');
+        this.render();
+      }, 2500);
+    };
+
+    const cancelHold = (e) => {
+      const gearBtn = document.querySelector('.nav-gear-btn');
+      if (gearBtn) gearBtn.classList.remove('pressing');
+      if (holdTimeout) {
+        clearTimeout(holdTimeout);
+        holdTimeout = null;
+      }
+    };
+
+    document.addEventListener('pointerdown', startHold);
+    document.addEventListener('pointerup', cancelHold);
+    document.addEventListener('pointercancel', cancelHold);
+    document.addEventListener('pointerleave', cancelHold);
+  },
+
+  bindGrownUpsEvents() {
+    const slider = document.getElementById('guVolSlider');
+    const valLbl = document.getElementById('guVolVal');
+    if (slider && valLbl) {
+      slider.addEventListener('input', (e) => {
+        const v = parseInt(e.target.value, 10);
+        valLbl.textContent = `${v}%`;
+        state.parentSettings.volumeMax = v;
+        state.persistParentSettings();
+      });
+    }
+
+    const bedtimeInput = document.getElementById('guBedtimeInput');
+    if (bedtimeInput) {
+      bedtimeInput.addEventListener('change', (e) => {
+        state.parentSettings.bedtime = e.target.value;
+        state.persistParentSettings();
+      });
+    }
+
+    const wakeInput = document.getElementById('guWakeInput');
+    if (wakeInput) {
+      wakeInput.addEventListener('change', (e) => {
+        state.parentSettings.wakeTime = e.target.value;
+        state.persistParentSettings();
+      });
+    }
+  },
+
   async bootstrap() {
     try {
       // 1. Device Registration Handshake
@@ -428,7 +587,18 @@ const App = {
       this.statusBadge.className = 'broker-badge';
 
       // 3. Launch Initial Screen
-      if (conf.assigned_profile && state.profiles.some(p => p.id === conf.assigned_profile)) {
+      if (state.mode === 'standalone') {
+        const allPlayers = state.getAllAvailablePlayers();
+        if (allPlayers.length > 0) {
+          state.setActiveDevice(state.resolveActiveDevice(null));
+        }
+        if (state.profiles.length > 0) {
+          await BrokerApi.fetchLiveCatalog(state.profiles[0].id);
+          this.syncActiveDevicePlayback();
+        }
+        state.setScreen('catalog');
+        this.render();
+      } else if (conf.assigned_profile && state.profiles.some(p => p.id === conf.assigned_profile)) {
         await this.selectProfile(conf.assigned_profile);
       } else {
         state.setScreen('profile');

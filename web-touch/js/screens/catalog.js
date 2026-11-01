@@ -7,16 +7,18 @@ import { PlayerScreen } from './player.js';
  */
 export const CatalogScreen = {
   renderTopNav() {
+    const isStandalone = state.mode === 'standalone';
+    const isLocked = state.lockPlayer;
     const p = state.activeProfile || state.profiles[0] || { display_name: 'Profiles', avatar_url: '' };
-    const players = p.players || [];
-    const activeDev = state.activeDevice || state.resolveActiveDevice(p);
+    const players = isStandalone ? state.getAllAvailablePlayers() : (p.players || []);
+    const activeDev = state.activeDevice || state.resolveActiveDevice(isStandalone ? null : p);
     const hasMultiple = players.length > 1;
 
     const devStatusIcon = activeDev?.is_playing ? '▶' : (activeDev?.online ? '●' : '○');
     const devStatusClass = activeDev?.is_playing ? 'status-playing' : (activeDev?.online ? 'status-online' : 'status-offline');
 
-    // Dropdown options if picker is open
-    const pickerDropdown = (state.isDevicePickerOpen && hasMultiple) ? `
+    // Dropdown options if picker is open (and player is not locked)
+    const pickerDropdown = (state.isDevicePickerOpen && hasMultiple && !isLocked) ? `
       <div class="device-dropdown">
         <div class="dropdown-header">Select Target Player</div>
         ${players.map(d => {
@@ -40,18 +42,24 @@ export const CatalogScreen = {
     return `
       <div class="topnav">
         <div class="topnav-left">
-          <div class="prof-pill" data-act="switch-profile" title="Switch profile">
-            ${p.avatar_url ? `<img src="${Utils.esc(p.avatar_url)}" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=${Utils.esc(p.id||'anon')}'">` : '<span style="font-size:16px;">👤</span>'}
-            <span>${Utils.esc(p.display_name)}</span>
-            <span style="font-size:10px; color:#8a8276;">&#9660;</span>
-          </div>
+          ${!isStandalone ? `
+            <!-- Core Mode: Profile Selector Pill -->
+            <div class="prof-pill" data-act="switch-profile" title="Switch profile">
+              ${p.avatar_url ? `<img src="${Utils.esc(p.avatar_url)}" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=${Utils.esc(p.id||'anon')}'">` : '<span style="font-size:16px;">👤</span>'}
+              <span>${Utils.esc(p.display_name)}</span>
+              <span style="font-size:10px; color:#8a8276;">&#9660;</span>
+            </div>
+          ` : ''}
 
-          <!-- Device Selector Button -->
+          <!-- Device / Player Selector Button (Primary identity in Standalone mode) -->
           <div class="device-pill-wrap">
-            <div class="device-pill ${hasMultiple ? 'clickable' : ''}" data-act="${hasMultiple ? 'toggle-device-picker' : ''}" title="${hasMultiple ? 'Choose playback device' : 'Active playback device'}">
+            <div class="device-pill ${(!isLocked && hasMultiple) ? 'clickable' : ''}" 
+                 data-act="${(!isLocked && hasMultiple) ? 'toggle-device-picker' : ''}" 
+                 title="${isLocked ? 'Controller is locked to this player' : (hasMultiple ? 'Choose playback device' : 'Active playback device')}">
+              ${isLocked ? '<span style="font-size:11px;">🔒</span>' : ''}
               <span class="device-dot ${devStatusClass}">${devStatusIcon}</span>
               <span class="device-label">${Utils.esc(activeDev?.name || p.default_player_name || 'Yoto Player')}</span>
-              ${hasMultiple ? '<span class="pill-chev">&#9660;</span>' : ''}
+              ${(!isLocked && hasMultiple) ? '<span class="pill-chev">&#9660;</span>' : ''}
             </div>
             ${pickerDropdown}
           </div>
@@ -62,6 +70,9 @@ export const CatalogScreen = {
           <button class="tab-btn ${state.activeTab === 'series' ? 'active' : ''}" data-tab="series">Series / Groups</button>
           <button class="tab-btn ${state.activeTab === 'abs' ? 'active' : ''}" data-tab="abs">Audiobooks</button>
           <button class="tab-btn ${state.activeTab === 'yoto' ? 'active' : ''}" data-tab="yoto">Yoto Cards</button>
+          
+          <!-- Grown-Ups Screen Gear (Hold 2.5s) -->
+          <button class="nav-gear-btn" data-act="gear-button" title="Hold for 2.5s to open Grown-ups settings">&#9881;</button>
         </div>
       </div>
     `;
@@ -88,129 +99,113 @@ export const CatalogScreen = {
         groups.get(groupName).push({ ...item, groupSequence: null });
       } else {
         // Place card into every series/group it belongs to
-        const seenGroupNames = new Set();
-        seriesEntries.forEach(entry => {
-          const groupName = (entry.name || '').trim();
-          if (groupName && !seenGroupNames.has(groupName.toLowerCase())) {
-            seenGroupNames.add(groupName.toLowerCase());
-            if (!groups.has(groupName)) {
-              groups.set(groupName, []);
-            }
-            groups.get(groupName).push({
-              ...item,
-              groupSequence: entry.sequence != null ? entry.sequence : item.sequence,
-              groupSequenceDisplay: entry.sequence_display || item.sequence_display || (entry.sequence != null ? String(entry.sequence) : (item.sequence != null ? String(item.sequence) : null))
-            });
+        seriesEntries.forEach(sEntry => {
+          const groupName = sEntry.name ? sEntry.name.trim() : 'Standalone & Singles';
+          if (!groups.has(groupName)) {
+            groups.set(groupName, []);
           }
+          groups.get(groupName).push({ ...item, groupSequence: sEntry.sequence });
         });
       }
     });
 
-    const shouldExcludeSingle = state.deviceConfig?.exclude_single_card_series !== false;
-
-    // Filter out groups that have only 1 item if the setting is enabled
-    const eligibleGroupNames = Array.from(groups.keys()).filter(name => {
-      const count = (groups.get(name) || []).length;
-      if (shouldExcludeSingle && count <= 1) {
-        return false;
-      }
-      return true;
-    });
-
-    // Sort series groups alphabetically ignoring 'The', 'A', 'An' (with standalone last)
-    const sortedGroupNames = eligibleGroupNames.sort((a, b) => {
+    const groupNames = Array.from(groups.keys()).sort((a, b) => {
       if (a === 'Standalone & Singles') return 1;
       if (b === 'Standalone & Singles') return -1;
-      return this.cleanTitle(a).localeCompare(this.cleanTitle(b));
+      return a.localeCompare(b);
     });
 
-    if (!sortedGroupNames.length) {
-      return '<div style="padding:40px; color:#888;">No multi-book series found in this library.</div>';
-    }
-
-    return sortedGroupNames.map(groupName => {
+    const seriesHtml = groupNames.map(groupName => {
       const items = groups.get(groupName);
 
-      // Sort books within series by group-specific sequence ascending, then clean title
+      // Sort items within this series/group:
+      // 1. Numerically by sequence ascending (e.g. Book 1, Book 2)
+      // 2. Alphabetically by cleaned title (ignoring leading The/A/An)
       items.sort((a, b) => {
-        const seqA = a.groupSequence != null ? a.groupSequence : 999999;
-        const seqB = b.groupSequence != null ? b.groupSequence : 999999;
-        if (seqA !== seqB) {
+        const seqA = a.groupSequence != null ? Number(a.groupSequence) : Infinity;
+        const seqB = b.groupSequence != null ? Number(b.groupSequence) : Infinity;
+
+        if (seqA !== seqB && !isNaN(seqA) && !isNaN(seqB)) {
           return seqA - seqB;
         }
-        return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
+
+        const titleA = this.cleanTitle(a.title);
+        const titleB = this.cleanTitle(b.title);
+        return titleA.localeCompare(titleB);
       });
 
-      const tiles = items.map(c => {
-        let seqLabel = '';
-        if (c.groupSequenceDisplay) {
-          seqLabel = c.groupSequenceDisplay.startsWith('#') ? c.groupSequenceDisplay : `#${c.groupSequenceDisplay}`;
-        } else if (c.groupSequence != null) {
-          seqLabel = `#${c.groupSequence % 1 === 0 ? c.groupSequence : c.groupSequence.toFixed(1)}`;
-        }
-
-        return `
-        <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
-          <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
-          ${c.is_highlight ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
-          ${seqLabel ? `<span class="badge-seq">${Utils.esc(seqLabel)}</span>` : ''}
-          ${c.source === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
+      const cardsHtml = items.map(c => `
+        <div class="card series-card" data-card="${Utils.esc(c.id || c.cardId)}">
+          <div class="card-thumb-wrap">
+            <img class="card-thumb" src="${Utils.esc(c.cover || c.img)}" loading="lazy" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=No+Cover'">
+            <div class="card-badge ${c.source === 'abs' || c.type === 'abs' ? 'badge-abs' : 'badge-yoto'}">
+              ${c.source === 'abs' || c.type === 'abs' ? 'ABS' : 'YOTO'}
+            </div>
+            ${c.groupSequence != null ? `<div class="card-seq-badge">#${c.groupSequence}</div>` : ''}
+          </div>
+          <div class="card-name">${Utils.esc(c.title)}</div>
+          <div class="card-author">${Utils.esc(c.author || '')}</div>
         </div>
-      `;
-      }).join('');
+      `).join('');
 
       return `
-        <div class="series-section">
-          <div class="series-header">
-            <span class="series-title">${Utils.esc(groupName)}</span>
-            <span class="series-count">(${items.length} ${items.length === 1 ? 'card' : 'cards'})</span>
+        <div class="series-group">
+          <div class="series-group-header">
+            <span class="series-group-title">${Utils.esc(groupName)}</span>
+            <span class="series-group-count">${items.length} ${items.length === 1 ? 'book' : 'books'}</span>
           </div>
-          <div class="series-row">
-            ${tiles}
+          <div class="series-row-scroll">
+            <div class="series-row">
+              ${cardsHtml}
+            </div>
           </div>
         </div>
       `;
     }).join('');
+
+    return `
+      <div class="grid-series">
+        ${seriesHtml || '<div class="muted" style="padding:20px; text-align:center;">No series collections available.</div>'}
+      </div>
+    `;
   },
 
-  render() {
-    if (state.activeTab === 'series') {
-      return `
-        ${this.renderTopNav()}
-        <div class="grid-series">
-          ${this.renderSeriesView()}
+  renderFlatView(items) {
+    const cards = items.map(c => `
+      <div class="card" data-card="${Utils.esc(c.id || c.cardId)}">
+        <div class="card-thumb-wrap">
+          <img class="card-thumb" src="${Utils.esc(c.cover || c.img)}" loading="lazy" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=No+Cover'">
+          <div class="card-badge ${c.source === 'abs' || c.type === 'abs' ? 'badge-abs' : 'badge-yoto'}">
+            ${c.source === 'abs' || c.type === 'abs' ? 'ABS' : 'YOTO'}
+          </div>
         </div>
-        ${PlayerScreen.renderNowbar()}
-      `;
-    }
-
-    const filtered = state.catalog.filter(c => {
-      if (state.activeTab === 'abs') return c.source === 'abs';
-      if (state.activeTab === 'yoto') return c.source !== 'abs';
-      return true;
-    });
-
-    // In flat lists, sort highlights first, then by title ignoring articles 'The', 'A', 'An'
-    filtered.sort((a, b) => {
-      if (!!b.is_highlight !== !!a.is_highlight) {
-        return b.is_highlight ? 1 : -1;
-      }
-      return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
-    });
-
-    const tiles = filtered.map(c => `
-      <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
-        <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
-        ${c.is_highlight ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
-        ${c.source === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
+        <div class="card-name">${Utils.esc(c.title)}</div>
+        <div class="card-author">${Utils.esc(c.author || '')}</div>
       </div>
     `).join('');
 
     return `
-      ${this.renderTopNav()}
       <div class="grid">
-        ${tiles.length ? tiles : '<div style="padding:40px; color:#888;">No audiobooks found in this library.</div>'}
+        ${cards || '<div class="muted" style="padding:20px; text-align:center;">No cards found for this filter.</div>'}
       </div>
+    `;
+  },
+
+  render() {
+    let filtered = state.catalog;
+    if (state.activeTab === 'abs') {
+      filtered = state.catalog.filter(c => c.source === 'abs' || c.type === 'abs');
+    } else if (state.activeTab === 'yoto') {
+      filtered = state.catalog.filter(c => c.source === 'yoto' || c.type === 'yoto');
+    }
+
+    const bodyHtml = (state.activeTab === 'series')
+      ? this.renderSeriesView()
+      : this.renderFlatView(filtered);
+
+    return `
+      ${this.renderTopNav()}
+      ${bodyHtml}
       ${PlayerScreen.renderNowbar()}
     `;
   }
