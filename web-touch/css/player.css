@@ -274,16 +274,42 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 18px;
+  gap: 12px;
+  font-size: 20px;
+}
+
+.vol-btn {
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: transform .1s, background .1s;
+}
+
+.vol-btn:active {
+  transform: scale(0.9);
+  background: rgba(255,255,255,0.15);
+}
+
+.volbar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
 }
 
 .volbar {
-  width: 120px;
-  height: 6px;
-  background: rgba(255,255,255,.35);
-  border-radius: 6px;
+  width: 130px;
+  height: 10px;
+  background: rgba(255,255,255,0.25);
+  border-radius: 999px;
   position: relative;
+  cursor: pointer;
+  overflow: visible;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
 }
 
 .volbar i {
@@ -291,7 +317,40 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 22%;
   background: #fff;
-  border-radius: 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(255,255,255,0.6);
+  pointer-events: none;
+}
+
+.volbar-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+
+.volbar-limit {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(239, 68, 68, 0.45);
+  border-radius: 0 999px 999px 0;
+  pointer-events: none;
+}
+
+.vol-text {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 36px;
+  color: rgba(255,255,255,0.85);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }

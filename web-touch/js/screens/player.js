@@ -111,14 +111,16 @@ export const PlayerScreen = {
               <div class="big" data-act="toggle" title="${state.isPlaying ? 'Pause' : 'Play'}">${state.isPlaying ? '&#10074;&#10074;' : '&#9654;'}</div>
               <span class="ic" data-act="next" title="Next Chapter">&#9197;</span>
               <span class="vol">
-                <span data-act="vol-down" style="cursor:pointer;" title="Volume Down">&#128264;</span>
-                <div class="volbar-wrap" style="position:relative; display:inline-block;">
-                  <span class="volbar" data-act="vol-set" style="cursor:pointer;" title="Set Volume (Max: ${devMaxVol}%)">
+                <span class="vol-btn" data-act="vol-down" title="Volume Down">&#128264;</span>
+                <div class="volbar-wrap">
+                  <div class="volbar" data-act="vol-set" title="Set Volume (Max: ${devMaxVol}%)">
                     <i style="width: ${vol}%;"></i>
-                    ${devMaxVol < 100 ? `<div style="position:absolute; right:0; top:0; bottom:0; width:${100 - devMaxVol}%; background:rgba(239,68,68,0.3); border-radius:0 6px 6px 0; pointer-events:none;" title="Parent Limit: ${devMaxVol}%"></div>` : ''}
-                  </span>
+                    <b class="volbar-thumb" style="left: ${vol}%;"></b>
+                    ${devMaxVol < 100 ? `<div class="volbar-limit" style="width:${100 - devMaxVol}%;" title="Parent Limit: ${devMaxVol}%"></div>` : ''}
+                  </div>
                 </div>
-                <span data-act="vol-up" style="cursor:pointer;" title="Volume Up">&#128266;</span>
+                <span class="vol-btn" data-act="vol-up" title="Volume Up">&#128266;</span>
+                <span class="vol-text">${vol}%</span>
               </span>
             </div>
           </div>
