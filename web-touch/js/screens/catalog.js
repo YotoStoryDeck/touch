@@ -99,113 +99,129 @@ export const CatalogScreen = {
         groups.get(groupName).push({ ...item, groupSequence: null });
       } else {
         // Place card into every series/group it belongs to
-        seriesEntries.forEach(sEntry => {
-          const groupName = sEntry.name ? sEntry.name.trim() : 'Standalone & Singles';
-          if (!groups.has(groupName)) {
-            groups.set(groupName, []);
+        const seenGroupNames = new Set();
+        seriesEntries.forEach(entry => {
+          const groupName = (entry.name || '').trim();
+          if (groupName && !seenGroupNames.has(groupName.toLowerCase())) {
+            seenGroupNames.add(groupName.toLowerCase());
+            if (!groups.has(groupName)) {
+              groups.set(groupName, []);
+            }
+            groups.get(groupName).push({
+              ...item,
+              groupSequence: entry.sequence != null ? entry.sequence : item.sequence,
+              groupSequenceDisplay: entry.sequence_display || item.sequence_display || (entry.sequence != null ? String(entry.sequence) : (item.sequence != null ? String(item.sequence) : null))
+            });
           }
-          groups.get(groupName).push({ ...item, groupSequence: sEntry.sequence });
         });
       }
     });
 
-    const groupNames = Array.from(groups.keys()).sort((a, b) => {
-      if (a === 'Standalone & Singles') return 1;
-      if (b === 'Standalone & Singles') return -1;
-      return a.localeCompare(b);
+    const shouldExcludeSingle = state.deviceConfig?.exclude_single_card_series !== false;
+
+    // Filter out groups that have only 1 item if the setting is enabled
+    const eligibleGroupNames = Array.from(groups.keys()).filter(name => {
+      const count = (groups.get(name) || []).length;
+      if (shouldExcludeSingle && count <= 1) {
+        return false;
+      }
+      return true;
     });
 
-    const seriesHtml = groupNames.map(groupName => {
+    // Sort series groups alphabetically ignoring 'The', 'A', 'An' (with standalone last)
+    const sortedGroupNames = eligibleGroupNames.sort((a, b) => {
+      if (a === 'Standalone & Singles') return 1;
+      if (b === 'Standalone & Singles') return -1;
+      return this.cleanTitle(a).localeCompare(this.cleanTitle(b));
+    });
+
+    if (!sortedGroupNames.length) {
+      return '<div style="padding:40px; color:#888; text-align:center;">No multi-book series found in this library.</div>';
+    }
+
+    return sortedGroupNames.map(groupName => {
       const items = groups.get(groupName);
 
-      // Sort items within this series/group:
-      // 1. Numerically by sequence ascending (e.g. Book 1, Book 2)
-      // 2. Alphabetically by cleaned title (ignoring leading The/A/An)
+      // Sort books within series by group-specific sequence ascending, then clean title
       items.sort((a, b) => {
-        const seqA = a.groupSequence != null ? Number(a.groupSequence) : Infinity;
-        const seqB = b.groupSequence != null ? Number(b.groupSequence) : Infinity;
-
-        if (seqA !== seqB && !isNaN(seqA) && !isNaN(seqB)) {
+        const seqA = a.groupSequence != null ? a.groupSequence : 999999;
+        const seqB = b.groupSequence != null ? b.groupSequence : 999999;
+        if (seqA !== seqB) {
           return seqA - seqB;
         }
-
-        const titleA = this.cleanTitle(a.title);
-        const titleB = this.cleanTitle(b.title);
-        return titleA.localeCompare(titleB);
+        return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
       });
 
-      const cardsHtml = items.map(c => `
-        <div class="card series-card" data-card="${Utils.esc(c.id || c.cardId)}">
-          <div class="card-thumb-wrap">
-            <img class="card-thumb" src="${Utils.esc(c.cover || c.img)}" loading="lazy" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=No+Cover'">
-            <div class="card-badge ${c.source === 'abs' || c.type === 'abs' ? 'badge-abs' : 'badge-yoto'}">
-              ${c.source === 'abs' || c.type === 'abs' ? 'ABS' : 'YOTO'}
-            </div>
-            ${c.groupSequence != null ? `<div class="card-seq-badge">#${c.groupSequence}</div>` : ''}
+      const tiles = items.map(c => {
+        let seqLabel = '';
+        if (c.groupSequenceDisplay) {
+          seqLabel = c.groupSequenceDisplay.startsWith('#') ? c.groupSequenceDisplay : `#${c.groupSequenceDisplay}`;
+        } else if (c.groupSequence != null) {
+          seqLabel = `#${c.groupSequence % 1 === 0 ? c.groupSequence : c.groupSequence.toFixed(1)}`;
+        }
+
+        return `
+          <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
+            <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
+            ${c.is_highlight ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
+            ${seqLabel ? `<span class="badge-seq">${Utils.esc(seqLabel)}</span>` : ''}
+            ${c.source === 'abs' || c.type === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
           </div>
-          <div class="card-name">${Utils.esc(c.title)}</div>
-          <div class="card-author">${Utils.esc(c.author || '')}</div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
 
       return `
-        <div class="series-group">
-          <div class="series-group-header">
-            <span class="series-group-title">${Utils.esc(groupName)}</span>
-            <span class="series-group-count">${items.length} ${items.length === 1 ? 'book' : 'books'}</span>
+        <div class="series-section">
+          <div class="series-header">
+            <span class="series-title">${Utils.esc(groupName)}</span>
+            <span class="series-count">(${items.length} ${items.length === 1 ? 'card' : 'cards'})</span>
           </div>
-          <div class="series-row-scroll">
-            <div class="series-row">
-              ${cardsHtml}
-            </div>
+          <div class="series-row">
+            ${tiles}
           </div>
         </div>
       `;
     }).join('');
-
-    return `
-      <div class="grid-series">
-        ${seriesHtml || '<div class="muted" style="padding:20px; text-align:center;">No series collections available.</div>'}
-      </div>
-    `;
   },
 
-  renderFlatView(items) {
-    const cards = items.map(c => `
-      <div class="card" data-card="${Utils.esc(c.id || c.cardId)}">
-        <div class="card-thumb-wrap">
-          <img class="card-thumb" src="${Utils.esc(c.cover || c.img)}" loading="lazy" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=No+Cover'">
-          <div class="card-badge ${c.source === 'abs' || c.type === 'abs' ? 'badge-abs' : 'badge-yoto'}">
-            ${c.source === 'abs' || c.type === 'abs' ? 'ABS' : 'YOTO'}
-          </div>
+  render() {
+    if (state.activeTab === 'series') {
+      return `
+        ${this.renderTopNav()}
+        <div class="grid-series">
+          ${this.renderSeriesView()}
         </div>
-        <div class="card-name">${Utils.esc(c.title)}</div>
-        <div class="card-author">${Utils.esc(c.author || '')}</div>
+        ${PlayerScreen.renderNowbar()}
+      `;
+    }
+
+    const filtered = state.catalog.filter(c => {
+      if (state.activeTab === 'abs') return c.source === 'abs' || c.type === 'abs';
+      if (state.activeTab === 'yoto') return c.source === 'yoto' || c.type === 'yoto';
+      return true;
+    });
+
+    // In flat lists, sort highlights first, then by title ignoring articles 'The', 'A', 'An'
+    filtered.sort((a, b) => {
+      if (!!b.is_highlight !== !!a.is_highlight) {
+        return b.is_highlight ? 1 : -1;
+      }
+      return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
+    });
+
+    const tiles = filtered.map(c => `
+      <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
+        <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
+        ${c.is_highlight ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
+        ${c.source === 'abs' || c.type === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
       </div>
     `).join('');
 
     return `
-      <div class="grid">
-        ${cards || '<div class="muted" style="padding:20px; text-align:center;">No cards found for this filter.</div>'}
-      </div>
-    `;
-  },
-
-  render() {
-    let filtered = state.catalog;
-    if (state.activeTab === 'abs') {
-      filtered = state.catalog.filter(c => c.source === 'abs' || c.type === 'abs');
-    } else if (state.activeTab === 'yoto') {
-      filtered = state.catalog.filter(c => c.source === 'yoto' || c.type === 'yoto');
-    }
-
-    const bodyHtml = (state.activeTab === 'series')
-      ? this.renderSeriesView()
-      : this.renderFlatView(filtered);
-
-    return `
       ${this.renderTopNav()}
-      ${bodyHtml}
+      <div class="grid">
+        ${tiles.length ? tiles : '<div style="padding:40px; color:#888; text-align:center;">No audiobooks found in this library.</div>'}
+      </div>
       ${PlayerScreen.renderNowbar()}
     `;
   }
