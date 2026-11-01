@@ -135,6 +135,9 @@ const App = {
 
     if (hasCard) {
       state.isPlaying = Boolean(dev.is_playing);
+      if (dev.volume != null && state.volume === 50) {
+        state.volume = Math.min(dev.volume_max != null ? dev.volume_max : 100, dev.volume);
+      }
 
       // Find matching item in catalog by ID or Title
       const matched = state.catalog.find(c => 
@@ -339,7 +342,9 @@ const App = {
         }
 
         if (act === 'vol-down') {
-          const newVol = Math.max(0, (state.volume != null ? state.volume : 50) - 10);
+          const maxLimit = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
+          const cur = state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50);
+          const newVol = Math.max(0, Math.min(maxLimit, cur - 10));
           state.volume = newVol;
           this.render();
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
@@ -347,7 +352,9 @@ const App = {
         }
 
         if (act === 'vol-up') {
-          const newVol = Math.min(100, (state.volume != null ? state.volume : 50) + 10);
+          const maxLimit = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
+          const cur = state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50);
+          const newVol = Math.min(maxLimit, cur + 10);
           state.volume = newVol;
           this.render();
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
@@ -355,10 +362,12 @@ const App = {
         }
 
         if (act === 'vol-set') {
+          const maxLimit = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
           const rect = actBtn.getBoundingClientRect();
           const clickX = e.clientX - rect.left;
           const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-          const newVol = Math.round(ratio * 100);
+          const rawVol = Math.round(ratio * 100);
+          const newVol = Math.min(maxLimit, rawVol);
           state.volume = newVol;
           this.render();
           BrokerApi.sendPlayerControl('volume', { volume: newVol });

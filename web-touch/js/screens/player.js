@@ -50,7 +50,8 @@ export const PlayerScreen = {
     const dur = state.activeDevice?.duration || c.duration || ch.duration || 1800;
     const pos = Math.min(state.activeDevice?.position || 0, dur);
     const pct = dur > 0 ? Math.min(100, Math.max(0, (pos / dur) * 100)) : 0;
-    const vol = state.volume != null ? state.volume : 50;
+    const devMaxVol = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
+    const vol = Math.min(devMaxVol, state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50));
 
     const trackTitle = c.chapter_title || ch.title || 'Playing';
     const author = c.author || '';
@@ -85,9 +86,12 @@ export const PlayerScreen = {
               <span class="ic" data-act="next">&#9197;</span>
               <span class="vol">
                 <span data-act="vol-down" style="cursor:pointer;" title="Volume Down">&#128264;</span>
-                <span class="volbar" data-act="vol-set" style="cursor:pointer;" title="Set Volume">
-                  <i style="width: ${vol}%;"></i>
-                </span>
+                <div class="volbar-wrap" style="position:relative; display:inline-block;">
+                  <span class="volbar" data-act="vol-set" style="cursor:pointer;" title="Set Volume (Max: ${devMaxVol}%)">
+                    <i style="width: ${vol}%;"></i>
+                    ${devMaxVol < 100 ? `<div style="position:absolute; right:0; top:0; bottom:0; width:${100 - devMaxVol}%; background:rgba(239,68,68,0.3); border-radius:0 6px 6px 0; pointer-events:none;" title="Parent Limit: ${devMaxVol}%"></div>` : ''}
+                  </span>
+                </div>
                 <span data-act="vol-up" style="cursor:pointer;" title="Volume Up">&#128266;</span>
               </span>
             </div>
