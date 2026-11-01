@@ -13,7 +13,8 @@ export const state = {
   activeDevice: null,
   isDevicePickerOpen: false,
   activeTab: 'all',  // 'all' | 'abs' | 'yoto' | 'series'
-  card: null,
+  card: null,           // Card currently active / playing on player
+  previewCard: null,    // Card currently being inspected in detail view
   chapterIndex: 0,
   isPlaying: false,
   volume: 50,
@@ -73,6 +74,9 @@ export const state = {
 
   setCard(card) {
     this.card = card;
+  },
+  setPreviewCard(card) {
+    this.previewCard = card;
   },
 
   setChapter(idx) {

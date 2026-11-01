@@ -46,6 +46,8 @@ const App = {
     try {
       const res = await BrokerApi.playMedia(card, chapterIndex);
       if (res && (res.ok || res.status === 'success')) {
+        state.setCard(card);
+        state.setPreviewCard(card);
         state.setChapter(chapterIndex);
         state.setPlaying(true);
         
@@ -79,6 +81,11 @@ const App = {
   render() {
     if (!this.container) return;
 
+    // Preserve scroll positions for scrollable grids across renders
+    const activeScrollEl = this.container.querySelector('.grid, .grid-series, .chapters');
+    const savedScrollTop = activeScrollEl ? activeScrollEl.scrollTop : 0;
+    const savedScrollLeft = activeScrollEl ? activeScrollEl.scrollLeft : 0;
+
     switch (state.screen) {
       case 'profile':
         this.container.innerHTML = ProfileScreen.render();
@@ -106,6 +113,15 @@ const App = {
         break;
       default:
         this.container.innerHTML = ProfileScreen.render();
+    }
+
+    // Restore scroll position
+    if (savedScrollTop > 0 || savedScrollLeft > 0) {
+      const restoredEl = this.container.querySelector('.grid, .grid-series, .chapters');
+      if (restoredEl) {
+        restoredEl.scrollTop = savedScrollTop;
+        restoredEl.scrollLeft = savedScrollLeft;
+      }
     }
   },
 
@@ -167,7 +183,8 @@ const App = {
         };
       }
     } else {
-      // No card in player: clear card & playing state; return to catalog if currently on Now Playing
+      // No card in player: clear live playing card & playing state;
+      // return to catalog if currently on Now Playing (preview in Detail screen remains accessible)
       state.isPlaying = false;
       state.card = null;
       if (state.screen === 'now') {
@@ -234,7 +251,11 @@ const App = {
         const id = tile.dataset.card;
         const found = state.catalog.find(c => (c.id || c.cardId) === id);
         if (found) {
-          state.setCard(found);
+          state.setPreviewCard(found);
+          // If no active card is playing, also set state.card
+          if (!state.card || !state.isPlaying) {
+            state.setCard(found);
+          }
           state.setScreen('detail');
           this.render();
 
@@ -271,7 +292,8 @@ const App = {
       const chrow = e.target.closest('[data-ch]');
       if (chrow) {
         const chIdx = +chrow.dataset.ch;
-        this.initiatePlayback(state.card, chIdx, chrow);
+        const targetCard = state.previewCard || state.card;
+        this.initiatePlayback(targetCard, chIdx, chrow);
         return;
       }
 
@@ -286,7 +308,8 @@ const App = {
 
         if (act === 'playstart') {
           const btn = document.getElementById('btn-play-book') || actBtn;
-          this.initiatePlayback(state.card, 0, btn);
+          const targetCard = state.previewCard || state.card;
+          this.initiatePlayback(targetCard, 0, btn);
           return;
         }
 
