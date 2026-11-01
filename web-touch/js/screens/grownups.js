@@ -78,16 +78,7 @@ export const GrownUpsScreen = {
             </div>
           `}
 
-          <!-- 3. Yoto Player Volume Limits (Read-Only Status from Yoto Cloud / App) -->
-          <div class="gu-section">
-            <div class="gu-sec-title">
-              <span>Yoto Volume Limit</span>
-              <span class="gu-val-lbl">${(activeDev && activeDev.volume_max != null) ? `${activeDev.volume_max}%` : '100%'}</span>
-            </div>
-            <div class="gu-info-text">
-              Maximum volume limits are configured per player in the official Yoto app for Day and Night modes. The controller automatically honors this active ceiling (<b>${(activeDev && activeDev.volume_max != null) ? `${activeDev.volume_max}%` : '100%'}</b> for <code>${Utils.esc(activeDev?.name || 'Active Player')}</code>).
-            </div>
-          </div>
+
 
           <!-- 4. Bedtime Sleep Timer -->
           <div class="gu-section">
