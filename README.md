@@ -19,6 +19,7 @@ StoryDeck Touch supports two flexible operational modes:
 2. **Standalone Mode (Direct Yoto Cloud):**
    * Operates completely independently without a local server.
    * Talks directly to the official Yoto Developer API over Wi-Fi.
+   * Directly mirrors Yoto account players without child profile or avatar selection.
    * Automatically refreshes its own OAuth tokens stored in secure ESP32 NVS flash.
 
 ---
@@ -27,12 +28,12 @@ StoryDeck Touch supports two flexible operational modes:
 
 | Screen | Description |
 | --- | --- |
-| **Profile Select** | Multi-child avatar selection (when managed by StoryDeck Core). |
-| **Catalog Grid** | Responsive 800×480 grid of cover art thumbnails with smooth scrolling. |
+| **Profile Select** | Time-aware greeting ("Who is listening this morning/afternoon/tonight?") with centered multi-child avatar grid. |
+| **Catalog Grid** | Responsive grid of cover art thumbnails (122×193px) with series grouping, highlight sorting, and ABS/Yoto source badges. |
 | **Book Detail** | High-res cover art, track/chapter list, and instant play trigger. |
-| **Now Playing** | Real-time playback status, album art, progress bar, skip controls, and volume slider with parental safety caps. |
-| **Night Clock** | Low-glare amber screensaver with configurable OK-to-wake indicators. |
-| **Grown-Ups Screen** | Hidden parental settings menu (long-press gear + PIN) for Wi-Fi, audio limits, pairing, and display sleep timers. |
+| **Now Playing** | Real-time playback status, album art, progress bar, skip controls, and volume slider with native Yoto volume ceilings. |
+| **Night Clock** | Low-glare screensaver with configurable Red (Bedtime) and Green (OK-to-wake) indicators. |
+| **Grown-Ups Screen** | Hidden parental settings menu (long-press gear + PIN) for Wi-Fi, operating mode, player lock, travel safety, and sleep timers. |
 
 ---
 
@@ -65,11 +66,11 @@ Targeted specifically for the **[Waveshare ESP32-S3-Touch-LCD-4.3B](https://www.
 git clone https://github.com/YotoStoryDeck/touch.git
 cd touch
 
-# Build firmware
-pio run -e esp32-s3-touch-lcd-43b
+# Build firmware for Waveshare ESP32-S3
+pio run -e waveshare-s3-43b
 
 # Flash to device over USB-C
-pio run -e esp32-s3-touch-lcd-43b -t upload
+pio run -e waveshare-s3-43b -t upload
 ```
 
 ### 2. On-Device Setup Wizard
