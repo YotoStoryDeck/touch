@@ -29,6 +29,53 @@ const App = {
     this.bootstrap();
   },
 
+  /**
+   * Confirms playback has successfully initiated on the physical player before switching to Now Playing.
+   */
+  async initiatePlayback(card, chapterIndex = 0, triggerEl = null) {
+    if (!card) return;
+    const originalText = triggerEl ? triggerEl.innerHTML : null;
+    if (triggerEl) {
+      triggerEl.style.opacity = '0.6';
+      triggerEl.style.pointerEvents = 'none';
+      if (triggerEl.classList.contains('playbtn')) {
+        triggerEl.innerHTML = '&#9203; Starting...';
+      }
+    }
+
+    try {
+      const res = await BrokerApi.playMedia(card, chapterIndex);
+      if (res && (res.ok || res.status === 'success')) {
+        state.setChapter(chapterIndex);
+        state.setPlaying(true);
+        
+        // Immediately fetch fresh device status to verify live playback
+        await BrokerApi.getDeviceConfig();
+        this.syncActiveDevicePlayback();
+
+        // Transition to Now Playing screen now that playback is confirmed
+        state.setScreen('now');
+        this.render();
+      } else {
+        const msg = res?.error || res?.message || 'Playback failed to start';
+        alert(`Could not start playback: ${msg}`);
+        if (triggerEl && originalText) {
+          triggerEl.innerHTML = originalText;
+          triggerEl.style.opacity = '1';
+          triggerEl.style.pointerEvents = 'auto';
+        }
+      }
+    } catch (err) {
+      console.error('Playback initiation error:', err);
+      alert(`Playback error: ${err.message || err}`);
+      if (triggerEl && originalText) {
+        triggerEl.innerHTML = originalText;
+        triggerEl.style.opacity = '1';
+        triggerEl.style.pointerEvents = 'auto';
+      }
+    }
+  },
+
   render() {
     if (!this.container) return;
 
@@ -215,30 +262,15 @@ const App = {
       const chrow = e.target.closest('[data-ch]');
       if (chrow) {
         const chIdx = +chrow.dataset.ch;
-        state.setChapter(chIdx);
-        state.setPlaying(true);
-        state.setScreen('now');
-        this.render();
-        BrokerApi.playMedia(state.card, chIdx).then(res => {
-          if (!res || !res.ok) {
-            console.error('Playback error:', res?.error || 'Unknown error');
-          }
-        });
+        this.initiatePlayback(state.card, chIdx, chrow);
         return;
       }
 
       // 7. Player Action Controls
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'playstart') {
-        state.setChapter(0);
-        state.setPlaying(true);
-        state.setScreen('now');
-        this.render();
-        BrokerApi.playMedia(state.card, 0).then(res => {
-          if (!res || !res.ok) {
-            console.error('Playback error:', res?.error || 'Unknown error');
-          }
-        });
+        const btn = document.getElementById('btn-play-book') || e.target.closest('[data-act]');
+        this.initiatePlayback(state.card, 0, btn);
         return;
       }
       if (act === 'toggle') {

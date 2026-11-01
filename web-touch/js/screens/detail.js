@@ -24,7 +24,7 @@ export const DetailScreen = {
       <div class="d">
         <div class="dleft">
           <img class="dcover" src="${Utils.esc(c.cover || c.img)}">
-          <button class="playbtn" data-act="playstart">&#9654; Play Book</button>
+          <button class="playbtn" data-act="playstart" id="btn-play-book">&#9654; Play Book</button>
         </div>
         <div class="dright">
           <div class="dtitle">${Utils.esc(c.title)}</div>
