@@ -694,16 +694,7 @@ const App = {
   },
 
   bindGrownUpsEvents() {
-    const slider = document.getElementById('guVolSlider');
-    const valLbl = document.getElementById('guVolVal');
-    if (slider && valLbl) {
-      slider.addEventListener('input', (e) => {
-        const v = parseInt(e.target.value, 10);
-        valLbl.textContent = `${v}%`;
-        state.parentSettings.volumeMax = v;
-        state.persistParentSettings();
-      });
-    }
+    // Parent volume ceiling slider removed - volume limits are dynamically queried per-device from Yoto
 
     const bedtimeInput = document.getElementById('guBedtimeInput');
     if (bedtimeInput) {

@@ -22,7 +22,6 @@ export const state = {
   isPlaying: false,
   volume: 50,
   parentSettings: {
-    volumeMax: 100,
     sleepTimerMin: 0,
     screensaverMin: 10,
     bedtime: '19:00',
