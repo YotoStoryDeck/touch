@@ -82,10 +82,25 @@
 }
 
 .nb-play {
-  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(229, 53, 43, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
   cursor: pointer;
-  padding: 6px;
+  padding: 0;
   color: var(--red);
+  transition: all .15s ease;
+  flex: 0 0 auto;
+}
+
+.nb-play:hover, .nb-play:active {
+  background: var(--red);
+  color: #fff;
+  transform: scale(1.08);
 }
 
 /* NOW PLAYING FULL SCREEN */

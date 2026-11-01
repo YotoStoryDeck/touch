@@ -517,7 +517,24 @@ const App = {
         return;
       }
 
-      // 5. Back / Screen Navigation Links
+      // 5. Quick Action Button inside Nowbar (play/pause toggle should NOT navigate)
+      const nbPlayBtn = e.target.closest('.nb-play');
+      if (nbPlayBtn) {
+        const nextState = !state.isPlaying;
+        state.setPlaying(nextState);
+        this.render();
+        const targetAction = nextState ? 'resume' : 'pause';
+        BrokerApi.sendPlayerControl(targetAction).then(res => {
+          if (!res || !res.ok) {
+            console.warn(`Failed to execute ${targetAction}, reverting UI state:`, res);
+            state.setPlaying(!nextState);
+            this.render();
+          }
+        });
+        return;
+      }
+
+      // 5b. Back / Screen Navigation Links
       const go = e.target.closest('[data-go]');
       if (go) {
         state.setScreen(go.dataset.go);
