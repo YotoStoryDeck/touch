@@ -29,6 +29,7 @@ const App = {
 
     this.bindEvents();
     this.bindGearHoldTimer();
+    this.startSleepTimerTicker();
     this.bootstrap();
   },
 
@@ -471,11 +472,22 @@ const App = {
         return;
       }
 
-      // Grown-ups Sleep Timer
+      // Grown-ups Sleep Timer Duration
       const guSleepBtn = e.target.closest('[data-act="gu-set-sleep"]');
       if (guSleepBtn) {
         state.parentSettings.sleepTimerMin = parseInt(guSleepBtn.dataset.val, 10);
         state.persistParentSettings();
+        this.checkAndArmSleepTimer(true);
+        this.render();
+        return;
+      }
+
+      // Grown-ups Sleep Timer Scope (Bedtime vs Always)
+      const guSleepScopeBtn = e.target.closest('[data-act="gu-set-sleep-scope"]');
+      if (guSleepScopeBtn) {
+        state.parentSettings.sleepTimerMode = guSleepScopeBtn.dataset.val;
+        state.persistParentSettings();
+        this.checkAndArmSleepTimer(true);
         this.render();
         return;
       }
@@ -823,6 +835,98 @@ const App = {
       console.warn('Error during recovery, re-entering offline wait:', e);
       this.enterOfflineState();
     }
+  },
+
+  /**
+   * Returns true if current wall-clock time falls within the configured bedtime window.
+   */
+  isBedtimeNow() {
+    const bedtimeStr = state.parentSettings.bedtime || '19:00';
+    const wakeTimeStr = state.parentSettings.wakeTime || '07:00';
+    const [bH, bM] = bedtimeStr.split(':').map(Number);
+    const [wH, wM] = wakeTimeStr.split(':').map(Number);
+    const bMinutes = bH * 60 + bM;
+    const wMinutes = wH * 60 + wM;
+
+    const now = new Date();
+    const curMinutes = now.getHours() * 60 + now.getMinutes();
+
+    if (bMinutes > wMinutes) {
+      // Overnight schedule (e.g. 19:00 -> 07:00)
+      return (curMinutes >= bMinutes || curMinutes < wMinutes);
+    } else {
+      // Same-day schedule
+      return (curMinutes >= bMinutes && curMinutes < wMinutes);
+    }
+  },
+
+  /**
+   * Evaluates if sleep timer should arm or reset upon playback state change or setting modification.
+   */
+  checkAndArmSleepTimer(forceReset = false) {
+    const mins = state.parentSettings.sleepTimerMin || 0;
+    if (mins <= 0) {
+      state.sleepTimerRemainingSec = 0;
+      return;
+    }
+
+    const mode = state.parentSettings.sleepTimerMode || 'bedtime';
+    const shouldArm = (mode === 'always') || this.isBedtimeNow();
+
+    if (!shouldArm) {
+      state.sleepTimerRemainingSec = 0;
+      return;
+    }
+
+    const isPlaying = Boolean(state.isPlaying || state.activeDevice?.is_playing);
+    if (isPlaying) {
+      if (forceReset || state.sleepTimerRemainingSec <= 0) {
+        state.sleepTimerRemainingSec = mins * 60;
+        console.log(`[SleepTimer] Armed for ${mins} minutes (${state.sleepTimerRemainingSec}s)`);
+      }
+    } else if (!isPlaying && forceReset) {
+      state.sleepTimerRemainingSec = 0;
+    }
+  },
+
+  /**
+   * Starts 1Hz sleep timer countdown ticker.
+   */
+  startSleepTimerTicker() {
+    if (this._sleepTicker) return;
+    this._sleepTicker = setInterval(() => {
+      const isPlaying = Boolean(state.isPlaying || state.activeDevice?.is_playing);
+      if (!isPlaying) {
+        return;
+      }
+
+      const mins = state.parentSettings.sleepTimerMin || 0;
+      if (mins <= 0) {
+        state.sleepTimerRemainingSec = 0;
+        return;
+      }
+
+      const mode = state.parentSettings.sleepTimerMode || 'bedtime';
+      if (mode === 'bedtime' && !this.isBedtimeNow()) {
+        state.sleepTimerRemainingSec = 0;
+        return;
+      }
+
+      if (state.sleepTimerRemainingSec > 0) {
+        state.sleepTimerRemainingSec--;
+        if (state.sleepTimerRemainingSec === 0) {
+          console.log('[SleepTimer] Timer reached 0! Stopping player playback...');
+          state.setPlaying(false);
+          this.render();
+          BrokerApi.sendPlayerControl('stop').then(res => {
+            console.log('[SleepTimer] Stop command executed:', res);
+          });
+        }
+      } else if (state.sleepTimerRemainingSec <= 0 && isPlaying) {
+        // Arm if playback began during active window
+        this.checkAndArmSleepTimer(false);
+      }
+    }, 1000);
   },
 
   /**

@@ -95,6 +95,9 @@ export const PlayerScreen = {
         <div class="nptop">
           <div class="np-back-btn" data-go="catalog" title="Return to Library">&#8592; Back</div>
           <span class="label">Playing on ${Utils.esc(state.activeDevice?.name || state.activeProfile?.display_name || 'Yoto')}</span>
+          ${state.sleepTimerRemainingSec > 0 ? `
+            <span class="sleep-chip" title="Sleep timer active">Zz ${Math.ceil(state.sleepTimerRemainingSec / 60)}m</span>
+          ` : ''}
         </div>
         <div class="npmid">
           <img class="npcover clickable-card" data-act="inspect-card" src="${Utils.esc(c.cover || c.img)}" title="View book details and tracklist">

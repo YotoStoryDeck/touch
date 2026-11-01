@@ -80,22 +80,34 @@ export const GrownUpsScreen = {
 
 
 
-          <!-- 4. Bedtime Sleep Timer -->
+          <!-- 4. Sleep Timer (Bedtime vs All Times) -->
           <div class="gu-section">
             <div class="gu-sec-title">
-              <span>Bedtime Sleep Timer</span>
+              <span>Sleep Timer</span>
               <span style="font-size:12px; font-weight:600; color:#8c8272;">
-                ${state.parentSettings.sleepTimerMin ? `${state.parentSettings.sleepTimerMin} min` : 'Off'}
+                ${state.parentSettings.sleepTimerMin ? `${state.parentSettings.sleepTimerMin} min (${state.parentSettings.sleepTimerMode === 'bedtime' ? 'Bedtime Only' : 'All the Time'})` : 'Off'}
               </span>
             </div>
-            <div class="gu-row">
+            <div class="gu-row" style="margin-bottom: 8px;">
               ${[0, 15, 30, 45, 60].map(m => `
                 <button class="gu-pill-btn ${state.parentSettings.sleepTimerMin === m ? 'active' : ''}" data-act="gu-set-sleep" data-val="${m}">
                   ${m === 0 ? 'Off' : `${m}m`}
                 </button>
               `).join('')}
             </div>
-            <div class="gu-info-text">Automatically halts playback after the selected duration.</div>
+            ${state.parentSettings.sleepTimerMin > 0 ? `
+              <div class="gu-row" style="margin-bottom: 6px;">
+                <button class="gu-pill-btn ${state.parentSettings.sleepTimerMode !== 'always' ? 'active' : ''}" data-act="gu-set-sleep-scope" data-val="bedtime">🌙 Bedtime Hours Only</button>
+                <button class="gu-pill-btn ${state.parentSettings.sleepTimerMode === 'always' ? 'active' : ''}" data-act="gu-set-sleep-scope" data-val="always">☀️ All the Time (Day & Night)</button>
+              </div>
+            ` : ''}
+            <div class="gu-info-text">
+              ${state.parentSettings.sleepTimerMin === 0 
+                ? 'Automatically stops playback on the player after the timer elapses.' 
+                : (state.parentSettings.sleepTimerMode === 'bedtime' 
+                    ? `Only arms between Bedtime (${state.parentSettings.bedtime}) and Wake Time (${state.parentSettings.wakeTime}). Day playback will continue uninterrupted.` 
+                    : `Arms on every playback session all day long.`)}
+            </div>
           </div>
 
           <!-- 5. Night Clock & Screensaver Delay -->

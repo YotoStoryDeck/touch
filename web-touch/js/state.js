@@ -23,10 +23,12 @@ export const state = {
   volume: 50,
   parentSettings: {
     sleepTimerMin: 0,
+    sleepTimerMode: 'bedtime', // 'bedtime' (only activate timer during bedtime hours) | 'always' (all the time)
     screensaverMin: 10,
     bedtime: '19:00',
     wakeTime: '07:00'
   },
+  sleepTimerRemainingSec: 0, // countdown ticker in seconds
   parentPin: null, // 4-digit string
   pinMode: 'unlock', // 'unlock' | 'setup' | 'confirm' | 'change'
   currentEnteredPin: '',

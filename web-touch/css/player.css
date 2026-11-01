@@ -129,6 +129,21 @@
   color: #d1c7b7;
 }
 
+.sleep-chip {
+  position: absolute;
+  right: 0;
+  background: rgba(250, 204, 21, 0.18);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #facc15;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .np-back-btn {
   position: absolute;
   left: 0;
