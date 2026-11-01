@@ -124,7 +124,19 @@ export const BrokerApi = {
       });
 
       // Keep activeProfile and activeDevice objects updated with live telemetry
-      if (state.activeProfile) {
+      if (state.mode === 'standalone') {
+        const allPlayers = state.getAllAvailablePlayers();
+        if (state.activeDevice) {
+          const updatedDev = allPlayers.find(d => d.id === state.activeDevice.id);
+          if (updatedDev) {
+            state.activeDevice = updatedDev;
+          } else {
+            state.activeDevice = state.resolveActiveDevice(null);
+          }
+        } else if (allPlayers.length > 0) {
+          state.activeDevice = state.resolveActiveDevice(null);
+        }
+      } else if (state.activeProfile) {
         const updatedProf = state.profiles.find(p => p.id === state.activeProfile.id);
         if (updatedProf) {
           state.activeProfile = updatedProf;
