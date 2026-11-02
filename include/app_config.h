@@ -13,6 +13,7 @@ namespace cfg {
 static Preferences s_prefs;
 
 // ---- connectivity / identity (web portal) ----
+static String kiosk_name;      // Friendly display name for this controller panel / hostname
 static String wifi_ssid;       // 2.4GHz only
 static String wifi_pass;
 static String client_id;       // Yoto OAuth confidential client
@@ -36,6 +37,7 @@ static String parent_pin;      // 4-digit Grown-ups security PIN (default "1234"
 
 static void load(){
   s_prefs.begin("appcfg", false);
+  kiosk_name    = s_prefs.getString("kname", "StoryDeck Touch");
   wifi_ssid     = s_prefs.getString("ssid",  WIFI_SSID);
   wifi_pass     = s_prefs.getString("pass",  WIFI_PASSWORD);
   client_id     = s_prefs.getString("cid",   YOTO_CLIENT_ID);
@@ -58,6 +60,7 @@ static void load(){
 
 // Persist everything (NVS only rewrites changed keys, so blanket-saving is cheap).
 static void save(){
+  s_prefs.putString("kname", kiosk_name);
   s_prefs.putString("ssid",  wifi_ssid);
   s_prefs.putString("pass",  wifi_pass);
   s_prefs.putString("cid",   client_id);

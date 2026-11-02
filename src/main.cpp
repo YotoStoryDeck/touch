@@ -344,6 +344,7 @@ static lv_obj_t* s_scr_settings=nullptr;
 static lv_obj_t* s_scr_error=nullptr;
 static lv_obj_t* s_scr_pin=nullptr;
 static lv_obj_t* s_scr_profile=nullptr;
+static lv_obj_t* s_scr_prev=nullptr;      // tracks origin screen when opening PIN modal / settings
 static lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
 static lv_timer_t* s_gear_timer=nullptr;    // hold-the-gear-to-open timer
 static lv_obj_t* s_scr_saver=nullptr;
@@ -436,22 +437,103 @@ static void build_grid(){
   s_scr_home=scr;
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 
-  // Top Tab Navigation Bar (catalog.js parity)
+  // Top Tab Navigation Bar (100% web-touch catalog.js parity: Profile Pill, Player Pill, 4 Tabs, Settings Gear)
   lv_obj_t* nav = lv_obj_create(scr);
-  lv_obj_set_size(nav, LCD_H_RES, 50);
+  lv_obj_set_size(nav, LCD_H_RES, 48);
   lv_obj_align(nav, LV_ALIGN_TOP_MID, 0, 0);
-  lv_obj_set_style_bg_color(nav, lv_color_hex(0xF4EDE0), 0);
+  lv_obj_set_style_bg_color(nav, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_border_width(nav, 0, 0);
-  lv_obj_set_style_pad_all(nav, 6, 0);
-  lv_obj_set_style_pad_column(nav, 10, 0);
+  lv_obj_set_style_pad_all(nav, 4, 0);
+  lv_obj_set_style_pad_column(nav, 6, 0);
   lv_obj_set_flex_flow(nav, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
 
-  static const char* tab_names[4] = {"All Books", "Series", "Audiobooks", "Yoto Cards"};
+  // Left Group: Profile Pill (Core mode) & Target Player Pill
+  if(cfg::op_mode == "core" && core::s_profile_count > 0){
+    lv_obj_t* prof_btn = lv_btn_create(nav);
+    lv_obj_set_size(prof_btn, 130, 38);
+    lv_obj_set_style_radius(prof_btn, 19, 0);
+    lv_obj_set_style_bg_color(prof_btn, lv_color_hex(0xF4EDE0), 0);
+    lv_obj_set_style_border_width(prof_btn, 1, 0);
+    lv_obj_set_style_border_color(prof_btn, lv_color_hex(0xE7E0D2), 0);
+    lv_obj_set_style_pad_all(prof_btn, 2, 0);
+    lv_obj_set_style_shadow_width(prof_btn, 0, 0);
+    lv_obj_add_event_cb(prof_btn, [](lv_event_t*){
+      s_scr_prev = s_scr_home;
+      open_profile_picker();
+    }, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t* pcont = lv_obj_create(prof_btn);
+    lv_obj_set_size(pcont, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_opa(pcont, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(pcont, 0, 0);
+    lv_obj_set_style_pad_all(pcont, 0, 0);
+    lv_obj_set_style_pad_column(pcont, 4, 0);
+    lv_obj_set_flex_flow(pcont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(pcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(pcont, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* idot = lv_obj_create(pcont);
+    lv_obj_set_size(idot, 24, 24);
+    lv_obj_set_style_radius(idot, 12, 0);
+    lv_obj_set_style_bg_color(idot, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_border_width(idot, 0, 0);
+    lv_obj_set_style_pad_all(idot, 0, 0);
+    lv_obj_clear_flag(idot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* ilbl = lv_label_create(idot);
+    const String& cur_pname = core::s_profiles[core::s_active_profile_idx].display_name;
+    char ini[2] = {cur_pname.length() > 0 ? cur_pname[0] : 'P', '\0'};
+    lv_label_set_text(ilbl, ini);
+    lv_obj_set_style_text_font(ilbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(ilbl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(ilbl);
+
+    lv_obj_t* plbl = lv_label_create(pcont);
+    lv_label_set_text(plbl, cur_pname.c_str());
+    lv_obj_set_style_text_font(plbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(plbl, lv_color_hex(0x23303A), 0);
+    lv_label_set_long_mode(plbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(plbl, 60);
+
+    lv_obj_t* darr = lv_label_create(pcont);
+    lv_label_set_text(darr, LV_SYMBOL_DOWN);
+    lv_obj_set_style_text_font(darr, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(darr, lv_color_hex(0x8A8276), 0);
+  }
+
+  // Target Player Pill
+  lv_obj_t* dev_btn = lv_obj_create(nav);
+  lv_obj_set_size(dev_btn, 134, 38);
+  lv_obj_set_style_radius(dev_btn, 19, 0);
+  lv_obj_set_style_bg_color(dev_btn, lv_color_hex(0xF4EDE0), 0);
+  lv_obj_set_style_border_width(dev_btn, 1, 0);
+  lv_obj_set_style_border_color(dev_btn, lv_color_hex(0xE7E0D2), 0);
+  lv_obj_set_style_pad_all(dev_btn, 2, 0);
+  lv_obj_set_style_pad_column(dev_btn, 4, 0);
+  lv_obj_set_flex_flow(dev_btn, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(dev_btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(dev_btn, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* dot = lv_obj_create(dev_btn);
+  lv_obj_set_size(dot, 10, 10);
+  lv_obj_set_style_radius(dot, 5, 0);
+  lv_obj_set_style_bg_color(dot, lv_color_hex(0x3AB06A), 0);
+  lv_obj_set_style_border_width(dot, 0, 0);
+  lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* dname = lv_label_create(dev_btn);
+  lv_label_set_text(dname, get_active_player_name().c_str());
+  lv_obj_set_style_text_font(dname, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(dname, lv_color_hex(0x23303A), 0);
+  lv_label_set_long_mode(dname, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(dname, 96);
+
+  // 4 Category Tabs (All Books, Series, Audiobooks, Yoto Cards)
+  static const char* tab_names[4] = {"All", "Series", "Audio", "Cards"};
   for(int t = 0; t < 4; t++){
     lv_obj_t* tb = lv_btn_create(nav);
-    lv_obj_set_size(tb, 140, 38);
+    lv_obj_set_size(tb, 96, 38);
     lv_obj_set_style_radius(tb, 19, 0);
     bool sel = (t == (int)s_active_tab);
     lv_obj_set_style_bg_color(tb, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
@@ -462,10 +544,29 @@ static void build_grid(){
 
     lv_obj_t* tl = lv_label_create(tb);
     lv_label_set_text(tl, tab_names[t]);
-    lv_obj_set_style_text_font(tl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(tl, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(tl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
     lv_obj_center(tl);
   }
+
+  // Right: Grown-Ups Settings Gear Button (Instant tap opens PIN modal)
+  lv_obj_t* top_gear = lv_btn_create(nav);
+  lv_obj_set_size(top_gear, 42, 38);
+  lv_obj_set_style_radius(top_gear, 19, 0);
+  lv_obj_set_style_bg_color(top_gear, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_border_width(top_gear, 1, 0);
+  lv_obj_set_style_border_color(top_gear, lv_color_hex(0xE7E0D2), 0);
+  lv_obj_set_style_shadow_width(top_gear, 0, 0);
+  lv_obj_add_event_cb(top_gear, [](lv_event_t*){
+    s_scr_prev = s_scr_home;
+    open_pin_modal(false);
+  }, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t* tgi = lv_label_create(top_gear);
+  lv_label_set_text(tgi, LV_SYMBOL_SETTINGS);
+  lv_obj_set_style_text_font(tgi, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(tgi, lv_color_hex(0x7A7060), 0);
+  lv_obj_center(tgi);
 
   // scrollable grid container (offset 52px for the top nav tab bar)
   lv_obj_t* cont=lv_obj_create(scr);
@@ -541,7 +642,7 @@ static void minibar_toggle_cb(lv_event_t*){ np_toggle(); }   // np_toggle() refr
 
 // settings gear: a deliberate 2.5s HOLD opens the grown-ups screen — a quick kid-tap does
 // nothing. The pending timer is cancelled the moment the finger lifts or slides off.
-static void gear_open_cb(lv_timer_t*){ s_gear_timer=nullptr; open_pin_modal(false); }
+static void gear_open_cb(lv_timer_t*){ s_gear_timer=nullptr; s_scr_prev=s_scr_home; open_pin_modal(false); }
 static void gear_event_cb(lv_event_t* e){
   lv_event_code_t c = lv_event_get_code(e);
   if(c==LV_EVENT_PRESSED && !s_gear_timer){
@@ -2018,7 +2119,7 @@ static void open_profile_picker(){
   lv_obj_set_style_bg_color(gear, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_shadow_width(gear, 8, 0);
   lv_obj_set_style_shadow_opa(gear, LV_OPA_30, 0);
-  lv_obj_add_event_cb(gear, [](lv_event_t*){ open_pin_modal(false); }, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(gear, [](lv_event_t*){ s_scr_prev = s_scr_profile; open_pin_modal(false); }, LV_EVENT_CLICKED, NULL);
   lv_obj_t* gl = lv_label_create(gear);
   lv_label_set_text(gl, LV_SYMBOL_SETTINGS);
   lv_obj_set_style_text_font(gl, &lv_font_montserrat_24, 0);
@@ -2125,7 +2226,8 @@ static void close_pin_modal(){
   if(s_scr_pin){
     lv_obj_t* p = s_scr_pin;
     s_scr_pin = nullptr;
-    if(s_scr_home) lv_scr_load(s_scr_home);
+    if(s_scr_prev) lv_scr_load(s_scr_prev);
+    else if(s_scr_home) lv_scr_load(s_scr_home);
     else if(s_scr_error) lv_scr_load(s_scr_error);
     lv_obj_del_async(p);
   }
@@ -2192,6 +2294,9 @@ static void pin_digit_cb(lv_event_t* e){
 }
 
 static void open_pin_modal(bool for_settings_change){
+  if(!for_settings_change && !s_scr_prev){
+    s_scr_prev = lv_scr_act();
+  }
   s_pin_change_mode = for_settings_change;
   s_pin_entered = "";
 
@@ -2327,7 +2432,15 @@ static void open_settings(){
   lv_obj_set_style_bg_color(back, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_shadow_width(back, 6, 0);
   lv_obj_set_style_shadow_opa(back, LV_OPA_30, 0);
-  lv_obj_add_event_cb(back, [](lv_event_t*){ go_home(); }, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(back, [](lv_event_t*){
+    if(s_scr_prev == s_scr_profile && s_scr_profile){
+      if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
+      lv_scr_load(s_scr_profile);
+      s_scr_prev = nullptr;
+    } else {
+      go_home();
+    }
+  }, LV_EVENT_CLICKED, NULL);
   lv_obj_t* bk = lv_label_create(back);
   lv_label_set_text(bk, LV_SYMBOL_LEFT);
   lv_obj_set_style_text_font(bk, &lv_font_montserrat_24, 0);
@@ -3157,7 +3270,10 @@ void setup(){
   // wrong WiFi password recoverable only over USB at the wall).
   status("Connecting to WiFi...");
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("yoto-controller");
+  String hname = cfg::kiosk_name;
+  hname.replace(" ", "-");
+  if(hname.length() > 0) WiFi.setHostname(hname.c_str());
+  else WiFi.setHostname("yoto-controller");
   WiFi.setAutoReconnect(true);
   WiFi.begin(cfg::wifi_ssid.c_str(), cfg::wifi_pass.c_str());
   uint32_t t0=millis();

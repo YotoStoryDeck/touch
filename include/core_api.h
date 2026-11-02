@@ -56,7 +56,7 @@ inline bool register_device(const String& base_url, String& err_out){
 
   JsonDocument doc;
   doc["mac"]              = get_mac();
-  doc["friendly_name"]    = "StoryDeck Touch (ESP32-S3)";
+  doc["friendly_name"]    = cfg::kiosk_name.length() > 0 ? cfg::kiosk_name : "StoryDeck Touch (ESP32-S3)";
   doc["firmware_version"] = "1.0.0-s3";
 
   String payload;

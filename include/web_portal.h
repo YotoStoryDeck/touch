@@ -136,6 +136,8 @@ static void handle_get(WebServer& w){
     " &middot; free RAM " + String(ESP.getFreeHeap()/1024) + " KB"
     " &middot; <a href='/update'>firmware update</a></div>"
     "<form method='POST' action='/settings'>"
+    "<h2>Device Identity</h2>" +
+    text_row("Device Friendly Name", "kname", cfg::kiosk_name, "Host and display name for this controller panel.") +
     "<h2>WiFi (2.4 GHz only)</h2>" +
     wifi_picker() +
     secret_row("Password", "pass", "Saved on the board, used at next boot.") +
@@ -167,6 +169,7 @@ static void handle_post(WebServer& w){
   if(!auth_ok(w)) return;
   // Blank secret fields mean "keep what's stored"; visible fields update when non-empty.
   String v;
+  v = w.arg("kname"); if(v.length()) cfg::kiosk_name    = v;
   v = w.arg("ssid");  if(v.length()) cfg::wifi_ssid     = v;
   v = w.arg("pass");  if(v.length()) cfg::wifi_pass     = v;
   v = w.arg("cid");   if(v.length()) cfg::client_id     = v;
