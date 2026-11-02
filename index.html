@@ -22,6 +22,7 @@
       --primary-light: #FFF1EE;
       --blue-accent: #0284C7;
       --green-success: #16A34A;
+      --amber-warn: #D97706;
       --radius-lg: 16px;
       --radius-md: 10px;
       --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -50,7 +51,7 @@
 
     header {
       text-align: center;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
 
     .brand-badge {
@@ -76,7 +77,7 @@
     }
 
     .subtitle {
-      font-size: 17px;
+      font-size: 16px;
       color: var(--text-muted);
       max-width: 580px;
       margin: 0 auto;
@@ -89,6 +90,92 @@
       padding: 32px;
       box-shadow: var(--shadow-md);
       margin-bottom: 24px;
+    }
+
+    /* Channel Selector Tabs */
+    .channel-selector-wrapper {
+      margin-bottom: 24px;
+    }
+
+    .channel-tabs {
+      display: flex;
+      background: #F1F5F9;
+      padding: 4px;
+      border-radius: 12px;
+      gap: 4px;
+    }
+
+    .channel-tab {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .channel-tab.active {
+      background: #FFFFFF;
+      color: var(--text-main);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .channel-tab:hover:not(.active) {
+      color: var(--text-main);
+    }
+
+    /* Active Version Banner */
+    .version-banner {
+      background: #F8FAFC;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .version-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .version-tag {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: 700;
+      background: #E2E8F0;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .status-badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 9999px;
+    }
+
+    .status-badge.prerelease {
+      background: #FEF3C7;
+      color: var(--amber-warn);
+    }
+
+    .status-badge.stable {
+      background: #DCFCE7;
+      color: var(--green-success);
     }
 
     /* Flasher Action Box */
@@ -114,7 +201,7 @@
 
     .flash-box p {
       color: var(--text-muted);
-      font-size: 15px;
+      font-size: 14px;
       margin-bottom: 20px;
     }
 
@@ -308,20 +395,50 @@
 
     <!-- Main Flashing Card -->
     <div class="card">
+      
+      <!-- Release Channel Selector -->
+      <div class="channel-selector-wrapper">
+        <label style="display: block; font-size: 13px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+          Select Release Channel:
+        </label>
+        <div class="channel-tabs">
+          <button id="tab-prerelease" class="channel-tab active" onclick="setChannel('prerelease')">
+            <span>🧪</span> Pre-Release / Beta
+          </button>
+          <button id="tab-stable" class="channel-tab" onclick="setChannel('stable')">
+            <span>🟢</span> Stable Release
+          </button>
+        </div>
+      </div>
+
+      <!-- Version Information Banner -->
+      <div class="version-banner">
+        <div class="version-info">
+          <span style="font-size: 14px; font-weight: 600;">Selected Version:</span>
+          <span id="version-display" class="version-tag">v0.1.0-rc.20261101.1</span>
+          <span id="channel-badge" class="status-badge prerelease">Pre-Release</span>
+        </div>
+        <div id="channel-desc" style="font-size: 13px; color: var(--text-muted);">
+          Latest release candidate build
+        </div>
+      </div>
+
       <div class="flash-box">
         <div class="flash-box-icon">📟</div>
         <h3>Ready to Install Firmware</h3>
-        <p>Connect your Waveshare 4.3" ESP32-S3 board to your PC via USB-C to begin.</p>
+        <p id="flash-instructions">Connect your Waveshare 4.3" ESP32-S3 board to your PC via USB-C to begin.</p>
 
-        <!-- ESP Web Tools install element -->
-        <esp-web-install-button manifest="manifest.json">
-          <button slot="activate" class="btn-install">
-            <span>⚡</span> Connect & Install StoryDeck Touch
-          </button>
-          <div slot="unsupported" class="unsupported-note">
-            ⚠️ <strong>Web Serial Not Supported:</strong> Please open this web page in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on a desktop computer (Windows, macOS, or Linux).
-          </div>
-        </esp-web-install-button>
+        <!-- Dynamic Container for ESP Web Tools install element -->
+        <div id="flasher-container">
+          <esp-web-install-button manifest="manifest-prerelease.json">
+            <button slot="activate" class="btn-install">
+              <span>⚡</span> Connect & Install StoryDeck Touch
+            </button>
+            <div slot="unsupported" class="unsupported-note">
+              ⚠️ <strong>Web Serial Not Supported:</strong> Please open this web page in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on a desktop computer (Windows, macOS, or Linux).
+            </div>
+          </esp-web-install-button>
+        </div>
       </div>
 
       <div class="steps-title">
@@ -452,6 +569,58 @@ pio run -e waveshare-s3-43b -t upload</pre>
       </div>
     </footer>
   </div>
+
+  <script>
+    // Channel switching logic
+    function setChannel(channel) {
+      const tabPrerelease = document.getElementById('tab-prerelease');
+      const tabStable = document.getElementById('tab-stable');
+      const versionDisplay = document.getElementById('version-display');
+      const channelBadge = document.getElementById('channel-badge');
+      const channelDesc = document.getElementById('channel-desc');
+      const container = document.getElementById('flasher-container');
+
+      if (channel === 'stable') {
+        tabStable.classList.add('active');
+        tabPrerelease.classList.remove('active');
+        versionDisplay.textContent = 'v0.1.0-rc.20261101.1';
+        channelBadge.textContent = 'Stable Candidate';
+        channelBadge.className = 'status-badge stable';
+        channelDesc.textContent = 'Latest validated release for daily bedside use';
+
+        // Swap to manifest-stable.json
+        container.innerHTML = `
+          <esp-web-install-button manifest="manifest-stable.json">
+            <button slot="activate" class="btn-install">
+              <span>⚡</span> Connect & Install StoryDeck Touch (Stable)
+            </button>
+            <div slot="unsupported" class="unsupported-note">
+              ⚠️ <strong>Web Serial Not Supported:</strong> Please use Chrome or Edge on desktop.
+            </div>
+          </esp-web-install-button>
+        `;
+      } else {
+        tabPrerelease.classList.add('active');
+        tabStable.classList.remove('active');
+        versionDisplay.textContent = 'v0.1.0-rc.20261101.1';
+        channelBadge.textContent = 'Pre-Release';
+        channelBadge.className = 'status-badge prerelease';
+        channelDesc.textContent = 'Latest release candidate build (active development)';
+
+        // Swap to manifest-prerelease.json
+        container.innerHTML = `
+          <esp-web-install-button manifest="manifest-prerelease.json">
+            <button slot="activate" class="btn-install">
+              <span>⚡</span> Connect & Install StoryDeck Touch (Pre-Release)
+            </button>
+            <div slot="unsupported" class="unsupported-note">
+              ⚠️ <strong>Web Serial Not Supported:</strong> Please use Chrome or Edge on desktop.
+            </div>
+          </esp-web-install-button>
+        `;
+      }
+    }
+  </script>
 
 </body>
 </html>
