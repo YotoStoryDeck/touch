@@ -70,7 +70,25 @@ static String tz_select(){
   return h;
 }
 
+// Scan nearby 2.4 GHz WiFi networks and build datalist options
+static String wifi_datalist(){
+  String dl = "<datalist id='wifi-list'>";
+  int n = WiFi.scanNetworks(false, true);
+  if(n > 0){
+    for(int i = 0; i < n; i++){
+      String ssid = WiFi.SSID(i);
+      if(ssid.length() == 0) continue;
+      int32_t rssi = WiFi.RSSI(i);
+      dl += "<option value=\"" + esc(ssid) + "\">" + esc(ssid) + " (" + String(rssi) + " dBm)</option>";
+    }
+    WiFi.scanDelete();
+  }
+  dl += "</datalist>";
+  return dl;
+}
+
 static void handle_get(WebServer& w){
+  String wlist = wifi_datalist();
   if(!auth_ok(w)) return;
   String h =
     "<!doctype html><html><head><meta charset='utf-8'>"
@@ -90,7 +108,7 @@ static void handle_get(WebServer& w){
     " &middot; <a href='/update'>firmware update</a></div>"
     "<form method='POST' action='/settings'>"
     "<h2>WiFi (2.4 GHz only)</h2>" +
-    text_row("Network name (SSID)", "ssid", cfg::wifi_ssid) +
+    text_row("Network name (SSID)", "ssid", cfg::wifi_ssid, "Select from nearby networks or enter manually.", "wifi-list") + wlist +
     secret_row("Password", "pass", "Saved on the board, used at next boot.") +
     "<h2>Yoto account</h2>" +
     text_row("Client ID", "cid", cfg::client_id) +

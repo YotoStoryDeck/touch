@@ -334,6 +334,7 @@ static int  s_sleep_sec=0;
 
 // grown-ups settings screen + night-clock screensaver
 static lv_obj_t* s_scr_settings=nullptr;
+static lv_obj_t* s_scr_error=nullptr;
 static lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
 static lv_timer_t* s_gear_timer=nullptr;    // hold-the-gear-to-open timer
 static lv_obj_t* s_scr_saver=nullptr;
@@ -368,6 +369,8 @@ static bool fetch_card_detail(int i);    // fwd
 static bool sd_chap_read(const String& id);  // fwd (SD chapter cache read)
 static void play_yoto_daily(int idx);    // fwd
 static void open_settings();             // fwd
+static void show_error(const char* title, const char* message, const char* action_hint=nullptr); // fwd
+static void net_init_and_fetch();         // fwd
 static void saver_open();                // fwd
 static void saver_close();               // fwd
 static void tile_cb(lv_event_t* e){
@@ -619,7 +622,19 @@ static bool fetch_library(){
     tlsarena::Guard tg;                     // connect → stream → end, nothing else
     WiFiClientSecure cli; HTTPClient http;
     int code = yoto::get(cli, http, "/card/family/library");
-    if(code != 200){ status((String("Library HTTP ") + code + "  heap=" + ESP.getFreeHeap()).c_str()); if(code > 0) http.end(); return false; }
+    if(code != 200){
+      if(code == 403 || code == 401){
+        show_error("Authentication Required (HTTP 403)",
+                   "Yoto rejected the request. Your Client ID, Secret, or Refresh Token\nis invalid or not yet configured.",
+                   "Open Settings below or visit the web portal to enter valid credentials.");
+      } else {
+        show_error("Library Request Failed",
+                   (String("Yoto API returned HTTP ") + code + " (free heap=" + ESP.getFreeHeap() + ")").c_str(),
+                   "Check internet connection or retry.");
+      }
+      if(code > 0) http.end();
+      return false;
+    }
     body = read_body_psram(http, blen);
     http.end();
   }
@@ -977,7 +992,8 @@ static void precache_step(){
 }
 
 static void back_cb(lv_event_t* e){
-  lv_scr_load(s_scr_home);
+  if(s_scr_home) lv_scr_load(s_scr_home);
+  else if(s_scr_error) lv_scr_load(s_scr_error);
   // async: we're deleting the screen that owns the button firing this event
   if(s_scr_detail){ lv_obj_del_async(s_scr_detail); s_scr_detail=nullptr; }
 }
@@ -1350,7 +1366,8 @@ static void np_volume(int v){ s_vol=v; send_cmd("volume", String("{\"volume\":")
 static void go_home(){
   s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=nullptr;
   s_set_sleep_lbl=nullptr;
-  lv_scr_load(s_scr_home);
+  if(s_scr_home) lv_scr_load(s_scr_home);
+  else if(s_scr_error) lv_scr_load(s_scr_error);
   if(s_scr_detail){   lv_obj_del_async(s_scr_detail);   s_scr_detail=nullptr; }
   if(s_scr_now){      lv_obj_del_async(s_scr_now);      s_scr_now=nullptr; }
   if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
@@ -1718,6 +1735,80 @@ static void set_vol_done_cb(lv_event_t* e){   // persist + apply on release
   int v = lv_slider_get_value(lv_event_get_target(e));
   cfg::vol_max = v; cfg::save();
   if(s_vol > v) np_volume(v);                 // pull the live volume under the new cap
+}
+
+
+static void start_hotspot_cb(lv_event_t*){
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP("Yoto-Setup");
+  show_error("Setup Hotspot Active",
+             "Connect your phone to WiFi 'Yoto-Setup' and navigate to:\nhttp://192.168.4.1/settings",
+             "Configure your network and credentials in the browser.");
+}
+
+static void show_error(const char* title, const char* message, const char* action_hint){
+  if(s_scr_home && s_lib_ok) return; // don't cover home if already healthy
+  if(!s_scr_error){
+    s_scr_error = lv_obj_create(NULL);
+  }
+  lv_obj_clean(s_scr_error);
+  lv_obj_set_style_bg_color(s_scr_error, lv_color_hex(0xFBF7F0), 0);
+
+  // Red accent header
+  lv_obj_t* t = lv_label_create(s_scr_error);
+  lv_label_set_text(t, title ? title : "Setup / Connection Alert");
+  lv_obj_set_style_text_font(t, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_color(t, lv_color_hex(0xE5352B), 0);
+  lv_obj_set_pos(t, 24, 24);
+
+  // Message body
+  lv_obj_t* m = lv_label_create(s_scr_error);
+  lv_label_set_text(m, message ? message : "");
+  lv_obj_set_style_text_font(m, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_color(m, lv_color_hex(0x23303A), 0);
+  lv_obj_set_size(m, 750, LV_SIZE_CONTENT);
+  lv_obj_set_pos(m, 24, 76);
+
+  // Action hint / IP details
+  String details = "";
+  if(WiFi.status() == WL_CONNECTED){
+    details += "WiFi Connected: " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)\n";
+    details += "Device IP: " + WiFi.localIP().toString() + "\n";
+    details += "Web Settings: http://" + WiFi.localIP().toString() + "/settings\n";
+  } else if(WiFi.getMode() & WIFI_MODE_AP){
+    details += "Hotspot 'Yoto-Setup' Active at http://" + WiFi.softAPIP().toString() + "/settings\n";
+  } else {
+    details += "WiFi not connected.\n";
+  }
+  if(action_hint && action_hint[0]){
+    details += String("Hint: ") + action_hint;
+  }
+
+  lv_obj_t* det = lv_label_create(s_scr_error);
+  lv_label_set_text(det, details.c_str());
+  lv_obj_set_style_text_font(det, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(det, lv_color_hex(0x7A7060), 0);
+  lv_obj_set_size(det, 750, LV_SIZE_CONTENT);
+  lv_obj_set_pos(det, 24, 200);
+
+  // Buttons container
+  lv_obj_t* bcont = set_row(s_scr_error);
+  lv_obj_set_pos(bcont, 24, 390);
+  lv_obj_set_style_pad_column(bcont, 16, 0);
+
+  lv_obj_t* b_set = pill_btn(bcont, "Open Settings", 0, [](lv_event_t*){ open_settings(); });
+  lv_obj_set_size(b_set, 210, 56);
+  lv_obj_set_style_bg_color(b_set, lv_color_hex(0xE5352B), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(b_set, 0), lv_color_hex(0xFFFFFF), 0);
+
+  lv_obj_t* b_hs = pill_btn(bcont, "Start Hotspot", 0, start_hotspot_cb);
+  lv_obj_set_size(b_hs, 190, 56);
+
+  lv_obj_t* b_try = pill_btn(bcont, "Retry", 0, [](lv_event_t*){ net_init_and_fetch(); });
+  lv_obj_set_size(b_try, 140, 56);
+
+  lv_scr_load(s_scr_error);
+  lv_refr_now(lv_disp_get_default());
 }
 
 static void open_settings(){
@@ -2387,8 +2478,9 @@ void setup(){
     WiFi.mode(WIFI_AP_STA);                 // hotspot on top, STA keeps retrying underneath
     WiFi.softAP("Yoto-Setup");
     WiFi.begin(cfg::wifi_ssid.c_str(), cfg::wifi_pass.c_str());
-    status(("WiFi not connected (2.4GHz only).\n\nJoin WiFi \"Yoto-Setup\" on a phone, open\nhttp://" +
-            WiFi.softAPIP().toString() + "/settings\nand enter your network + password.").c_str());
+    show_error("WiFi Connection Needed",
+               "Unable to join the configured WiFi network (2.4GHz only).\nSetup hotspot 'Yoto-Setup' is active.",
+               "Join WiFi 'Yoto-Setup' on phone/PC or tap 'Open Settings' below.");
   }
   lv_timer_create(net_retry_cb, 30000, NULL);   // self-deletes once the library is in
 
