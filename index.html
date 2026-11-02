@@ -94,7 +94,7 @@
 
     /* Channel Selector Tabs */
     .channel-selector-wrapper {
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
 
     .channel-tabs {
@@ -150,6 +150,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
     .version-tag {
@@ -176,6 +177,17 @@
     .status-badge.stable {
       background: #DCFCE7;
       color: var(--green-success);
+    }
+
+    .release-link {
+      font-size: 13px;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .release-link:hover {
+      text-decoration: underline;
     }
 
     /* Flasher Action Box */
@@ -415,8 +427,9 @@
       <div class="version-banner">
         <div class="version-info">
           <span style="font-size: 14px; font-weight: 600;">Selected Version:</span>
-          <span id="version-display" class="version-tag">v0.1.0-rc.20261101.1</span>
+          <span id="version-display" class="version-tag">Loading...</span>
           <span id="channel-badge" class="status-badge prerelease">Pre-Release</span>
+          <a id="release-link" class="release-link" href="https://github.com/YotoStoryDeck/touch/releases" target="_blank">View Release Notes ↗</a>
         </div>
         <div id="channel-desc" style="font-size: 13px; color: var(--text-muted);">
           Latest release candidate build
@@ -571,26 +584,58 @@ pio run -e waveshare-s3-43b -t upload</pre>
   </div>
 
   <script>
-    // Channel switching logic
+    let currentChannel = 'prerelease';
+    const channelData = {
+      prerelease: { version: 'Loading...', manifest: 'manifest-prerelease.json' },
+      stable: { version: 'Loading...', manifest: 'manifest-stable.json' }
+    };
+
+    async function fetchManifestVersion(filename) {
+      try {
+        const resp = await fetch(filename + '?t=' + Date.now());
+        if (resp.ok) {
+          const json = await resp.json();
+          return json.version || null;
+        }
+      } catch (err) {
+        console.warn('Could not read ' + filename, err);
+      }
+      return null;
+    }
+
+    async function initChannels() {
+      const preVer = await fetchManifestVersion('manifest-prerelease.json');
+      if (preVer) channelData.prerelease.version = preVer;
+
+      const staVer = await fetchManifestVersion('manifest-stable.json');
+      if (staVer) channelData.stable.version = staVer;
+
+      setChannel(currentChannel);
+    }
+
     function setChannel(channel) {
+      currentChannel = channel;
       const tabPrerelease = document.getElementById('tab-prerelease');
       const tabStable = document.getElementById('tab-stable');
       const versionDisplay = document.getElementById('version-display');
       const channelBadge = document.getElementById('channel-badge');
       const channelDesc = document.getElementById('channel-desc');
+      const releaseLink = document.getElementById('release-link');
       const container = document.getElementById('flasher-container');
+
+      const activeVer = channelData[channel].version;
+      versionDisplay.textContent = activeVer;
+      releaseLink.href = 'https://github.com/YotoStoryDeck/touch/releases/tag/' + encodeURIComponent(activeVer);
 
       if (channel === 'stable') {
         tabStable.classList.add('active');
         tabPrerelease.classList.remove('active');
-        versionDisplay.textContent = 'v0.1.0-rc.20261101.1';
         channelBadge.textContent = 'Stable Candidate';
         channelBadge.className = 'status-badge stable';
-        channelDesc.textContent = 'Latest validated release for daily bedside use';
+        channelDesc.textContent = 'Latest validated build for daily bedside use';
 
-        // Swap to manifest-stable.json
         container.innerHTML = `
-          <esp-web-install-button manifest="manifest-stable.json">
+          <esp-web-install-button manifest="manifest-stable.json?t=${Date.now()}">
             <button slot="activate" class="btn-install">
               <span>⚡</span> Connect & Install StoryDeck Touch (Stable)
             </button>
@@ -602,14 +647,12 @@ pio run -e waveshare-s3-43b -t upload</pre>
       } else {
         tabPrerelease.classList.add('active');
         tabStable.classList.remove('active');
-        versionDisplay.textContent = 'v0.1.0-rc.20261101.1';
         channelBadge.textContent = 'Pre-Release';
         channelBadge.className = 'status-badge prerelease';
         channelDesc.textContent = 'Latest release candidate build (active development)';
 
-        // Swap to manifest-prerelease.json
         container.innerHTML = `
-          <esp-web-install-button manifest="manifest-prerelease.json">
+          <esp-web-install-button manifest="manifest-prerelease.json?t=${Date.now()}">
             <button slot="activate" class="btn-install">
               <span>⚡</span> Connect & Install StoryDeck Touch (Pre-Release)
             </button>
@@ -620,6 +663,9 @@ pio run -e waveshare-s3-43b -t upload</pre>
         `;
       }
     }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', initChannels);
   </script>
 
 </body>
