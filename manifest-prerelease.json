@@ -1,6 +1,6 @@
 {
   "name": "StoryDeck Touch (Pre-Release)",
-  "version": "v0.1.0-rc.20261102.1",
+  "version": "v0.1.0-rc.20261102.2",
   "home_assistant_domain": "storydeck",
   "new_install_prompt_erase": true,
   "builds": [
