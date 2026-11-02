@@ -20,6 +20,8 @@ static String client_secret;
 static String device_id;       // the Yoto player this panel commands
 static String op_mode;         // "core" (StoryDeck Core) vs "standalone" (Direct Yoto Cloud)
 static String core_url;        // Base URL of StoryDeck Core container (e.g. http://192.168.1.11:5060)
+static bool   lock_player   = false; // Lock audio output to specific player vs profile roaming
+static String locked_dev_id = "";    // Locked player ID
 
 // ---- parent knobs (on-device settings screen) ----
 static int    vol_max   = 60;  // hard volume cap for little ears
@@ -41,6 +43,8 @@ static void load(){
   device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
   op_mode       = s_prefs.getString("mode",  "standalone");
   core_url      = s_prefs.getString("curl",   "");
+  lock_player   = s_prefs.getBool("lockp",   false);
+  locked_dev_id = s_prefs.getString("lockid", "");
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
   parent_pin    = s_prefs.getString("pin",   "1234");
   vol_max       = s_prefs.getInt("volmax", 60);
@@ -61,6 +65,8 @@ static void save(){
   s_prefs.putString("devid", device_id);
   s_prefs.putString("mode",  op_mode);
   s_prefs.putString("curl",   core_url);
+  s_prefs.putBool("lockp",   lock_player);
+  s_prefs.putString("lockid", locked_dev_id);
   s_prefs.putString("tz",    tz);
   s_prefs.putString("pin",   parent_pin);
   s_prefs.putInt("volmax", vol_max);

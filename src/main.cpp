@@ -1927,7 +1927,7 @@ static void profile_card_cb(lv_event_t* e){
   int idx = (int)(intptr_t)lv_event_get_user_data(e);
   if(idx >= 0 && idx < core::s_profile_count){
     core::s_active_profile_idx = idx;
-    if(core::s_profiles[idx].default_player_id.length() > 0){
+    if(!cfg::lock_player && core::s_profiles[idx].default_player_id.length() > 0){
       cfg::device_id = core::s_profiles[idx].default_player_id;
     }
     // Transition from profile picker to card grid
@@ -2227,147 +2227,306 @@ static void open_pin_modal(bool for_settings_change){
   lv_refr_now(lv_disp_get_default());
 }
 
+enum SettingsTab { GU_TAB_SLEEP = 0, GU_TAB_TARGET = 1, GU_TAB_DISPLAY = 2, GU_TAB_NETWORK = 3 };
+static SettingsTab s_gu_active_tab = GU_TAB_SLEEP;
+static lv_obj_t* s_gu_tab_panels[4] = {nullptr, nullptr, nullptr, nullptr};
+static lv_obj_t* s_gu_tab_btns[4]   = {nullptr, nullptr, nullptr, nullptr};
+
+static void gu_tab_switch(SettingsTab tab){
+  s_gu_active_tab = tab;
+  for(int i = 0; i < 4; i++){
+    if(s_gu_tab_panels[i]){
+      if(i == (int)tab) lv_obj_clear_flag(s_gu_tab_panels[i], LV_OBJ_FLAG_HIDDEN);
+      else              lv_obj_add_flag(s_gu_tab_panels[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if(s_gu_tab_btns[i]){
+      bool sel = (i == (int)tab);
+      lv_obj_set_style_bg_color(s_gu_tab_btns[i], sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
+      lv_obj_t* lbl = lv_obj_get_child(s_gu_tab_btns[i], 0);
+      if(lbl) lv_obj_set_style_text_color(lbl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
+    }
+  }
+}
+
+static void gu_tab_btn_cb(lv_event_t* e){
+  int tab = (int)(intptr_t)lv_event_get_user_data(e);
+  gu_tab_switch((SettingsTab)tab);
+}
+
 static void open_settings(){
   lv_obj_t* scr = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 
+  // Header Back Button
   lv_obj_t* back = lv_btn_create(scr);
-  lv_obj_set_size(back, 52, 52);
-  lv_obj_set_pos(back, 14, 14);
-  lv_obj_set_style_radius(back, 26, 0);
+  lv_obj_set_size(back, 50, 50);
+  lv_obj_set_pos(back, 14, 12);
+  lv_obj_set_style_radius(back, 25, 0);
   lv_obj_set_style_bg_color(back, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_shadow_width(back, 8, 0);
+  lv_obj_set_style_shadow_width(back, 6, 0);
   lv_obj_set_style_shadow_opa(back, LV_OPA_30, 0);
   lv_obj_add_event_cb(back, [](lv_event_t*){ go_home(); }, LV_EVENT_CLICKED, NULL);
   lv_obj_t* bk = lv_label_create(back);
   lv_label_set_text(bk, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(bk, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(bk, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(bk, lv_color_hex(0x23303A), 0);
   lv_obj_center(bk);
 
+  // Title
   lv_obj_t* title = lv_label_create(scr);
-  lv_label_set_text(title, "Grown-ups");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+  lv_label_set_text(title, "Grown-ups Settings");
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
-  lv_obj_set_pos(title, 80, 24);
+  lv_obj_set_pos(title, 76, 22);
 
+  // Change PIN button
   lv_obj_t* chg_pin = pill_btn(scr, "Change PIN", 0, [](lv_event_t*){ open_pin_modal(true); });
-  lv_obj_set_size(chg_pin, 140, 44);
-  lv_obj_set_pos(chg_pin, LCD_H_RES - 160, 18);
+  lv_obj_set_size(chg_pin, 140, 42);
+  lv_obj_set_pos(chg_pin, LCD_H_RES - 156, 16);
   lv_obj_set_style_text_font(lv_obj_get_child(chg_pin, 0), &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
-  lv_obj_set_pos(title, 80, 24);
 
-  lv_obj_t* col = lv_obj_create(scr);
-  lv_obj_set_size(col, LCD_H_RES - 40, LCD_V_RES - 84);
-  lv_obj_set_pos(col, 20, 76);
-  lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(col, 0, 0);
-  lv_obj_set_style_pad_all(col, 4, 0);
-  lv_obj_set_style_pad_row(col, 10, 0);
-  lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_scroll_dir(col, LV_DIR_VER);
+  // 4-Tab Navigation Bar (grownups.js parity)
+  lv_obj_t* nav = lv_obj_create(scr);
+  lv_obj_set_size(nav, LCD_H_RES - 28, 48);
+  lv_obj_set_pos(nav, 14, 68);
+  lv_obj_set_style_bg_color(nav, lv_color_hex(0xF4EDE0), 0);
+  lv_obj_set_style_border_width(nav, 0, 0);
+  lv_obj_set_style_pad_all(nav, 4, 0);
+  lv_obj_set_style_pad_column(nav, 8, 0);
+  lv_obj_set_flex_flow(nav, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
 
-  // ---- volume limit ----
-  set_section(col, "Volume limit");
-  lv_obj_t* row = set_row(col);
-  lv_obj_set_style_pad_all(row, 8, 0);
-  lv_obj_t* vs = lv_slider_create(row);
-  lv_obj_set_size(vs, 520, 18);
-  lv_slider_set_range(vs, 10, 100);
-  lv_slider_set_value(vs, cfg::vol_max, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_KNOB);
-  lv_obj_set_style_pad_all(vs, 10, LV_PART_KNOB);   // fat knob (~38px) — easy to grab
-  lv_obj_add_event_cb(vs, set_vol_drag_cb, LV_EVENT_VALUE_CHANGED, NULL);
-  lv_obj_add_event_cb(vs, set_vol_done_cb, LV_EVENT_RELEASED, NULL);
-  s_set_vol_lbl = lv_label_create(row);
-  lv_label_set_text_fmt(s_set_vol_lbl, "%d", cfg::vol_max);
-  lv_obj_set_style_text_font(s_set_vol_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_vol_lbl, lv_color_hex(0x23303A), 0);
+  static const char* tab_titles[4] = {"Sleep / Bed", "Audio Target", "Display / Dim", "Network"};
+  for(int t = 0; t < 4; t++){
+    lv_obj_t* tb = lv_btn_create(nav);
+    lv_obj_set_size(tb, 180, 40);
+    lv_obj_set_style_radius(tb, 20, 0);
+    bool sel = (t == (int)s_gu_active_tab);
+    lv_obj_set_style_bg_color(tb, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(tb, 1, 0);
+    lv_obj_set_style_border_color(tb, lv_color_hex(0xE7E0D2), 0);
+    lv_obj_set_style_shadow_width(tb, 0, 0);
+    lv_obj_add_event_cb(tb, gu_tab_btn_cb, LV_EVENT_CLICKED, (void*)(intptr_t)t);
 
-  // ---- bedtime sleep timer ----
-  set_section(col, "Sleep timer  (stops the player)");
-  row = set_row(col);
-  pill_btn(row, "Off", 0,  set_sleep_cb);
-  pill_btn(row, "15",  15, set_sleep_cb);
-  pill_btn(row, "30",  30, set_sleep_cb);
-  pill_btn(row, "45",  45, set_sleep_cb);
-  pill_btn(row, "60",  60, set_sleep_cb);
-  s_set_sleep_lbl = lv_label_create(row);
+    lv_obj_t* tl = lv_label_create(tb);
+    lv_label_set_text(tl, tab_titles[t]);
+    lv_obj_set_style_text_font(tl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(tl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
+    lv_obj_center(tl);
+
+    s_gu_tab_btns[t] = tb;
+  }
+
+  // Common content area below tab bar
+  const int cont_y = 122;
+  const int cont_h = LCD_V_RES - cont_y - 10;
+
+  for(int i = 0; i < 4; i++){
+    lv_obj_t* panel = lv_obj_create(scr);
+    lv_obj_set_size(panel, LCD_H_RES - 28, cont_h);
+    lv_obj_set_pos(panel, 14, cont_y);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(panel, 0, 0);
+    lv_obj_set_style_pad_all(panel, 6, 0);
+    lv_obj_set_style_pad_row(panel, 10, 0);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
+    s_gu_tab_panels[i] = panel;
+  }
+
+  // ==========================================
+  // TAB 0: 🌙 SLEEP / BED
+  // ==========================================
+  lv_obj_t* p0 = s_gu_tab_panels[0];
+
+  set_section(p0, "Sleep timer  (stops player when elapsed)");
+  lv_obj_t* r_sleep = set_row(p0);
+  pill_btn(r_sleep, "Off", 0,  set_sleep_cb);
+  pill_btn(r_sleep, "15m", 15, set_sleep_cb);
+  pill_btn(r_sleep, "30m", 30, set_sleep_cb);
+  pill_btn(r_sleep, "45m", 45, set_sleep_cb);
+  pill_btn(r_sleep, "60m", 60, set_sleep_cb);
+  s_set_sleep_lbl = lv_label_create(r_sleep);
   { char b[24]; fmt_sleep(b, sizeof b); lv_label_set_text(s_set_sleep_lbl, b); }
   lv_obj_set_style_text_font(s_set_sleep_lbl, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(s_set_sleep_lbl, lv_color_hex(0x9A9384), 0);
 
-  // ---- night clock (screensaver) ----
-  set_section(col, "Night clock when idle");
-  row = set_row(col);
-  pill_btn(row, "Off", 0,  set_saver_cb);
-  pill_btn(row, "5",   5,  set_saver_cb);
-  pill_btn(row, "10",  10, set_saver_cb);
-  pill_btn(row, "30",  30, set_saver_cb);
-  s_set_saver_lbl = lv_label_create(row);
+  set_section(p0, "Bedtime Curfew  (clock turns red)");
+  lv_obj_t* r_night = set_row(p0);
+  pill_btn(r_night, "-15m", -15, set_night_cb);
+  s_set_night_lbl = lv_label_create(r_night);
+  { char b[16]; fmt_night(b, sizeof b); lv_label_set_text(s_set_night_lbl, b); }
+  lv_obj_set_style_text_font(s_set_night_lbl, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(s_set_night_lbl, lv_color_hex(0x23303A), 0);
+  pill_btn(r_night, "+15m", 15, set_night_cb);
+
+  set_section(p0, "OK-to-wake Schedule  (clock turns green)");
+  lv_obj_t* r_wake = set_row(p0);
+  pill_btn(r_wake, "-15m", -15, set_wake_cb);
+  s_set_wake_lbl = lv_label_create(r_wake);
+  { char b[16]; fmt_wake(b, sizeof b); lv_label_set_text(s_set_wake_lbl, b); }
+  lv_obj_set_style_text_font(s_set_wake_lbl, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(s_set_wake_lbl, lv_color_hex(0x23303A), 0);
+  pill_btn(r_wake, "+15m", 15, set_wake_cb);
+
+  // ==========================================
+  // TAB 1: 🎯 AUDIO TARGET & ROAMING
+  // ==========================================
+  lv_obj_t* p1 = s_gu_tab_panels[1];
+
+  set_section(p1, "Target Player Roaming vs Locking");
+  lv_obj_t* r_lock = set_row(p1);
+  lv_obj_t* b_roam = pill_btn(r_lock, "Profile Roaming", 0, [](lv_event_t*){
+    cfg::lock_player = false;
+    cfg::save();
+    open_settings();
+  });
+  lv_obj_set_size(b_roam, 170, 52);
+  if(!cfg::lock_player){
+    lv_obj_set_style_bg_color(b_roam, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(b_roam, 0), lv_color_hex(0xFFFFFF), 0);
+  }
+
+  lv_obj_t* b_lock = pill_btn(r_lock, "Lock to Player", 1, [](lv_event_t*){
+    cfg::lock_player = true;
+    cfg::locked_dev_id = cfg::device_id;
+    cfg::save();
+    open_settings();
+  });
+  lv_obj_set_size(b_lock, 170, 52);
+  if(cfg::lock_player){
+    lv_obj_set_style_bg_color(b_lock, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(b_lock, 0), lv_color_hex(0xFFFFFF), 0);
+  }
+
+  lv_obj_t* lock_hint = lv_label_create(p1);
+  if(cfg::lock_player){
+    lv_label_set_text_fmt(lock_hint, "Locked to Player ID: %s\nChanging child profiles will update cards, but audio stays here.",
+                          cfg::device_id.c_str());
+  } else {
+    lv_label_set_text(lock_hint, "Profile Roaming: Audio dynamically routes to each child profile's bedroom player.");
+  }
+  lv_obj_set_style_text_font(lock_hint, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(lock_hint, lv_color_hex(0x7A7060), 0);
+
+  set_section(p1, "Operational Mode");
+  lv_obj_t* r_mode = set_row(p1);
+  lv_obj_t* b_mcore = pill_btn(r_mode, "Core Managed", 0, [](lv_event_t*){
+    cfg::op_mode = "core";
+    cfg::save();
+    open_settings();
+  });
+  lv_obj_set_size(b_mcore, 160, 52);
+  if(cfg::op_mode == "core"){
+    lv_obj_set_style_bg_color(b_mcore, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(b_mcore, 0), lv_color_hex(0xFFFFFF), 0);
+  }
+
+  lv_obj_t* b_mstand = pill_btn(r_mode, "Standalone Cloud", 1, [](lv_event_t*){
+    cfg::op_mode = "standalone";
+    cfg::save();
+    open_settings();
+  });
+  lv_obj_set_size(b_mstand, 170, 52);
+  if(cfg::op_mode != "core"){
+    lv_obj_set_style_bg_color(b_mstand, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(b_mstand, 0), lv_color_hex(0xFFFFFF), 0);
+  }
+
+  lv_obj_t* mode_hint = lv_label_create(p1);
+  lv_label_set_text(mode_hint, cfg::op_mode == "core"
+    ? "Core Managed: Hub-assisted multi-child profiles, ABS audiobooks & local proxy."
+    : "Standalone: Direct connection to Yoto Cloud without requiring a local Core server.");
+  lv_obj_set_style_text_font(mode_hint, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(mode_hint, lv_color_hex(0x7A7060), 0);
+
+  // ==========================================
+  // TAB 2: 💡 DISPLAY / DIM
+  // ==========================================
+  lv_obj_t* p2 = s_gu_tab_panels[2];
+
+  set_section(p2, "Volume limit  (maximum ear-safe cap)");
+  lv_obj_t* r_vol = set_row(p2);
+  lv_obj_set_style_pad_all(r_vol, 6, 0);
+  lv_obj_t* vs = lv_slider_create(r_vol);
+  lv_obj_set_size(vs, 500, 18);
+  lv_slider_set_range(vs, 10, 100);
+  lv_slider_set_value(vs, cfg::vol_max, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_KNOB);
+  lv_obj_set_style_pad_all(vs, 10, LV_PART_KNOB);
+  lv_obj_add_event_cb(vs, set_vol_drag_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(vs, set_vol_done_cb, LV_EVENT_RELEASED, NULL);
+  s_set_vol_lbl = lv_label_create(r_vol);
+  lv_label_set_text_fmt(s_set_vol_lbl, "%d", cfg::vol_max);
+  lv_obj_set_style_text_font(s_set_vol_lbl, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(s_set_vol_lbl, lv_color_hex(0x23303A), 0);
+
+  set_section(p2, "Night clock inactivity timeout");
+  lv_obj_t* r_saver = set_row(p2);
+  pill_btn(r_saver, "Off", 0,  set_saver_cb);
+  pill_btn(r_saver, "5m",  5,  set_saver_cb);
+  pill_btn(r_saver, "10m", 10, set_saver_cb);
+  pill_btn(r_saver, "30m", 30, set_saver_cb);
+  s_set_saver_lbl = lv_label_create(r_saver);
   if(cfg::saver_min) lv_label_set_text_fmt(s_set_saver_lbl, "after %d min", cfg::saver_min);
   else               lv_label_set_text(s_set_saver_lbl, "Off");
   lv_obj_set_style_text_font(s_set_saver_lbl, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(s_set_saver_lbl, lv_color_hex(0x9A9384), 0);
 
-  // ---- bedtime ----
-  set_section(col, "Bedtime  (clock turns red)");
-  row = set_row(col);
-  pill_btn(row, "-15", -15, set_night_cb);
-  s_set_night_lbl = lv_label_create(row);
-  { char b[16]; fmt_night(b, sizeof b); lv_label_set_text(s_set_night_lbl, b); }
-  lv_obj_set_style_text_font(s_set_night_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_night_lbl, lv_color_hex(0x23303A), 0);
-  pill_btn(row, "+15", 15, set_night_cb);
-
-  // ---- OK-to-wake ----
-  set_section(col, "OK-to-wake  (clock turns green)");
-  row = set_row(col);
-  pill_btn(row, "-15", -15, set_wake_cb);
-  s_set_wake_lbl = lv_label_create(row);
-  { char b[16]; fmt_wake(b, sizeof b); lv_label_set_text(s_set_wake_lbl, b); }
-  lv_obj_set_style_text_font(s_set_wake_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_wake_lbl, lv_color_hex(0x23303A), 0);
-  pill_btn(row, "+15", 15, set_wake_cb);
-
-  // ---- clock size ----
-  set_section(col, "Clock size");
-  row = set_row(col);
-  lv_obj_set_size(pill_btn(row, "Small",  0, set_size_cb), 124, 56);
-  lv_obj_set_size(pill_btn(row, "Medium", 1, set_size_cb), 124, 56);
-  lv_obj_set_size(pill_btn(row, "Large",  2, set_size_cb), 124, 56);
-  s_set_size_lbl = lv_label_create(row);
+  set_section(p2, "Bedside clock digit size");
+  lv_obj_t* r_size = set_row(p2);
+  lv_obj_set_size(pill_btn(r_size, "Small",  0, set_size_cb), 124, 52);
+  lv_obj_set_size(pill_btn(r_size, "Medium", 1, set_size_cb), 124, 52);
+  lv_obj_set_size(pill_btn(r_size, "Large",  2, set_size_cb), 124, 52);
+  s_set_size_lbl = lv_label_create(r_size);
   lv_label_set_text(s_set_size_lbl, SV_SIZE_NAME[cfg::saver_size < 0 ? 0 : cfg::saver_size > 2 ? 2 : cfg::saver_size]);
   lv_obj_set_style_text_font(s_set_size_lbl, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(s_set_size_lbl, lv_color_hex(0x9A9384), 0);
 
-  // ---- this panel ----
-  set_section(col, "This panel");
+  // ==========================================
+  // TAB 3: 📶 NETWORK & SYSTEM
+  // ==========================================
+  lv_obj_t* p3 = s_gu_tab_panels[3];
+
+  set_section(p3, "Network Diagnostics");
   String ip = WiFi.localIP().toString();
   String sd = s_sd_ok ? String((uint32_t)(SD.usedBytes()/(1024ULL*1024ULL))) + " MB used" : String("none");
-  lv_obj_t* info = lv_label_create(col);
-  lv_label_set_text_fmt(info,
-    "WiFi: %s   (%s, %d dBm)\n"
-    "WiFi, Yoto account, timezone:  http://%s/settings\n"
-    "Firmware update:  http://%s/update\n"
-    "Cards: %d     SD cache: %s\n"
-    "Free RAM: %u KB     Built: %s",
-    cfg::wifi_ssid.c_str(), ip.c_str(), (int)WiFi.RSSI(),
-    ip.c_str(), ip.c_str(),
+  lv_obj_t* diag = lv_label_create(p3);
+  lv_label_set_text_fmt(diag,
+    "IP Address: %s      Wi-Fi RSSI: %d dBm\n"
+    "SSID: %s            Core Host: %s\n"
+    "Cards in catalog: %d     SD cache: %s\n"
+    "Free Heap: %u KB         Built: %s",
+    ip.c_str(), (int)WiFi.RSSI(),
+    cfg::wifi_ssid.c_str(), cfg::core_url.length() ? cfg::core_url.c_str() : "None (Standalone)",
     s_card_count, sd.c_str(),
     (unsigned)(ESP.getFreeHeap()/1024), __DATE__);
-  lv_obj_set_style_text_font(info, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(info, lv_color_hex(0x9A9384), 0);
+  lv_obj_set_style_text_font(diag, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(diag, lv_color_hex(0x23303A), 0);
 
-  row = set_row(col);
-  lv_obj_set_style_pad_top(row, 8, 0);
-  lv_obj_t* rb = pill_btn(row, "Restart", 0, [](lv_event_t*){ ESP.restart(); });
-  lv_obj_set_size(rb, 150, 56);
+  set_section(p3, "Web Portals & OTA");
+  lv_obj_t* urls = lv_label_create(p3);
+  lv_label_set_text_fmt(urls,
+    "Web Settings Portal:  http://%s/settings\n"
+    "OTA Firmware Update:  http://%s/update",
+    ip.c_str(), ip.c_str());
+  lv_obj_set_style_text_font(urls, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(urls, lv_color_hex(0x3A6B50), 0);
+
+  set_section(p3, "Hardware Maintenance");
+  lv_obj_t* r_maint = set_row(p3);
+  lv_obj_t* rb = pill_btn(r_maint, "Restart Device", 0, [](lv_event_t*){ ESP.restart(); });
+  lv_obj_set_size(rb, 160, 52);
   lv_obj_set_style_text_color(rb, lv_color_hex(0xE5352B), 0);
   lv_obj_set_style_text_color(lv_obj_get_child(rb, 0), lv_color_hex(0xE5352B), 0);
+
+  lv_obj_t* hs = pill_btn(r_maint, "Start Hotspot", 0, start_hotspot_cb);
+  lv_obj_set_size(hs, 160, 52);
+
+  // Set initial active tab visibility
+  gu_tab_switch(s_gu_active_tab);
 
   s_scr_settings = scr;
   lv_scr_load(scr);
@@ -2834,7 +2993,7 @@ static void net_init_and_fetch(){
     if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
       status("Loading StoryDeck Profiles...");
       if(core::fetch_config_and_profiles(cfg::core_url)){
-        if(core::s_profiles[core::s_active_profile_idx].default_player_id.length() > 0){
+        if(!cfg::lock_player && core::s_profiles[core::s_active_profile_idx].default_player_id.length() > 0){
           cfg::device_id = core::s_profiles[core::s_active_profile_idx].default_player_id;
         }
       }
