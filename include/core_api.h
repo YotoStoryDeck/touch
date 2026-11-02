@@ -183,7 +183,7 @@ inline int player_control(const String& base_url, const String& device_id, const
 
 
 // 6. Fetch Child Catalog (ABS + Yoto merged via Core hub)
-inline bool fetch_catalog(const String& base_url, const String& child_id, void (*card_cb)(const String& id, const String& title, const String& cover, const String& src, const String& series, int seq)){
+inline bool fetch_catalog(const String& base_url, const String& child_id, void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, int seq)){
   if(base_url.length() == 0 || child_id.length() == 0) return false;
 
   auto fetch_src = [&](const String& path, const String& src_name){
@@ -208,9 +208,10 @@ inline bool fetch_catalog(const String& base_url, const String& child_id, void (
       if(cover.startsWith("/")){
         cover = base_url + cover;
       }
+      String author = (const char*)(item["author"] | "");
       String series = (const char*)(item["series"] | "");
       int seq = (int)(item["sequence"] | 0);
-      card_cb(id, title, cover, src_name, series, seq);
+      card_cb(id, title, author, cover, src_name, series, seq);
     }
   };
 

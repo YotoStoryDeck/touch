@@ -267,6 +267,7 @@ static TabFilter s_active_tab = TAB_ALL;
 
 struct Card {
   String id; String title;
+  String author="";                        // book author / creator
   String lp;                               // lastPlayedAt (direct-API path sorts on it)
   String cover;                            // cover imageL URL (direct-API: fetch+decode from CDN)
   String source="yoto";                    // "yoto" or "abs"
@@ -324,6 +325,7 @@ static int  s_vol=30;
 static int    s_play_card=-1;
 static int    s_play_ch=-1;
 static String s_play_title;
+static String s_play_author;
 static String s_play_chapter;
 static uint8_t* s_ncover=nullptr;
 static lv_img_dsc_t s_ncover_dsc{};
@@ -750,7 +752,11 @@ static void update_home_bar(){
   lv_obj_t* tc=lv_label_create(tap);
   lv_label_set_long_mode(tc, LV_LABEL_LONG_DOT);
   lv_obj_set_width(tc, 440);
-  lv_label_set_text(tc, s_play_chapter.c_str());
+  if(s_play_author.length() > 0 && s_play_chapter.length() > 0){
+    lv_label_set_text_fmt(tc, "%s  \xE2\x80\xA2  %s", s_play_author.c_str(), s_play_chapter.c_str());
+  } else {
+    lv_label_set_text(tc, s_play_chapter.c_str());
+  }
   lv_obj_set_style_text_font(tc, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(tc, lv_color_hex(0x9A9384), 0);
   lv_obj_align(tc, LV_ALIGN_LEFT_MID, 28, 14);
@@ -799,10 +805,11 @@ static char* read_body_psram(HTTPClient& http, size_t& outLen){
 
 
 // Add single card from Core catalog
-static void add_core_card(const String& id, const String& title, const String& cover, const String& src, const String& series, int seq){
+static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, int seq){
   if(s_card_count >= 64) return;
   s_cards[s_card_count].id       = id;
   s_cards[s_card_count].title    = title;
+  s_cards[s_card_count].author   = author;
   s_cards[s_card_count].cover    = cover;
   s_cards[s_card_count].source   = src;
   s_cards[s_card_count].series   = series;
@@ -1259,16 +1266,22 @@ static void detail_fill_chapters(lv_obj_t* list){
       play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
     }, LV_EVENT_CLICKED, NULL);
 
+    bool is_ch_active = (s_playing && s_play_card == s_cur_card && s_play_ch == k);
+    if(is_ch_active){
+      lv_obj_set_style_bg_color(row, lv_color_hex(0xE0EDE7), 0);
+      lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    }
     lv_obj_t* badge = lv_obj_create(row);
     lv_obj_set_size(badge, 38, 38);
     lv_obj_set_style_radius(badge, 19, 0);
-    lv_obj_set_style_bg_color(badge, lv_color_hex(0xFFB02E), 0);
+    lv_obj_set_style_bg_color(badge, is_ch_active ? lv_color_hex(0x3AB06A) : lv_color_hex(0xFFB02E), 0);
     lv_obj_set_style_border_width(badge, 0, 0);
     lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t* bl = lv_label_create(badge);
-    lv_label_set_text_fmt(bl, "%d", k+1);
+    if(is_ch_active) lv_label_set_text(bl, LV_SYMBOL_PLAY);
+    else             lv_label_set_text_fmt(bl, "%d", k+1);
     lv_obj_set_style_text_font(bl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(bl, lv_color_hex(0x6A4400), 0);
+    lv_obj_set_style_text_color(bl, is_ch_active ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x6A4400), 0);
     lv_obj_center(bl);
 
     lv_obj_t* ct = lv_label_create(row);
@@ -1340,12 +1353,13 @@ static void open_detail(int i){
     lv_img_set_zoom(cover, (uint16_t)(256 * DCOVER_W / THUMB_W));
   }
 
+  bool is_curr_playing = (s_playing && s_play_card == i);
   lv_obj_t* play = lv_btn_create(left);
   lv_obj_set_size(play, DCOVER_W, 66);
-  lv_obj_set_style_bg_color(play, lv_color_hex(0xE5352B), 0);
+  lv_obj_set_style_bg_color(play, is_curr_playing ? lv_color_hex(0x23303A) : lv_color_hex(0xE5352B), 0);
   lv_obj_set_style_radius(play, 18, 0);
   lv_obj_t* pl = lv_label_create(play);
-  lv_label_set_text(pl, LV_SYMBOL_PLAY "  Play");
+  lv_label_set_text(pl, is_curr_playing ? (LV_SYMBOL_PAUSE "  Now Playing") : (LV_SYMBOL_PLAY "  Play Book"));
   lv_obj_set_style_text_font(pl, &lv_font_montserrat_24, 0);
   lv_obj_center(pl);
   lv_obj_add_event_cb(play, [](lv_event_t*){ play_from(0); }, LV_EVENT_CLICKED, NULL);
@@ -1371,6 +1385,12 @@ static void open_detail(int i){
   lv_label_set_text(title, s_detail_title.c_str());
   lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
+
+  lv_obj_t* sub = lv_label_create(right);
+  String sub_txt = c.author.length() ? c.author : (c.source == "abs" ? "Audiobookshelf" : "Yoto");
+  lv_label_set_text(sub, sub_txt.c_str());
+  lv_obj_set_style_text_font(sub, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(sub, lv_color_hex(0x7A7060), 0);
 
   lv_obj_t* sum = lv_label_create(right);
   detail_set_summary(sum);
@@ -1484,8 +1504,17 @@ static void np_update_progress(){
   if(s_np_trem){ char b[16]; fmt_mmss(b, dur-s_pos); lv_label_set_text_fmt(s_np_trem, "-%s", b); }
 }
 static void np_set_chapter_label(){
-  if(s_np_chapter && s_cur_ch>=0 && s_cur_ch<s_ch_count)
-    lv_label_set_text(s_np_chapter, s_ch[s_cur_ch].title.c_str());
+  if(!s_np_chapter) return;
+  String ch_t = (s_cur_ch >= 0 && s_cur_ch < s_ch_count) ? s_ch[s_cur_ch].title : s_play_chapter;
+  if(s_play_author.length() > 0 && ch_t.length() > 0){
+    lv_label_set_text_fmt(s_np_chapter, "%s  \xE2\x80\xA2  %s", s_play_author.c_str(), ch_t.c_str());
+  } else if(ch_t.length() > 0){
+    lv_label_set_text(s_np_chapter, ch_t.c_str());
+  } else if(s_play_author.length() > 0){
+    lv_label_set_text(s_np_chapter, s_play_author.c_str());
+  } else {
+    lv_label_set_text(s_np_chapter, "Playing");
+  }
 }
 static void np_set_playicon(){
   if(s_np_playicon) lv_label_set_text(s_np_playicon, s_playing? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
@@ -1599,6 +1628,7 @@ static void np_goto_chapter(int k){
   if(k<0 || k>=s_ch_count) return;
   s_cur_ch=k; s_pos=0; s_playing=true;
   s_play_card=s_cur_card; s_play_ch=k;                 // keep the mini-player in sync
+  s_play_author=s_cards[s_cur_card].author;
   s_play_chapter=s_ch[k].title; s_play_dur=s_ch[k].dur;
   np_set_chapter_label(); np_set_playicon(); np_update_progress(); update_home_bar();
   lv_refr_now(lv_disp_get_default());
