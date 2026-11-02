@@ -92,3 +92,49 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*
+
+      - name: Sync Binaries & Manifests to Website Branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Clone dedicated website branch
+          git clone --branch website https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git website_repo
+          cd website_repo
+
+          TAG="${{ steps.meta.outputs.tag }}"
+          IS_PRERELEASE="${{ steps.meta.outputs.prerelease }}"
+
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            CHANNEL="prerelease"
+            MANIFEST="manifest-prerelease.json"
+          else
+            CHANNEL="stable"
+            MANIFEST="manifest-stable.json"
+          fi
+
+          echo "Syncing ${TAG} binaries to ${CHANNEL} web installer..."
+          mkdir -p bin/${CHANNEL}
+
+          cp ../.pio/build/waveshare-s3-43b/bootloader.bin bin/${CHANNEL}/bootloader.bin
+          cp ../.pio/build/waveshare-s3-43b/partitions.bin bin/${CHANNEL}/partitions.bin
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin bin/${CHANNEL}/boot_app0.bin || cp bin/boot_app0.bin bin/${CHANNEL}/boot_app0.bin
+          cp ../.pio/build/waveshare-s3-43b/firmware.bin bin/${CHANNEL}/firmware.bin
+
+          # Update version field in target manifest
+          if command -v jq >/dev/null 2>&1; then
+            jq --arg ver "${TAG}" '.version = $ver' ${MANIFEST} > tmp.json && mv tmp.json ${MANIFEST}
+            if [ "$CHANNEL" = "stable" ]; then
+              jq --arg ver "${TAG}" '.version = $ver' manifest.json > tmp.json && mv tmp.json manifest.json
+            fi
+          fi
+
+          git add bin/${CHANNEL}/ ${MANIFEST} manifest.json
+          if git diff --staged --quiet; then
+            echo "No changes detected on website branch."
+          else
+            git commit -m "chore(release): auto-publish ${TAG} (${CHANNEL}) to web flasher"
+            git push origin website
+            echo "Successfully synced ${TAG} to website branch."
+          fi
+
