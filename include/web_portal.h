@@ -70,25 +70,28 @@ static String tz_select(){
   return h;
 }
 
-// Scan nearby 2.4 GHz WiFi networks and build datalist options
-static String wifi_datalist(){
-  String dl = "<datalist id='wifi-list'>";
+// Scan nearby 2.4 GHz WiFi networks and build a select picker + input combo
+static String wifi_picker(){
+  String h = "<label>Network name (SSID)<div style='display:flex;gap:8px;margin-top:4px'>";
+  h += "<select id='wf_sel' onchange='var el=document.getElementById(\"wf_in\");if(this.value)el.value=this.value' style='width:50%;margin-top:0'>";
+  h += "<option value=''>-- Select nearby WiFi --</option>";
   int n = WiFi.scanNetworks(false, true);
   if(n > 0){
     for(int i = 0; i < n; i++){
       String ssid = WiFi.SSID(i);
       if(ssid.length() == 0) continue;
       int32_t rssi = WiFi.RSSI(i);
-      dl += "<option value=\"" + esc(ssid) + "\">" + esc(ssid) + " (" + String(rssi) + " dBm)</option>";
+      h += "<option value=\"" + esc(ssid) + "\">" + esc(ssid) + " (" + String(rssi) + " dBm)</option>";
     }
     WiFi.scanDelete();
   }
-  dl += "</datalist>";
-  return dl;
+  h += "</select>";
+  h += "<input id='wf_in' name='ssid' value=\"" + esc(cfg::wifi_ssid) + "\" placeholder='or type SSID' style='width:50%;margin-top:0'>";
+  h += "</div><small>Pick a nearby 2.4 GHz network from the dropdown or type manually.</small></label>";
+  return h;
 }
 
 static void handle_get(WebServer& w){
-  String wlist = wifi_datalist();
   if(!auth_ok(w)) return;
   String h =
     "<!doctype html><html><head><meta charset='utf-8'>"
@@ -108,7 +111,7 @@ static void handle_get(WebServer& w){
     " &middot; <a href='/update'>firmware update</a></div>"
     "<form method='POST' action='/settings'>"
     "<h2>WiFi (2.4 GHz only)</h2>" +
-    text_row("Network name (SSID)", "ssid", cfg::wifi_ssid, "Select from nearby networks or enter manually.", "wifi-list") + wlist +
+    wifi_picker() +
     secret_row("Password", "pass", "Saved on the board, used at next boot.") +
     "<h2>Yoto account</h2>" +
     text_row("Client ID", "cid", cfg::client_id) +
