@@ -685,6 +685,34 @@ static char* read_body_psram(HTTPClient& http, size_t& outLen){
   return buf;
 }
 
+
+// Add single card from Core catalog
+static void add_core_card(const String& id, const String& title, const String& cover, const String& src, const String& series, int seq){
+  if(s_card_count >= 64) return;
+  s_cards[s_card_count].id       = id;
+  s_cards[s_card_count].title    = title;
+  s_cards[s_card_count].cover    = cover;
+  s_cards[s_card_count].source   = src;
+  s_cards[s_card_count].series   = series;
+  s_cards[s_card_count].sequence = seq;
+  s_cards[s_card_count].daily    = false;
+  s_card_count++;
+}
+
+static bool fetch_library_core(){
+  s_card_count = 0;
+  String prof_id = "default";
+  if(core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
+    prof_id = core::s_profiles[core::s_active_profile_idx].id;
+  }
+  bool ok = core::fetch_catalog(cfg::core_url, prof_id, add_core_card);
+  if(!ok || s_card_count == 0){
+    // If child catalog endpoint returned empty or failed, retry with default
+    core::fetch_catalog(cfg::core_url, "default", add_core_card);
+  }
+  return (s_card_count > 0);
+}
+
 static bool fetch_library(){
   // GET /card/family/library straight from Yoto. The payload is large, so we parse it
   // through a filter (only cardId/title/lastPlayedAt/cover survive) and sort
@@ -974,6 +1002,22 @@ static bool sd_chap_read(const String& id){
 
 static bool fetch_card_detail(int i){
   Card& c = s_cards[i];
+  if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+    s_ch_count = 0;
+    String title_out = c.title;
+    bool ok = core::fetch_media_tracks(cfg::core_url, c.id, title_out, [](const String& key, const String& tr_title, int dur){
+      if(s_ch_count >= MAX_CH) return;
+      s_ch[s_ch_count].key   = key;
+      s_ch[s_ch_count].title = tr_title;
+      s_ch[s_ch_count].dur   = dur;
+      s_ch_count++;
+    });
+    if(ok && s_ch_count > 0){
+      s_detail_title = title_out;
+      sd_chap_write(c.id);
+      return true;
+    }
+  }
   // GET /card/{id}; filter to title + chapters[].{key,title,duration}.
   size_t blen = 0;
   char* body = nullptr;
@@ -1929,6 +1973,13 @@ static void profile_card_cb(lv_event_t* e){
     core::s_active_profile_idx = idx;
     if(!cfg::lock_player && core::s_profiles[idx].default_player_id.length() > 0){
       cfg::device_id = core::s_profiles[idx].default_player_id;
+    }
+    // In Core mode, reload catalog for this child profile
+    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+      if(fetch_library_core()){
+        build_grid();
+        load_thumbs();
+      }
     }
     // Transition from profile picker to card grid
     if(s_scr_profile){
@@ -3000,7 +3051,19 @@ static void net_init_and_fetch(){
     }
 
     status("Fetching library...");
-    if(fetch_library()){
+    bool lib_fetched = false;
+    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+      lib_fetched = fetch_library_core();
+      if(!lib_fetched){
+        show_error("Core Catalog Failed",
+                   "Could not load media catalog from StoryDeck Core.",
+                   "Check Core server health and network link in Settings.");
+      }
+    } else {
+      lib_fetched = fetch_library();
+    }
+
+    if(lib_fetched){
       build_grid();
       load_thumbs();
       s_lib_ok = true;
@@ -3081,7 +3144,9 @@ void setup(){
   uint32_t t0=millis();
   while(WiFi.status()!=WL_CONNECTED && millis()-t0 < 20000){ delay(200); }
 
-  yoto::begin();                            // load tokens from NVS (seed refresh on first boot)
+  if(cfg::op_mode != "core"){
+    yoto::begin();                          // load tokens from NVS (standalone direct Yoto cloud)
+  }
   lv_timer_create(tick_cb, 1000, NULL);     // 1 Hz heartbeat: progress/sleep timer/screensaver
 
   if(WiFi.status()==WL_CONNECTED){

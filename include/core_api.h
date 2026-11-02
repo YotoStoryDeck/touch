@@ -181,4 +181,74 @@ inline int player_control(const String& base_url, const String& device_id, const
   return code;
 }
 
+
+// 6. Fetch Child Catalog (ABS + Yoto merged via Core hub)
+inline bool fetch_catalog(const String& base_url, const String& child_id, void (*card_cb)(const String& id, const String& title, const String& cover, const String& src, const String& series, int seq)){
+  if(base_url.length() == 0 || child_id.length() == 0) return false;
+
+  auto fetch_src = [&](const String& path, const String& src_name){
+    HTTPClient http;
+    http.begin(base_url + path);
+    if(s_access_token.length() > 0){
+      http.addHeader("Authorization", String("Bearer ") + s_access_token);
+    }
+    http.setTimeout(8000);
+    int code = http.GET();
+    if(code != 200){ http.end(); return; }
+    String body = http.getString();
+    http.end();
+
+    JsonDocument doc;
+    if(deserializeJson(doc, body)) return;
+    for(JsonObject item : doc.as<JsonArray>()){
+      String id = (const char*)(item["id"] | item["card_id"] | "");
+      if(id.length() == 0) continue;
+      String title = (const char*)(item["title"] | "");
+      String cover = (const char*)(item["cover"] | item["thumb"] | item["cover_url"] | "");
+      if(cover.startsWith("/")){
+        cover = base_url + cover;
+      }
+      String series = (const char*)(item["series"] | "");
+      int seq = (int)(item["sequence"] | 0);
+      card_cb(id, title, cover, src_name, series, seq);
+    }
+  };
+
+  fetch_src("/api/kids/" + child_id + "/abs", "abs");
+  fetch_src("/api/kids/" + child_id + "/yoto", "yoto");
+  return true;
+}
+
+// 7. Fetch Media Tracks / Chapters via Core Hub
+inline bool fetch_media_tracks(const String& base_url, const String& media_id, String& title_out, void (*track_cb)(const String& key, const String& title, int dur)){
+  if(base_url.length() == 0 || media_id.length() == 0) return false;
+  HTTPClient http;
+  http.begin(base_url + "/api/media/" + media_id + "/tracks");
+  if(s_access_token.length() > 0){
+    http.addHeader("Authorization", String("Bearer ") + s_access_token);
+  }
+  http.setTimeout(8000);
+  int code = http.GET();
+  if(code != 200){ http.end(); return false; }
+  String body = http.getString();
+  http.end();
+
+  JsonDocument doc;
+  if(deserializeJson(doc, body)) return false;
+  const char* t = doc["title"];
+  if(t && *t) title_out = t;
+  JsonArray tracks = doc["tracks"].as<JsonArray>();
+  int idx = 1;
+  for(JsonObject tr : tracks){
+    String key = (const char*)(tr["key"] | tr["track_key"] | "");
+    if(key.length() == 0) key = String(idx);
+    String tr_title = (const char*)(tr["title"] | "");
+    if(tr_title.length() == 0) tr_title = String("Chapter ") + idx;
+    int dur = (int)(tr["duration_seconds"] | tr["duration"] | 0);
+    track_cb(key, tr_title, dur);
+    idx++;
+  }
+  return true;
+}
+
 } // namespace core
