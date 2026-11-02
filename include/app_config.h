@@ -28,6 +28,7 @@ static int    night_h   = 19;  // bedtime: clock turns red from this time...
 static int    night_m   = 0;
 static int    saver_size= 2;   // night-clock digit size: 0 small / 1 medium / 2 large
 static String tz;              // POSIX TZ for the clock (default US Eastern)
+static String parent_pin;      // 4-digit Grown-ups security PIN (default "1234")
 
 static void load(){
   s_prefs.begin("appcfg", false);
@@ -37,6 +38,7 @@ static void load(){
   client_secret = s_prefs.getString("csec",  YOTO_CLIENT_SECRET);
   device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
+  parent_pin    = s_prefs.getString("pin",   "1234");
   vol_max       = s_prefs.getInt("volmax", 60);
   saver_min     = s_prefs.getInt("saver",  10);
   wake_h        = s_prefs.getInt("wakeh",  7);
@@ -54,6 +56,7 @@ static void save(){
   s_prefs.putString("csec",  client_secret);
   s_prefs.putString("devid", device_id);
   s_prefs.putString("tz",    tz);
+  s_prefs.putString("pin",   parent_pin);
   s_prefs.putInt("volmax", vol_max);
   s_prefs.putInt("saver",  saver_min);
   s_prefs.putInt("wakeh",  wake_h);

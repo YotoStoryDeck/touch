@@ -105,7 +105,11 @@ export const BrokerApi = {
 
     state.deviceConfig = conf;
     if (conf.parent_pin) {
-      state.parentPin = conf.parent_pin;
+      if (state.parentPin !== conf.parent_pin) {
+        console.log(`[Config] Received OTA Parent PIN update from Core: ${conf.parent_pin}`);
+        state.parentPin = conf.parent_pin;
+        state.persistParentSettings();
+      }
     }
 
         if (conf.profiles && conf.profiles.length > 0) {

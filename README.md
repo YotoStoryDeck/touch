@@ -13,7 +13,7 @@ StoryDeck Touch supports two flexible operational modes:
 1. **StoryDeck Core Mode (Managed — Recommended):**
    * Pairs with a self-hosted [**StoryDeck Core**](https://github.com/YotoStoryDeck/core) hub.
    * Browses unified libraries combining **Audiobookshelf (ABS)** and Yoto playlists.
-   * Features multi-child profile switching, parental tag filtering, and Home Assistant bedtime controls.
+   * Features multi-child profile switching, parental tag filtering, bedtime controls, and planned Home Assistant integration.
    * Secure PIN pairing: device communicates using a lightweight token with zero cloud credentials stored on the bedside unit.
 
 2. **Standalone Mode (Direct Yoto Cloud):**
@@ -58,9 +58,27 @@ Targeted specifically for the **[Waveshare ESP32-S3-Touch-LCD-4.3B](https://www.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started & Installation
 
-### 1. Build & Flash via PlatformIO
+### Option 1: Flashing Pre-Built Binaries (Releases & Pre-Releases — No Build Tools Required)
+
+For most users, pre-compiled firmware binaries are provided with every GitHub release and pre-release tag:
+
+1. **Download Release Assets:**
+   * Go to the [Releases](https://github.com/YotoStoryDeck/touch/releases) page.
+   * Download the latest `firmware.bin`, `bootloader.bin`, and `partitions.bin` (or the combined `firmware-merged.bin`).
+2. **Flash to ESP32-S3:**
+   * Use the web-based **[ESP Web Tools](https://esphome.github.io/esp-web-tools/)** in Chrome/Edge, or use `esptool.py`:
+     ```bash
+     esptool.py -p COM_PORT -b 921600 write_flash 0x0 firmware-merged.bin
+     ```
+
+---
+
+### Option 2: Build & Flash from Source via PlatformIO
+
+If developing locally or customizing firmware:
+
 ```bash
 # Clone the repository
 git clone https://github.com/YotoStoryDeck/touch.git
@@ -73,10 +91,41 @@ pio run -e waveshare-s3-43b
 pio run -e waveshare-s3-43b -t upload
 ```
 
-### 2. On-Device Setup Wizard
+---
+
+### Option 3: Browser Companion / Simulator (Requires Core & Touch)
+
+To run the Touch UI on a wall-mounted tablet, phone, or browser without physical ESP32 hardware, both **StoryDeck Core** (backend API hub) and **StoryDeck Touch** (frontend companion assets) are required:
+
+1. **When running Core via Docker Release:**
+   * Pre-packaged releases of StoryDeck Core bundle the compiled `web-touch/` companion assets directly. Ensure your **StoryDeck Core** container is running on port `5055`.
+   * Open your browser or kiosk display to `http://<core-ip>:5055/kiosk/` or `http://<core-ip>:5055/simulator/`.
+
+2. **When running locally from Source / Development:**
+   * Both repositories are required:
+     ```bash
+     # 1. Clone and run StoryDeck Core (Backend API)
+     git clone https://github.com/YotoStoryDeck/core.git
+     cd core
+     python app.py
+
+     # 2. In a separate terminal, clone StoryDeck Touch (Frontend Web Assets)
+     git clone https://github.com/YotoStoryDeck/touch.git
+     ```
+   * StoryDeck Core serves the `touch/web-touch/` assets directly at `http://localhost:5055/kiosk/` (or symlinked to `static/kiosk/`). Alternatively, open `touch/web-touch/index.html` in your browser and point it to your Core server IP in settings.
+
+---
+
+### 📱 On-Device Setup Wizard
 1. Power on the device.
 2. Select your Wi-Fi network and enter the password using the on-screen touchscreen keyboard.
 3. Choose **StoryDeck Core Mode** (enter the 6-digit pairing PIN shown on screen into your Core Web Admin) or **Standalone Mode** (scan the on-screen QR code to authenticate with Yoto).
+
+---
+
+## 🤖 AI Development Notice
+
+This project utilizes artificial intelligence (AI) tools, including Anthropic Claude and Google Gemini / Antigravity, to assist in user interface design, embedded driver routines, simulator engineering, and technical documentation. All AI-assisted implementations are reviewed, tested, and validated against physical ESP32-S3 hardware displays and local simulation environments.
 
 ---
 

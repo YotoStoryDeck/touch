@@ -15,8 +15,56 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+/* 4-Tab Navigation Bar */
+.gu-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
   flex: 0 0 auto;
+  border-bottom: 2px solid #e7e0d2;
+  padding-bottom: 8px;
+}
+
+.gu-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #d8d0c0;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #554f46;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gu-tab-btn:hover {
+  background: #f5efe3;
+}
+
+.gu-tab-btn.active {
+  background: var(--red, #e5352b);
+  border-color: var(--red, #e5352b);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(229, 53, 43, 0.25);
+}
+
+.gu-tab-icon {
+  font-size: 15px;
+}
+
+.gu-tab-label {
+  white-space: nowrap;
 }
 
 .gu-back {

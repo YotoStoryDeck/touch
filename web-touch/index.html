@@ -17,13 +17,78 @@
   <link rel="stylesheet" href="/simulator/css/player.css">
   <link rel="stylesheet" href="/simulator/css/grownups.css">
   <link rel="stylesheet" href="/simulator/css/pin.css">
+  <link rel="stylesheet" href="/simulator/css/screensaver.css">
   <script>
     (function() {
-      var p = new URLSearchParams(window.location.search);
-      if (p.get('kiosk') === '1' || p.get('kiosk') === 'true' || p.get('fullscreen') === '1' || p.get('tablet') === '1') {
+      var search = window.location.search;
+      var p = new URLSearchParams(search);
+      var isKiosk = p.get('kiosk') === '1' || p.get('kiosk') === 'true' || p.get('fullscreen') === '1' || p.get('tablet') === '1';
+      
+      // Generic resolution presets
+      var PRESETS = {
+        'native': { w: 800, h: 480 },
+        'esp32': { w: 800, h: 480 },
+        'tablet8': { w: 1024, h: 600 },
+        'tablet43': { w: 1024, h: 768 },
+        'tablet10': { w: 1280, h: 800 },
+        '720p': { w: 1280, h: 720 },
+        'tablet10-hd': { w: 1920, h: 1200 },
+        'tablet10p': { w: 1920, h: 1200 },
+        '1080p': { w: 1920, h: 1080 }
+      };
+
+      // Check for dimension pattern (e.g. 1024x768, res=1024x768, or raw ?1024x768)
+      var customW = null, customH = null;
+      var rawKeys = [];
+      p.forEach(function(val, key) {
+        rawKeys.push(key);
+        if (key && !val) rawKeys.push(key);
+      });
+      
+      // Match WxH in query string
+      var dimMatch = search.match(/(\d{3,4})x(\d{3,4})/i);
+      if (dimMatch) {
+        customW = parseInt(dimMatch[1], 10);
+        customH = parseInt(dimMatch[2], 10);
+      } else {
+        // Check named preset
+        var presetName = (p.get('res') || p.get('preset') || '').toLowerCase();
+        if (!presetName) {
+          for (var i = 0; i < rawKeys.length; i++) {
+            var k = rawKeys[i].toLowerCase();
+            if (PRESETS[k]) { presetName = k; break; }
+          }
+        }
+        if (presetName && PRESETS[presetName]) {
+          customW = PRESETS[presetName].w;
+          customH = PRESETS[presetName].h;
+        }
+      }
+
+      if (isKiosk && !customW) {
+        // Fluid fullscreen kiosk
         document.documentElement.classList.add('kiosk-mode');
         document.addEventListener('DOMContentLoaded', function() {
           document.body.classList.add('kiosk-mode');
+        });
+      } else if (customW && customH) {
+        // Specific custom resolution frame
+        document.addEventListener('DOMContentLoaded', function() {
+          var frame = document.getElementById('app');
+          var note = document.querySelector('.note span');
+          if (frame) {
+            frame.style.width = customW + 'px';
+            frame.style.height = customH + 'px';
+            frame.style.maxWidth = '100vw';
+            frame.style.maxHeight = '100vh';
+          }
+          if (note) {
+            note.textContent = 'Custom Controller Frame (' + customW + '×' + customH + ')';
+          }
+          if (isKiosk) {
+            document.documentElement.classList.add('kiosk-custom-res');
+            document.body.classList.add('kiosk-custom-res');
+          }
         });
       }
     })();

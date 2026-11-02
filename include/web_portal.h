@@ -99,6 +99,8 @@ static void handle_get(WebServer& w){
     text_row("Device ID", "devid", cfg::device_id, "The player this panel controls (GET /device-v2/devices/mine).") +
     "<h2>Clock</h2>" +
     tz_select() +
+    "<h2>Security &amp; PIN</h2>" +
+    text_row("Parent 4-Digit PIN", "pin", cfg::parent_pin, "Protects Grown-ups settings on the device touch screen (default 1234).") +
     "<button type='submit'>Save</button></form>"
     "<p><small>WiFi and credential changes take effect after a reboot: "
     "<a href='/reboot'>reboot now</a>.</small></p>"
@@ -116,6 +118,7 @@ static void handle_post(WebServer& w){
   v = w.arg("csec");  if(v.length()) cfg::client_secret = v;
   v = w.arg("devid"); if(v.length()) cfg::device_id     = v;
   v = w.arg("tz");    if(v.length()) cfg::tz            = v;
+  v = w.arg("pin");   if(v.length() == 4) cfg::parent_pin   = v;
   cfg::save();
   v = w.arg("rt");
   if(v.length()) yoto::set_refresh(v);                  // also clears the cached access token

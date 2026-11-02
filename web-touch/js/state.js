@@ -2,8 +2,9 @@
  * Central State Store & Screen State Management
  */
 export const state = {
-  screen: 'profile', // 'profile' | 'catalog' | 'detail' | 'now' | 'grownups' | 'offline'
+  screen: 'profile', // 'profile' | 'catalog' | 'detail' | 'now' | 'grownups' | 'offline' | 'screensaver'
   previousScreen: null, // screen to return to after recovering from offline or grown-ups
+  saverPreviousScreen: null, // screen to restore when waking from screensaver
   isOffline: false,
   mode: 'core', // 'core' (default, with child profiles) | 'standalone' (direct Yoto player list, no profiles)
   lockPlayer: false, // true = locked to assigned player; false = choose player on the fly
@@ -16,6 +17,7 @@ export const state = {
   activeDevice: null,
   isDevicePickerOpen: false,
   activeTab: 'all',  // 'all' | 'abs' | 'yoto' | 'series'
+  guActiveTab: 'sleep', // 'sleep' | 'target' | 'display' | 'network'
   card: null,           // Card currently active / playing on player
   previewCard: null,    // Card currently being inspected in detail view
   chapterIndex: 0,
@@ -26,16 +28,20 @@ export const state = {
     sleepTimerMode: 'bedtime', // 'bedtime' (only activate timer during bedtime hours) | 'always' (all the time)
     screensaverMin: 10,
     bedtime: '19:00',
-    wakeTime: '07:00'
+    wakeTime: '07:00',
+    brightness: 80, // 10% to 100% display backlight
+    clockSize: 2    // 0 = small, 1 = medium, 2 = large
   },
   sleepTimerRemainingSec: 0, // countdown ticker in seconds
   localSessionActive: false, // true ONLY if current audio was initiated/controlled on this screen
   blockRemotePlayback: true, // guard against accidental playback to away/traveling players
-  parentPin: null, // 4-digit string
+  parentPin: '1234', // default 1234 matching docs and firmware
   pinMode: 'unlock', // 'unlock' | 'setup' | 'confirm' | 'change'
   currentEnteredPin: '',
   tempSetupPin: '',
   isPinError: false,
+  failedPinAttempts: 0,
+  pinLockoutUntil: 0,
 
   init() {
     try {

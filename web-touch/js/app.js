@@ -7,6 +7,7 @@ import { DetailScreen } from './screens/detail.js';
 import { PlayerScreen } from './screens/player.js';
 import { GrownUpsScreen } from './screens/grownups.js';
 import { PinScreen } from './screens/pin.js';
+import { ScreensaverScreen } from './screens/screensaver.js';
 
 /**
  * Main Controller & Event Router
@@ -30,6 +31,7 @@ const App = {
     this.bindEvents();
     this.bindGearHoldTimer();
     this.startSleepTimerTicker();
+    this.startInactivityTracker();
     this.bootstrap();
   },
 
@@ -127,6 +129,9 @@ Are you sure you want to start audio playback on this remote player?`);
         this.container.innerHTML = GrownUpsScreen.render();
         this.bindGrownUpsEvents();
         break;
+      case 'screensaver':
+        this.container.innerHTML = ScreensaverScreen.render();
+        break;
       case 'offline':
         this.container.innerHTML = `
           <div class="profile-screen" style="text-align:center; padding:40px;">
@@ -179,7 +184,7 @@ Are you sure you want to start audio playback on this remote player?`);
 
     if (hasCard) {
       state.isPlaying = Boolean(dev.is_playing);
-      if (dev.volume != null && state.volume === 50) {
+      if (dev.volume != null) {
         state.volume = Math.min(dev.volume_max != null ? dev.volume_max : 100, dev.volume);
       }
 
@@ -238,6 +243,11 @@ Are you sure you want to start audio playback on this remote player?`);
     });
 
     this.container.addEventListener('click', (e) => {
+      // 0. Dismiss screensaver on any tap/click
+      if (state.screen === 'screensaver') {
+        this.exitScreensaver();
+        return;
+      }
       // 1. Profile Card Selection
       const card = e.target.closest('[data-profile]');
       if (card) {
@@ -280,9 +290,9 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
       }
 
-      // 3. Tab Navigation (All / ABS / Yoto)
-      const tab = e.target.closest('[data-tab]');
-      if (tab) {
+      // 3. Catalog Tab Navigation (All / Series / ABS / Yoto)
+      const tab = e.target.closest('.tab-btn[data-tab]');
+      if (tab && state.screen === 'catalog') {
         state.setActiveTab(tab.dataset.tab);
         this.render();
         return;
@@ -375,16 +385,35 @@ Are you sure you want to start audio playback on this remote player?`);
               if (state.pinMode === 'unlock') {
                 if (entered === state.parentPin) {
                   state.currentEnteredPin = '';
+                  state.failedPinAttempts = 0;
                   state.setScreen('grownups');
                   this.render();
                 } else {
                   state.isPinError = true;
                   state.currentEnteredPin = '';
-                  this.render();
-                  setTimeout(() => {
-                    state.isPinError = false;
+                  state.failedPinAttempts = (state.failedPinAttempts || 0) + 1;
+                  
+                  if (state.failedPinAttempts >= 3) {
+                    state.pinLockoutUntil = Date.now() + 10000; // 10 second penalty delay
                     this.render();
-                  }, 400);
+                    const lockoutInterval = setInterval(() => {
+                      if (Date.now() >= state.pinLockoutUntil) {
+                        clearInterval(lockoutInterval);
+                        state.pinLockoutUntil = 0;
+                        state.failedPinAttempts = 0;
+                        state.isPinError = false;
+                        this.render();
+                      } else {
+                        this.render();
+                      }
+                    }, 1000);
+                  } else {
+                    this.render();
+                    setTimeout(() => {
+                      state.isPinError = false;
+                      this.render();
+                    }, 400);
+                  }
                 }
               } else if (state.pinMode === 'setup') {
                 state.tempSetupPin = entered;
@@ -427,6 +456,14 @@ Are you sure you want to start audio playback on this remote player?`);
             }, 100);
           }
         }
+        return;
+      }
+
+      // Grown-ups Tab Navigation
+      const guTabBtn = e.target.closest('[data-act="gu-tab"]');
+      if (guTabBtn) {
+        state.guActiveTab = guTabBtn.dataset.tab;
+        this.render();
         return;
       }
 
@@ -524,6 +561,33 @@ Are you sure you want to start audio playback on this remote player?`);
         state.parentSettings.screensaverMin = parseInt(guSaverBtn.dataset.val, 10);
         state.persistParentSettings();
         this.render();
+        return;
+      }
+
+      // Grown-ups Clock Size
+      const guClockSizeBtn = e.target.closest('[data-act="gu-set-clock-size"]');
+      if (guClockSizeBtn) {
+        state.parentSettings.clockSize = parseInt(guClockSizeBtn.dataset.val, 10);
+        state.persistParentSettings();
+        this.render();
+        return;
+      }
+
+      // Grown-ups Restart Action
+      const guRestartBtn = e.target.closest('[data-act="gu-restart"]');
+      if (guRestartBtn) {
+        if (confirm("Restart this controller?")) {
+          window.location.reload();
+        }
+        return;
+      }
+
+      // Grown-ups Re-pair Action
+      const guRepairBtn = e.target.closest('[data-act="gu-re-pair"]');
+      if (guRepairBtn) {
+        state.deviceToken = null;
+        state.setScreen('profile');
+        this.bootstrap();
         return;
       }
 
@@ -661,6 +725,7 @@ Are you sure you want to start audio playback on this remote player?`);
           const cur = state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50);
           const newVol = Math.max(0, Math.min(maxLimit, cur - 10));
           state.volume = newVol;
+          if (state.activeDevice) state.activeDevice.volume = newVol;
           this.render();
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
           return;
@@ -671,6 +736,7 @@ Are you sure you want to start audio playback on this remote player?`);
           const cur = state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50);
           const newVol = Math.min(maxLimit, cur + 10);
           state.volume = newVol;
+          if (state.activeDevice) state.activeDevice.volume = newVol;
           this.render();
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
           return;
@@ -684,6 +750,7 @@ Are you sure you want to start audio playback on this remote player?`);
           const rawVol = Math.round(ratio * 100);
           const newVol = Math.min(maxLimit, rawVol);
           state.volume = newVol;
+          if (state.activeDevice) state.activeDevice.volume = newVol;
           this.render();
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
           return;
@@ -746,6 +813,19 @@ Are you sure you want to start audio playback on this remote player?`);
     if (wakeInput) {
       wakeInput.addEventListener('change', (e) => {
         state.parentSettings.wakeTime = e.target.value;
+        state.persistParentSettings();
+      });
+    }
+
+    const brightnessSlider = document.getElementById('guBrightnessSlider');
+    const brightnessLabel = document.getElementById('guBrightnessLabel');
+    if (brightnessSlider) {
+      brightnessSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        state.parentSettings.brightness = val;
+        if (brightnessLabel) brightnessLabel.textContent = `${val}%`;
+      });
+      brightnessSlider.addEventListener('change', (e) => {
         state.persistParentSettings();
       });
     }
@@ -918,9 +998,72 @@ Are you sure you want to start audio playback on this remote player?`);
   /**
    * Starts 1Hz sleep timer countdown ticker.
    */
+  /**
+   * Tracks user interaction across the kiosk frame and triggers the night-clock screensaver upon inactivity.
+   */
+  startInactivityTracker() {
+    this._lastActivityTime = Date.now();
+
+    const onUserActivity = () => {
+      this._lastActivityTime = Date.now();
+      // If currently on screensaver, wake up on any interaction
+      if (state.screen === 'screensaver') {
+        this.exitScreensaver();
+      }
+    };
+
+    // Attach listeners on both window and document for full kiosk coverage
+    ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(evt => {
+      window.addEventListener(evt, onUserActivity, { passive: true });
+    });
+  },
+
+  /**
+   * Evaluates inactivity against parentSettings.screensaverMin.
+   */
+  checkInactivity() {
+    const saverMin = state.parentSettings.screensaverMin ?? 10;
+    if (saverMin <= 0) return; // 0 = off
+
+    // Do not trigger screensaver if already active, offline, or inside pin / grownups portal
+    if (state.screen === 'screensaver' || state.screen === 'offline' || state.screen === 'pin' || state.screen === 'grownups') {
+      return;
+    }
+
+    const idleMs = Date.now() - (this._lastActivityTime || Date.now());
+    const thresholdMs = saverMin * 60 * 1000;
+
+    if (idleMs >= thresholdMs) {
+      this.enterScreensaver();
+    }
+  },
+
+  enterScreensaver() {
+    console.log('[Screensaver] Inactivity threshold reached. Transitioning to Night Clock.');
+    state.saverPreviousScreen = state.screen || 'profile';
+    state.setScreen('screensaver');
+    this.render();
+  },
+
+  exitScreensaver() {
+    console.log('[Screensaver] Waking from Night Clock.');
+    this._lastActivityTime = Date.now();
+    const returnTo = state.saverPreviousScreen || 'profile';
+    state.saverPreviousScreen = null;
+    state.setScreen(returnTo);
+    this.render();
+  },
+
   startSleepTimerTicker() {
     if (this._sleepTicker) return;
     this._sleepTicker = setInterval(() => {
+      // Check inactivity for screensaver transition
+      this.checkInactivity();
+
+      // If screensaver is actively displaying, re-render every second to tick the clock/colors
+      if (state.screen === 'screensaver') {
+        this.render();
+      }
       const isPlaying = Boolean(state.isPlaying || state.activeDevice?.is_playing);
       if (!isPlaying) {
         return;

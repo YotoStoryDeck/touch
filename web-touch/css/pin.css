@@ -114,3 +114,13 @@
   border-color: #d8d0c0;
 }
 
+
+.pin-keypad.locked-out {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.pin-key:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
