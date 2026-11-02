@@ -123,6 +123,12 @@ To run the Touch UI on a wall-mounted tablet, phone, or browser without physical
 
 ---
 
+## 📐 Development & Engineering Standards
+
+StoryDeck Touch follows a strict **Dual-Platform Parity Standard**: the browser simulator (web-touch/) and native ESP32-S3 firmware (src/main.cpp, LVGL) are maintained as exact mirror images. Detailed development workflows, compilation approval gates, and hardware specifications are documented in [**STANDARDS.md**](STANDARDS.md).
+
+---
+
 ## 🤖 AI Development Notice
 
 This project utilizes artificial intelligence (AI) tools, including Anthropic Claude and Google Gemini / Antigravity, to assist in user interface design, embedded driver routines, simulator engineering, and technical documentation. All AI-assisted implementations are reviewed, tested, and validated against physical ESP32-S3 hardware displays and local simulation environments.
