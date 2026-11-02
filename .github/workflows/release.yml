@@ -56,6 +56,12 @@ jobs:
           echo "prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
           echo "Resolved Tag: ${TAG} (Pre-release: ${IS_PRERELEASE})"
 
+      - name: Configure Firmware Build Seeds
+        run: |
+          if [ ! -f include/secrets.h ]; then
+            cp include/secrets.h.example include/secrets.h
+          fi
+
       - name: Build Waveshare ESP32-S3 Firmware
         run: |
           pio run -e waveshare-s3-43b
