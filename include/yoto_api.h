@@ -44,7 +44,11 @@ inline void begin(){
   s_prefs.begin("yoto", false);
   s_refresh = s_prefs.getString("refresh", "");
   if(s_refresh.isEmpty()){
+#ifdef YOTO_SEED_REFRESH
     s_refresh = YOTO_SEED_REFRESH;
+#else
+    s_refresh = "";
+#endif
     s_prefs.putString("refresh", s_refresh);
   }
   s_access = s_prefs.getString("access", "");
