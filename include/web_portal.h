@@ -83,7 +83,15 @@ static String wifi_picker(){
   String h = "<label>Network name (SSID)<div style='display:flex;gap:8px;margin-top:4px'>";
   h += "<select id='wf_sel' onchange='var el=document.getElementById(\"wf_in\");if(this.value)el.value=this.value' style='width:50%;margin-top:0'>";
   h += "<option value=''>-- Select nearby WiFi --</option>";
-  int n = WiFi.scanNetworks(false, true);
+
+  // If in AP or AP_STA mode, pause background STA retries so the single radio can hop channels
+  if(WiFi.getMode() & WIFI_MODE_AP){
+    WiFi.disconnect(false);
+    delay(50);
+  }
+
+  // Active scan without hidden SSIDs (async=false, show_hidden=false, passive=false, max_ms_per_chan=200)
+  int n = WiFi.scanNetworks(false, false, false, 200);
   if(n > 0){
     for(int i = 0; i < n; i++){
       String ssid = WiFi.SSID(i);
