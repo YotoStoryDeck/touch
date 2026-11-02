@@ -39,6 +39,15 @@ jobs:
         run: |
           pip install --upgrade platformio
 
+      - name: Print Build Environment & Checked-Out Ref
+        run: |
+          echo "GITHUB_REF: ${GITHUB_REF}"
+          echo "GITHUB_REF_NAME: ${GITHUB_REF_NAME}"
+          echo "GITHUB_SHA: ${GITHUB_SHA}"
+          echo "=== Touch Git Repository Status ==="
+          git rev-parse HEAD
+          git status
+
       - name: Determine Tag & Release Classification
         id: meta
         run: |
