@@ -335,6 +335,7 @@ static int  s_sleep_sec=0;
 // grown-ups settings screen + night-clock screensaver
 static lv_obj_t* s_scr_settings=nullptr;
 static lv_obj_t* s_scr_error=nullptr;
+static lv_obj_t* s_scr_pin=nullptr;
 static lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
 static lv_timer_t* s_gear_timer=nullptr;    // hold-the-gear-to-open timer
 static lv_obj_t* s_scr_saver=nullptr;
@@ -369,6 +370,7 @@ static bool fetch_card_detail(int i);    // fwd
 static bool sd_chap_read(const String& id);  // fwd (SD chapter cache read)
 static void play_yoto_daily(int idx);    // fwd
 static void open_settings();             // fwd
+static void open_pin_modal(bool for_settings_change=false); // fwd
 static void show_error(const char* title, const char* message, const char* action_hint=nullptr); // fwd
 static void net_init_and_fetch();         // fwd
 static void saver_open();                // fwd
@@ -463,7 +465,7 @@ static void minibar_toggle_cb(lv_event_t*){ np_toggle(); }   // np_toggle() refr
 
 // settings gear: a deliberate 2.5s HOLD opens the grown-ups screen — a quick kid-tap does
 // nothing. The pending timer is cancelled the moment the finger lifts or slides off.
-static void gear_open_cb(lv_timer_t*){ s_gear_timer=nullptr; open_settings(); }
+static void gear_open_cb(lv_timer_t*){ s_gear_timer=nullptr; open_pin_modal(false); }
 static void gear_event_cb(lv_event_t* e){
   lv_event_code_t c = lv_event_get_code(e);
   if(c==LV_EVENT_PRESSED && !s_gear_timer){
@@ -1371,6 +1373,7 @@ static void go_home(){
   if(s_scr_detail){   lv_obj_del_async(s_scr_detail);   s_scr_detail=nullptr; }
   if(s_scr_now){      lv_obj_del_async(s_scr_now);      s_scr_now=nullptr; }
   if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
+  if(s_scr_pin){ lv_obj_del_async(s_scr_pin); s_scr_pin=nullptr; }
 }
 
 // A one-second burst of soft confetti dots floating up the now-playing screen — the
@@ -1811,6 +1814,198 @@ static void show_error(const char* title, const char* message, const char* actio
   lv_refr_now(lv_disp_get_default());
 }
 
+
+// ---------------- Parent PIN Keypad Modal (pin.js parity) ----------------
+static String s_pin_entered = "";
+static int    s_pin_fails = 0;
+static uint32_t s_pin_lockout_until = 0;
+static lv_obj_t* s_pin_dots[4] = {nullptr, nullptr, nullptr, nullptr};
+static lv_obj_t* s_pin_msg_lbl = nullptr;
+static bool s_pin_change_mode = false;
+static String s_pin_new_temp = "";
+
+static void update_pin_dots(){
+  int len = s_pin_entered.length();
+  for(int i = 0; i < 4; i++){
+    if(s_pin_dots[i]){
+      if(i < len){
+        lv_obj_set_style_bg_color(s_pin_dots[i], lv_color_hex(0xE5352B), 0);
+      } else {
+        lv_obj_set_style_bg_color(s_pin_dots[i], lv_color_hex(0xE2DCD2), 0);
+      }
+    }
+  }
+}
+
+static void close_pin_modal(){
+  s_pin_entered = "";
+  if(s_scr_pin){
+    lv_obj_t* p = s_scr_pin;
+    s_scr_pin = nullptr;
+    if(s_scr_home) lv_scr_load(s_scr_home);
+    else if(s_scr_error) lv_scr_load(s_scr_error);
+    lv_obj_del_async(p);
+  }
+}
+
+static void pin_digit_cb(lv_event_t* e){
+  if(millis() < s_pin_lockout_until) return; // locked out
+  const char* val = (const char*)lv_event_get_user_data(e);
+  if(!val) return;
+
+  if(strcmp(val, "C") == 0){
+    s_pin_entered = "";
+    update_pin_dots();
+    if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, s_pin_change_mode ? "Enter new 4-digit PIN" : "Enter 4-digit PIN to access Grown-ups settings");
+    return;
+  }
+  if(strcmp(val, "<") == 0){
+    if(s_pin_entered.length() > 0){
+      s_pin_entered.remove(s_pin_entered.length() - 1);
+      update_pin_dots();
+    }
+    return;
+  }
+
+  if(s_pin_entered.length() < 4){
+    s_pin_entered += val[0];
+    update_pin_dots();
+  }
+
+  // Auto-validate once 4 digits entered
+  if(s_pin_entered.length() == 4){
+    if(s_pin_change_mode){
+      // PIN change mode: saves new PIN to NVS
+      cfg::parent_pin = s_pin_entered;
+      cfg::save();
+      if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, "PIN changed successfully!");
+      lv_refr_now(lv_disp_get_default());
+      delay(600);
+      close_pin_modal();
+      return;
+    }
+
+    if(s_pin_entered == cfg::parent_pin){
+      s_pin_fails = 0;
+      s_pin_entered = "";
+      if(s_scr_pin){
+        lv_obj_t* p = s_scr_pin;
+        s_scr_pin = nullptr;
+        open_settings();
+        lv_obj_del_async(p);
+      }
+    } else {
+      s_pin_fails++;
+      s_pin_entered = "";
+      update_pin_dots();
+      if(s_pin_fails >= 3){
+        s_pin_lockout_until = millis() + 10000;
+        if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, "Too many attempts! Locked for 10s");
+      } else {
+        if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, "Incorrect PIN. Try again.");
+      }
+    }
+  }
+}
+
+static void open_pin_modal(bool for_settings_change){
+  s_pin_change_mode = for_settings_change;
+  s_pin_entered = "";
+
+  lv_obj_t* scr = lv_obj_create(NULL);
+  s_scr_pin = scr;
+  lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
+
+  // Close / Cancel button (top-left)
+  lv_obj_t* back = lv_btn_create(scr);
+  lv_obj_set_size(back, 52, 52);
+  lv_obj_set_pos(back, 14, 14);
+  lv_obj_set_style_radius(back, 26, 0);
+  lv_obj_set_style_bg_color(back, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_shadow_width(back, 8, 0);
+  lv_obj_set_style_shadow_opa(back, LV_OPA_30, 0);
+  lv_obj_add_event_cb(back, [](lv_event_t*){ close_pin_modal(); }, LV_EVENT_CLICKED, NULL);
+  lv_obj_t* bk = lv_label_create(back);
+  lv_label_set_text(bk, LV_SYMBOL_CLOSE);
+  lv_obj_set_style_text_font(bk, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(bk, lv_color_hex(0x23303A), 0);
+  lv_obj_center(bk);
+
+  // Modal Title
+  lv_obj_t* title = lv_label_create(scr);
+  lv_label_set_text(title, for_settings_change ? "Change Parent PIN" : "Parent PIN Required");
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+
+  // Subtitle / message
+  s_pin_msg_lbl = lv_label_create(scr);
+  lv_label_set_text(s_pin_msg_lbl, for_settings_change ? "Enter new 4-digit PIN" : "Enter 4-digit PIN to access Grown-ups settings");
+  lv_obj_set_style_text_font(s_pin_msg_lbl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(s_pin_msg_lbl, lv_color_hex(0x7A7060), 0);
+  lv_obj_align(s_pin_msg_lbl, LV_ALIGN_TOP_MID, 0, 60);
+
+  // 4 PIN Dots indicator container
+  lv_obj_t* dcont = lv_obj_create(scr);
+  lv_obj_set_size(dcont, 160, 36);
+  lv_obj_align(dcont, LV_ALIGN_TOP_MID, 0, 95);
+  lv_obj_set_style_bg_opa(dcont, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(dcont, 0, 0);
+  lv_obj_set_style_pad_all(dcont, 0, 0);
+  lv_obj_set_flex_flow(dcont, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(dcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(dcont, LV_OBJ_FLAG_SCROLLABLE);
+
+  for(int i = 0; i < 4; i++){
+    s_pin_dots[i] = lv_obj_create(dcont);
+    lv_obj_set_size(s_pin_dots[i], 20, 20);
+    lv_obj_set_style_radius(s_pin_dots[i], 10, 0);
+    lv_obj_set_style_bg_color(s_pin_dots[i], lv_color_hex(0xE2DCD2), 0);
+    lv_obj_set_style_border_width(s_pin_dots[i], 0, 0);
+  }
+
+  // 3x4 Keypad Container
+  lv_obj_t* kpad = lv_obj_create(scr);
+  lv_obj_set_size(kpad, 360, 310);
+  lv_obj_align(kpad, LV_ALIGN_BOTTOM_MID, 0, -15);
+  lv_obj_set_style_bg_opa(kpad, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(kpad, 0, 0);
+  lv_obj_set_style_pad_all(kpad, 0, 0);
+  lv_obj_set_style_pad_row(kpad, 10, 0);
+  lv_obj_set_style_pad_column(kpad, 16, 0);
+  lv_obj_set_flex_flow(kpad, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_align(kpad, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(kpad, LV_OBJ_FLAG_SCROLLABLE);
+
+  static const char* keys[12] = {
+    "1", "2", "3",
+    "4", "5", "6",
+    "7", "8", "9",
+    "C", "0", "<"
+  };
+
+  for(int i = 0; i < 12; i++){
+    lv_obj_t* btn = lv_btn_create(kpad);
+    lv_obj_set_size(btn, 98, 62);
+    lv_obj_set_style_radius(btn, 14, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xF3E9D8), LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(btn, 1, 0);
+    lv_obj_set_style_border_color(btn, lv_color_hex(0xE7E0D2), 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_add_event_cb(btn, pin_digit_cb, LV_EVENT_CLICKED, (void*)keys[i]);
+
+    lv_obj_t* l = lv_label_create(btn);
+    lv_label_set_text(l, keys[i]);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(0x23303A), 0);
+    lv_obj_center(l);
+  }
+
+  lv_scr_load(scr);
+  lv_refr_now(lv_disp_get_default());
+}
+
 static void open_settings(){
   lv_obj_t* scr = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
@@ -1831,6 +2026,14 @@ static void open_settings(){
 
   lv_obj_t* title = lv_label_create(scr);
   lv_label_set_text(title, "Grown-ups");
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
+  lv_obj_set_pos(title, 80, 24);
+
+  lv_obj_t* chg_pin = pill_btn(scr, "Change PIN", 0, [](lv_event_t*){ open_pin_modal(true); });
+  lv_obj_set_size(chg_pin, 140, 44);
+  lv_obj_set_pos(chg_pin, LCD_H_RES - 160, 18);
+  lv_obj_set_style_text_font(lv_obj_get_child(chg_pin, 0), &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
   lv_obj_set_pos(title, 80, 24);
