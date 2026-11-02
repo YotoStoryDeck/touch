@@ -11,6 +11,19 @@
 
 namespace core {
 
+struct Profile {
+  String id;
+  String display_name;
+  String avatar_url;
+  String default_player_id;
+  String default_player_name;
+};
+
+#define MAX_PROFILES 8
+static Profile s_profiles[MAX_PROFILES];
+static int     s_profile_count = 0;
+static int     s_active_profile_idx = 0;
+
 static String s_access_token = "";
 static bool   s_is_registered = false;
 static bool   s_is_approved = false;
@@ -76,7 +89,49 @@ inline bool register_device(const String& base_url, String& err_out){
   return false;
 }
 
-// 3. Playback Dispatch via Core Hub
+// 3. Fetch Device Config & Child Profiles
+inline bool fetch_config_and_profiles(const String& base_url){
+  if(base_url.length() == 0) return false;
+  HTTPClient http;
+  http.begin(base_url + "/api/device/config?device_id=" + get_mac());
+  if(s_access_token.length() > 0){
+    http.addHeader("Authorization", String("Bearer ") + s_access_token);
+  }
+  http.setTimeout(5000);
+  int code = http.GET();
+  if(code != 200){ http.end(); return false; }
+
+  String body = http.getString();
+  http.end();
+
+  JsonDocument doc;
+  if(deserializeJson(doc, body)) return false;
+
+  const char* pin = doc["parent_pin"];
+  if(pin && strlen(pin) == 4){
+    cfg::parent_pin = pin;
+    cfg::save();
+  }
+
+  s_profile_count = 0;
+  JsonArray profs = doc["profiles"].as<JsonArray>();
+  for(JsonObject p : profs){
+    if(s_profile_count >= MAX_PROFILES) break;
+    s_profiles[s_profile_count].id = (const char*)(p["id"] | "");
+    s_profiles[s_profile_count].display_name = (const char*)(p["display_name"] | "Child");
+    String av = (const char*)(p["avatar_url"] | "");
+    if(av.startsWith("/")){
+      av = base_url + av;
+    }
+    s_profiles[s_profile_count].avatar_url = av;
+    s_profiles[s_profile_count].default_player_id = (const char*)(p["default_player_id"] | "");
+    s_profiles[s_profile_count].default_player_name = (const char*)(p["default_player_name"] | "Yoto Player");
+    s_profile_count++;
+  }
+  return (s_profile_count > 0);
+}
+
+// 4. Playback Dispatch via Core Hub
 inline int play_media(const String& base_url, const String& child_id, const String& card_type, const String& media_id, const String& device_id, int chapter_idx){
   if(base_url.length() == 0) return -1;
   HTTPClient http;
@@ -102,7 +157,7 @@ inline int play_media(const String& base_url, const String& child_id, const Stri
   return code;
 }
 
-// 4. Transport Control (pause, resume, stop, volume)
+// 5. Transport Control (pause, resume, stop, volume)
 inline int player_control(const String& base_url, const String& device_id, const char* action, int volume = -1){
   if(base_url.length() == 0) return -1;
   HTTPClient http;
@@ -127,4 +182,3 @@ inline int player_control(const String& base_url, const String& device_id, const
 }
 
 } // namespace core
-
