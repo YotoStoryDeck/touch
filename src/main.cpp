@@ -554,6 +554,17 @@ static void gear_event_cb(lv_event_t* e){
 
 // Rebuild the home bottom bar from current state: left = device status; right = either the
 // idle hint, or a mini now-playing (title + chapter, play/pause, tap-to-open).
+
+// Resolve friendly display name of the target player (from active profile or configured device ID)
+static String get_active_player_name(){
+  if(cfg::op_mode == "core" && core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
+    const String& pn = core::s_profiles[core::s_active_profile_idx].default_player_name;
+    if(pn.length() > 0) return pn;
+  }
+  if(cfg::device_id.length() > 0) return String("Player ") + cfg::device_id;
+  return "Yoto Player";
+}
+
 static void update_home_bar(){
   if(!s_bar) return;
   // the gear is about to be deleted+rebuilt — if a finger was mid-hold on it, the deleted
@@ -571,7 +582,7 @@ static void update_home_bar(){
   lv_obj_align(dot, LV_ALIGN_LEFT_MID, 16, 0);
 
   lv_obj_t* name=lv_label_create(s_bar);
-  lv_label_set_text(name, "Kiddo's Yoto");
+  lv_label_set_text(name, get_active_player_name().c_str());
   lv_obj_set_style_text_font(name, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(name, lv_color_hex(0x3A6B50), 0);
   lv_obj_align(name, LV_ALIGN_LEFT_MID, 36, 0);
@@ -596,7 +607,7 @@ static void update_home_bar(){
     s_barlabel=lv_label_create(s_bar);
     lv_obj_set_style_text_font(s_barlabel, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(s_barlabel, lv_color_hex(0x9A9384), 0);
-    lv_label_set_text(s_barlabel, "");   // idle: left dot + "Kiddo's Yoto" is enough
+    lv_label_set_text(s_barlabel, "");   // idle: left dot + player name is enough
     lv_obj_align(s_barlabel, LV_ALIGN_LEFT_MID, 188, 0);
     return;
   }
@@ -1656,7 +1667,7 @@ static void open_now(){
   lv_obj_set_style_text_color(cl, lv_color_hex(0xFFFFFF), 0); lv_obj_center(cl);
 
   lv_obj_t* top=lv_label_create(scr);
-  lv_label_set_text(top, "Playing on Kiddo's Yoto");
+  lv_label_set_text_fmt(top, "Playing on %s", get_active_player_name().c_str());
   lv_obj_set_style_text_font(top, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(top, lv_color_hex(0xFFFFFF), 0);
   lv_obj_align(top, LV_ALIGN_TOP_MID, 0, 24);
@@ -2548,10 +2559,12 @@ static void open_settings(){
   lv_label_set_text_fmt(diag,
     "IP Address: %s      Wi-Fi RSSI: %d dBm\n"
     "SSID: %s            Core Host: %s\n"
+    "Player Target: %s (%s)\n"
     "Cards in catalog: %d     SD cache: %s\n"
     "Free Heap: %u KB         Built: %s",
     ip.c_str(), (int)WiFi.RSSI(),
     cfg::wifi_ssid.c_str(), cfg::core_url.length() ? cfg::core_url.c_str() : "None (Standalone)",
+    get_active_player_name().c_str(), cfg::device_id.length() ? cfg::device_id.c_str() : "None",
     s_card_count, sd.c_str(),
     (unsigned)(ESP.getFreeHeap()/1024), __DATE__);
   lv_obj_set_style_text_font(diag, &lv_font_montserrat_18, 0);
@@ -3052,12 +3065,18 @@ static void net_init_and_fetch(){
 
     status("Fetching library...");
     bool lib_fetched = false;
-    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-      lib_fetched = fetch_library_core();
-      if(!lib_fetched){
-        show_error("Core Catalog Failed",
-                   "Could not load media catalog from StoryDeck Core.",
-                   "Check Core server health and network link in Settings.");
+    if(cfg::op_mode == "core"){
+      if(cfg::core_url.length() > 0){
+        lib_fetched = fetch_library_core();
+        if(!lib_fetched){
+          show_error("Core Catalog Failed",
+                     "Could not load media catalog from StoryDeck Core.",
+                     "Check Core server health and network link in Settings.");
+        }
+      } else {
+        show_error("Core URL Needed",
+                   "StoryDeck Core Managed mode is active, but Core URL is empty.",
+                   "Open Settings below or visit http://<ip>/settings to set Core URL.");
       }
     } else {
       lib_fetched = fetch_library();
@@ -3074,7 +3093,7 @@ static void net_init_and_fetch(){
   }
   // Live device state over MQTT — start once the library is in (so event cardIds resolve to
   // grid tiles) and a token exists. begin() self-guards against a second start.
-  if(s_lib_ok) ymqtt::begin(cfg::device_id);
+  if(s_lib_ok && cfg::op_mode != "core") ymqtt::begin(cfg::device_id);
   if(s_lib_ok && (WiFi.getMode() & WIFI_MODE_AP)){
     WiFi.softAPdisconnect(true);            // drop the setup hotspot once we're properly online
     WiFi.mode(WIFI_STA);

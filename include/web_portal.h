@@ -120,17 +120,17 @@ static void handle_get(WebServer& w){
     "small{font-weight:400;color:#9a9384}"
     "button{background:#e5352b;color:#fff;border:0;border-radius:11px;padding:12px 22px;font-size:1.05em;font-weight:700;margin-top:14px}"
     "a{color:#e5352b}.info{background:#fff;border-radius:11px;padding:10px 14px;font-size:.9em;color:#666}"
-    "</style><script>
-function toggleModeFields(){
-  var m = document.getElementById("mode_sel").value;
-  var isCore = (m === "core");
-  var cSec = document.getElementById("core_sec");
-  var ySec = document.getElementById("yoto_sec");
-  if(cSec) cSec.style.display = isCore ? "block" : "none";
-  if(ySec) ySec.style.display = isCore ? "none" : "block";
-}
-window.addEventListener("DOMContentLoaded", toggleModeFields);
-</script></head><body><h1>Yoto Controller settings</h1>"
+    "</style><script>"
+    "function toggleModeFields(){\n"
+    "  var m = document.getElementById('mode_sel').value;\n"
+    "  var isCore = (m === 'core');\n"
+    "  var cSec = document.getElementById('core_sec');\n"
+    "  var ySec = document.getElementById('yoto_sec');\n"
+    "  if(cSec) cSec.style.display = isCore ? 'block' : 'none';\n"
+    "  if(ySec) ySec.style.display = isCore ? 'none' : 'block';\n"
+    "}\n"
+    "window.addEventListener('DOMContentLoaded', toggleModeFields);\n"
+    "</script></head><body><h1>Yoto Controller settings</h1>"
     "<div class=info>IP " + WiFi.localIP().toString() +
     " &middot; WiFi " + String(WiFi.RSSI()) + " dBm"
     " &middot; free RAM " + String(ESP.getFreeHeap()/1024) + " KB"
@@ -148,9 +148,10 @@ window.addEventListener("DOMContentLoaded", toggleModeFields);
     "<h2>Yoto account</h2>" +
     text_row("Client ID", "cid", cfg::client_id) +
     secret_row("Client secret", "csec", "From the Yoto developer dashboard.") +
-    secret_row("Refresh token", "rt", "Paste a fresh one (from .yoto_tokens.json after oauth_login.py) to re-seed — e.g. after a re-login that added scopes.") +
-    text_row("Device ID", "devid", cfg::device_id, "The player this panel controls (GET /device-v2/devices/mine).") +
+    secret_row("Refresh token", "rt", "Paste a fresh one (from .yoto_tokens.json after oauth_login.py) to re-seed.") +
     "</div>" +
+    "<h2>Hardware Player Target</h2>" +
+    text_row("Default Player ID", "devid", cfg::device_id, "The Yoto player this hardware screen commands.") +
     "<h2>Clock</h2>" +
     tz_select() +
     "<h2>Security &amp; PIN</h2>" +
