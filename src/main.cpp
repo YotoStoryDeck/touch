@@ -26,6 +26,7 @@
 #include "secrets.h"
 #include "app_config.h"   // NVS-backed runtime settings (cfg::)
 #include "yoto_api.h"     // direct-to-Yoto client
+#include "core_api.h"     // StoryDeck Core client (broker parity)
 #include "yoto_mqtt.h"    // on-board MQTT live-state feed (reflects what's REALLY playing)
 #include "web_portal.h"   // /settings web page (WiFi + credentials without reflashing)
 #include <pngle.h>        // PNG decoder for CDN cover art (book covers)
@@ -1198,11 +1199,28 @@ static void open_detail(int i){
 
 // ---------------- now-playing screen + playback ----------------
 static int send_cmd(const char* name, const String& body){
-  // Translate the slim app command into a real Yoto device command, clamp volume to the
-  // parent-set cap, then POST to api.yotoplay.com.
   JsonDocument in;
-  deserializeJson(in, body);            // body may be "{}" — that's fine
-  String nm(name), cmd, payload;
+  deserializeJson(in, body);
+  String nm(name);
+
+  // If running in Core Managed mode and Core URL is set, dispatch through StoryDeck Core
+  if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+    if(nm == "play"){
+      const char* cid = in["id"];
+      int chIdx = 0;
+      const char* ck = in["chapterKey"];
+      if(ck && *ck) chIdx = atoi(ck);
+      return core::play_media(cfg::core_url, "default", "yoto", cid ? cid : "", cfg::device_id, chIdx);
+    } else if(nm == "volume"){
+      int v = (int)(in["volume"] | 30); if(v < 0) v = 0; if(v > cfg::vol_max) v = cfg::vol_max;
+      return core::player_control(cfg::core_url, cfg::device_id, "volume", v);
+    } else {
+      return core::player_control(cfg::core_url, cfg::device_id, nm.c_str());
+    }
+  }
+
+  // Standalone mode: Translate the slim app command into a direct Yoto device command
+  String cmd, payload;
   if(nm == "play"){
     cmd = "card/start";
     JsonDocument p;
@@ -2591,9 +2609,24 @@ static void ota_begin(){
 static void net_init_and_fetch(){
   if(!s_net_ready){
     configTzTime(cfg::tz.c_str(), "pool.ntp.org", "time.nist.gov");   // screensaver clock
-    yoto::refresh();                        // mint a fresh access token before the first call
+    if(cfg::op_mode != "core"){
+      yoto::refresh();                        // mint a fresh access token before the first call
+    }
     s_net_ready = true;
   }
+
+  // Core mode registration handshake
+  if(cfg::op_mode == "core" && cfg::core_url.length() > 0 && !core::s_is_registered){
+    status("Registering with StoryDeck Core...");
+    String err;
+    if(!core::register_device(cfg::core_url, err)){
+      show_error("Core Kiosk Registration",
+                 err.c_str(),
+                 "Authorize this kiosk in Core Admin or verify the Core URL in Settings.");
+      return;
+    }
+  }
+
   if(!s_lib_ok){
     status("Fetching library...");
     if(fetch_library()){ build_grid(); load_thumbs(); s_lib_ok = true; }

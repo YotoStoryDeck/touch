@@ -48,6 +48,14 @@ static String secret_row(const char* label, const char* name, const char* hint){
 // needs (it has no zoneinfo database), but the user only ever sees city names. If NVS holds
 // a string that isn't one of the presets (hand-set custom zone), it appears as a selected
 // "Custom" entry so saving the form never silently rewrites it.
+static String mode_select(){
+  String h = "<label>Operational Mode<select name='mode'>";
+  h += String("<option value='standalone'") + (cfg::op_mode != "core" ? " selected" : "") + ">Standalone Cloud (Direct Yoto API)</option>";
+  h += String("<option value='core'") + (cfg::op_mode == "core" ? " selected" : "") + ">StoryDeck Core Managed (Hub + Profiles)</option>";
+  h += "</select><small>Choose whether this screen connects directly to Yoto Cloud or your local StoryDeck Core server.</small></label>";
+  return h;
+}
+
 static String tz_select(){
   static const struct { const char* label; const char* val; } zones[] = {
     {"US Eastern (New York)",    "EST5EDT,M3.2.0,M11.1.0"},
@@ -113,6 +121,9 @@ static void handle_get(WebServer& w){
     "<h2>WiFi (2.4 GHz only)</h2>" +
     wifi_picker() +
     secret_row("Password", "pass", "Saved on the board, used at next boot.") +
+    "<h2>StoryDeck Integration</h2>" +
+    mode_select() +
+    text_row("StoryDeck Core URL", "curl", cfg::core_url, "Local hub address (e.g. http://192.168.1.11:5060). Required for Core Managed mode.") +
     "<h2>Yoto account</h2>" +
     text_row("Client ID", "cid", cfg::client_id) +
     secret_row("Client secret", "csec", "From the Yoto developer dashboard.") +
@@ -138,6 +149,8 @@ static void handle_post(WebServer& w){
   v = w.arg("cid");   if(v.length()) cfg::client_id     = v;
   v = w.arg("csec");  if(v.length()) cfg::client_secret = v;
   v = w.arg("devid"); if(v.length()) cfg::device_id     = v;
+  v = w.arg("mode");  if(v.length()) cfg::op_mode       = v;
+  v = w.arg("curl");  cfg::core_url = v;
   v = w.arg("tz");    if(v.length()) cfg::tz            = v;
   v = w.arg("pin");   if(v.length() == 4) cfg::parent_pin   = v;
   cfg::save();
