@@ -262,10 +262,16 @@ static void flick_stress_task(void*){
 #define THUMB_W   160
 #define THUMB_H   254                       // 160 * 1011/638 — 4-up grid, ~19mm tiles (bigger tap target)
 #define THUMB_SZ  (THUMB_W*THUMB_H*2)      // RGB565 bytes per cover (81280); ~4.0MB PSRAM for 49 covers
+enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_ABS=2, TAB_YOTO=3 };
+static TabFilter s_active_tab = TAB_ALL;
+
 struct Card {
   String id; String title;
   String lp;                               // lastPlayedAt (direct-API path sorts on it)
   String cover;                            // cover imageL URL (direct-API: fetch+decode from CDN)
+  String source="yoto";                    // "yoto" or "abs"
+  String series="";                        // optional series / collection name
+  int    sequence=0;                       // book sequence in series
   bool   daily=false;                      // synthetic "Yoto Daily" tile — one-tap, plays today
   lv_obj_t* tile=nullptr;                  // the lv_img tile in the grid
   uint8_t*  thumb=nullptr;                 // PSRAM RGB565 buffer (persists for image lifetime)
@@ -385,7 +391,43 @@ static void tile_cb(lv_event_t* e){
   else                 open_detail(i);
 }
 
+
+static bool card_matches_active_tab(const Card& c){
+  if(s_active_tab == TAB_ALL) return true;
+  if(s_active_tab == TAB_YOTO) return (c.source == "yoto" || c.daily);
+  if(s_active_tab == TAB_ABS)  return (c.source == "abs");
+  if(s_active_tab == TAB_SERIES) return (c.series.length() > 0);
+  return true;
+}
+
+static void apply_tab_filter(){
+  for(int i = 0; i < s_card_count; i++){
+    if(s_cards[i].tile){
+      if(card_matches_active_tab(s_cards[i])){
+        lv_obj_clear_flag(s_cards[i].tile, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(s_cards[i].tile, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+  }
+}
+
 static lv_obj_t* s_grid=nullptr;
+
+static void tab_btn_cb(lv_event_t* e){
+  int tab = (int)(intptr_t)lv_event_get_user_data(e);
+  s_active_tab = (TabFilter)tab;
+  lv_obj_t* bar = lv_obj_get_parent(lv_event_get_target(e));
+  uint32_t cnt = lv_obj_get_child_cnt(bar);
+  for(uint32_t i = 0; i < cnt; i++){
+    lv_obj_t* b = lv_obj_get_child(bar, i);
+    bool sel = (i == (uint32_t)tab);
+    lv_obj_set_style_bg_color(b, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
+    lv_obj_t* lbl = lv_obj_get_child(b, 0);
+    if(lbl) lv_obj_set_style_text_color(lbl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
+  }
+  apply_tab_filter();
+}
 
 static void build_grid(){
   lv_obj_clean(lv_scr_act());
@@ -394,11 +436,42 @@ static void build_grid(){
   s_scr_home=scr;
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 
-  // scrollable grid container
+  // Top Tab Navigation Bar (catalog.js parity)
+  lv_obj_t* nav = lv_obj_create(scr);
+  lv_obj_set_size(nav, LCD_H_RES, 50);
+  lv_obj_align(nav, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_bg_color(nav, lv_color_hex(0xF4EDE0), 0);
+  lv_obj_set_style_border_width(nav, 0, 0);
+  lv_obj_set_style_pad_all(nav, 6, 0);
+  lv_obj_set_style_pad_column(nav, 10, 0);
+  lv_obj_set_flex_flow(nav, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
+
+  static const char* tab_names[4] = {"All Books", "Series", "Audiobooks", "Yoto Cards"};
+  for(int t = 0; t < 4; t++){
+    lv_obj_t* tb = lv_btn_create(nav);
+    lv_obj_set_size(tb, 140, 38);
+    lv_obj_set_style_radius(tb, 19, 0);
+    bool sel = (t == (int)s_active_tab);
+    lv_obj_set_style_bg_color(tb, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(tb, 1, 0);
+    lv_obj_set_style_border_color(tb, lv_color_hex(0xE7E0D2), 0);
+    lv_obj_set_style_shadow_width(tb, 0, 0);
+    lv_obj_add_event_cb(tb, tab_btn_cb, LV_EVENT_CLICKED, (void*)(intptr_t)t);
+
+    lv_obj_t* tl = lv_label_create(tb);
+    lv_label_set_text(tl, tab_names[t]);
+    lv_obj_set_style_text_font(tl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(tl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
+    lv_obj_center(tl);
+  }
+
+  // scrollable grid container (offset 52px for the top nav tab bar)
   lv_obj_t* cont=lv_obj_create(scr);
   s_grid=cont;
-  lv_obj_set_size(cont, LCD_H_RES, 410);
-  lv_obj_align(cont, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_size(cont, LCD_H_RES, 360);
+  lv_obj_align(cont, LV_ALIGN_TOP_MID, 0, 50);
   lv_obj_set_style_bg_color(cont, lv_color_hex(0xFBF7F0), 0);
   lv_obj_set_style_border_width(cont, 0, 0);
   // 4 columns of 160px tiles: 4*160 + 3*20 gap = 700; centered in the 800-wide row with ~32px
