@@ -8,6 +8,10 @@
 #include <Preferences.h>
 #include "secrets.h"
 
+#ifndef STORYDECK_VERSION
+#define STORYDECK_VERSION "dev"
+#endif
+
 namespace cfg {
 
 static Preferences s_prefs;

@@ -73,6 +73,8 @@ jobs:
           fi
 
       - name: Build Waveshare ESP32-S3 Firmware
+        env:
+          STORYDECK_VERSION: ${{ steps.meta.outputs.tag }}
         run: |
           pio run -e waveshare-s3-43b
           mkdir -p dist

@@ -134,7 +134,7 @@ static void handle_get(WebServer& w){
     "<div class=info>IP " + WiFi.localIP().toString() +
     " &middot; WiFi " + String(WiFi.RSSI()) + " dBm"
     " &middot; free RAM " + String(ESP.getFreeHeap()/1024) + " KB"
-    " &middot; <a href='/update'>firmware update</a></div>"
+    " &middot; v" STORYDECK_VERSION " &middot; <a href='/update'>firmware update</a></div>"
     "<form method='POST' action='/settings'>"
     "<h2>Device Identity</h2>" +
     text_row("Device Friendly Name", "kname", cfg::kiosk_name, "Host and display name for this controller panel.") +

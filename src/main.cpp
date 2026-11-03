@@ -2706,12 +2706,12 @@ static void open_settings(){
     "SSID: %s            Core Host: %s\n"
     "Player Target: %s (%s)\n"
     "Cards in catalog: %d     SD cache: %s\n"
-    "Free Heap: %u KB         Built: %s",
+    "Free Heap: %u KB         Version: %s (%s)",
     ip.c_str(), (int)WiFi.RSSI(),
     cfg::wifi_ssid.c_str(), cfg::core_url.length() ? cfg::core_url.c_str() : "None (Standalone)",
     get_active_player_name().c_str(), cfg::device_id.length() ? cfg::device_id.c_str() : "None",
     s_card_count, sd.c_str(),
-    (unsigned)(ESP.getFreeHeap()/1024), __DATE__);
+    (unsigned)(ESP.getFreeHeap()/1024), STORYDECK_VERSION, __DATE__);
   lv_obj_set_style_text_font(diag, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(diag, lv_color_hex(0x23303A), 0);
 
