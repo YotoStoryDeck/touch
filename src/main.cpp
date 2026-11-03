@@ -1960,6 +1960,7 @@ void net_init_and_fetch(){
       }
     }
 
+  Serial.printf("[HEAP] after-config: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     status("Fetching library...");
     bool lib_fetched = false;
     if(cfg::op_mode == "core"){
@@ -1980,6 +1981,7 @@ void net_init_and_fetch(){
     }
 
     if(lib_fetched){
+  Serial.printf("[HEAP] after-catalog: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
       build_grid();
       load_thumbs();
       s_lib_ok = true;
@@ -2030,6 +2032,7 @@ void setup(){
     else WiFi.setHostname("yoto-controller");
   }
   WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);                     // no modem-sleep: pm_dream wake re-enables the PHY and aborts if internal RAM is empty
   WiFi.begin(cfg::wifi_ssid.c_str(), cfg::wifi_pass.c_str());
 
   // hardware: backlight + panel + touch

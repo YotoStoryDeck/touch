@@ -54,6 +54,45 @@ inline bool ping(const String& base_url){
   return (code == 200);
 }
 
+// ---- PSRAM-backed response handling ----
+// getString() + a default JsonDocument allocate from INTERNAL RAM. Core's config/catalog
+// bodies are tens of KB; together with the LVGL draw buffer they exhaust internal heap and
+// the WiFi PHY's tiny esp_timer_create() (modem-sleep wake) aborts with ESP_ERR_NO_MEM.
+struct PsramAlloc : ArduinoJson::Allocator {
+  void* allocate(size_t n) override           { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM); }
+  void  deallocate(void* p) override          { heap_caps_free(p); }
+  void* reallocate(void* p, size_t n) override{ return heap_caps_realloc(p, n, MALLOC_CAP_SPIRAM); }
+};
+
+// Read an OPEN response fully into a NUL-terminated PSRAM buffer (caller free()s).
+inline char* read_body(HTTPClient& http, size_t& outLen){
+  outLen = 0;
+  int len = http.getSize();
+  WiFiClient* stream = http.getStreamPtr();
+  size_t cap = (len > 0) ? (size_t)len + 1 : 16384;
+  char* buf = (char*)heap_caps_malloc(cap, MALLOC_CAP_SPIRAM);
+  if(!buf) return nullptr;
+  size_t got = 0; uint32_t t0 = millis();
+  while(len < 0 || got < (size_t)len){
+    size_t avail = stream->available();
+    if(avail){
+      if(got + avail + 1 > cap){
+        size_t ncap = cap * 2;
+        char* n = (char*)heap_caps_realloc(buf, ncap, MALLOC_CAP_SPIRAM);
+        if(!n) break;
+        buf = n; cap = ncap;
+      }
+      int n = stream->readBytes(buf + got, min(avail, cap - 1 - got));
+      if(n > 0){ got += n; t0 = millis(); }
+    } else if(!http.connected()){ break; }
+    else if(millis() - t0 > 15000){ break; }
+    else delay(1);
+  }
+  buf[got] = '\0';
+  outLen = got;
+  return buf;
+}
+
 // 2. Kiosk Device Registration
 inline bool register_device(const String& base_url, String& err_out){
   if(base_url.length() == 0){
@@ -117,11 +156,13 @@ inline bool fetch_config_and_profiles(const String& base_url){
   int code = http.GET();
   if(code != 200){ http.end(); return false; }
 
-  String body = http.getString();
+  size_t blen = 0; char* body = read_body(http, blen);
   http.end();
-
-  JsonDocument doc;
-  if(deserializeJson(doc, body)) return false;
+  if(!body) return false;
+  PsramAlloc palloc; JsonDocument doc(&palloc);
+  DeserializationError jerr = deserializeJson(doc, (const char*)body, blen);
+  free(body);
+  if(jerr) return false;
 
   const char* pin = doc["parent_pin"];
   if(pin && strlen(pin) == 4){
@@ -210,11 +251,13 @@ inline bool fetch_catalog(const String& base_url, const String& child_id, void (
     http.setTimeout(9000);
     int code = http.GET();
     if(code != 200){ http.end(); return; }
-    String body = http.getString();
+    size_t blen = 0; char* body = read_body(http, blen);
     http.end();
-
-    JsonDocument doc;
-    if(deserializeJson(doc, body)) return;
+    if(!body) return;
+    PsramAlloc palloc; JsonDocument doc(&palloc);
+    DeserializationError jerr = deserializeJson(doc, (const char*)body, blen);
+    free(body);
+    if(jerr) return;
     for(JsonObject item : doc.as<JsonArray>()){
       String id = (const char*)(item["id"] | item["card_id"] | "");
       if(id.length() == 0) continue;
@@ -246,11 +289,13 @@ inline bool fetch_media_tracks(const String& base_url, const String& media_id, S
   http.setTimeout(9000);
   int code = http.GET();
   if(code != 200){ http.end(); return false; }
-  String body = http.getString();
+  size_t blen = 0; char* body = read_body(http, blen);
   http.end();
-
-  JsonDocument doc;
-  if(deserializeJson(doc, body)) return false;
+  if(!body) return false;
+  PsramAlloc palloc; JsonDocument doc(&palloc);
+  DeserializationError jerr = deserializeJson(doc, (const char*)body, blen);
+  free(body);
+  if(jerr) return false;
   const char* t = doc["title"];
   if(t && *t) title_out = t;
   JsonArray tracks = doc["tracks"].as<JsonArray>();
