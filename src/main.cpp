@@ -154,6 +154,27 @@ static void ensure_hotspot_active();
 lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
 static lv_timer_t* s_gear_timer=nullptr;    // hold-the-gear-to-open timer
 static bool s_lib_ok=false;                 // library fetched + grid built
+
+// ---- crash-loop guard ----
+// RTC_NOINIT memory survives panic/abort/WDT resets (but not power loss). Each crash-type
+// boot bumps the counter; a stable minute of uptime clears it. At BOOT_CRASH_LIMIT
+// consecutive crashes we boot into SAFE MODE: no automatic Core/Yoto fetching, setup
+// hotspot + setup screen + OTA only, so the board is always recoverable.
+#include <esp_system.h>
+#define BOOT_CRASH_LIMIT 3
+static RTC_NOINIT_ATTR uint32_t s_crash_magic;
+static RTC_NOINIT_ATTR uint32_t s_crash_count;
+static bool s_safe_mode = false;
+static bool s_crash_cleared = false;
+static void crash_guard_init(){
+  esp_reset_reason_t r = esp_reset_reason();
+  if(s_crash_magic != 0xC0FFEE42){ s_crash_magic = 0xC0FFEE42; s_crash_count = 0; }
+  bool crashed = (r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT ||
+                  r == ESP_RST_WDT || r == ESP_RST_BROWNOUT);
+  if(crashed) s_crash_count++; else s_crash_count = 0;   // power-on / clean restart = fresh start
+  s_safe_mode = (s_crash_count >= BOOT_CRASH_LIMIT);
+  Serial.printf("[BOOT] reset reason=%d crashes=%u safe_mode=%d\n", (int)r, (unsigned)s_crash_count, (int)s_safe_mode);
+}
 static bool s_net_ready=false;              // NTP/token init done after WiFi came up
 
 static void status(const char* msg){
@@ -1764,7 +1785,7 @@ static void show_error(const char* title, const char* message, const char* actio
     lv_obj_set_style_text_color(lv_obj_get_child(b_hs, 0), lv_color_hex(0xFFFFFF), 0);
   }
 
-  lv_obj_t* b_try = pill_btn(bcont, "Retry", 0, [](lv_event_t*){ net_init_and_fetch(); });
+  lv_obj_t* b_try = pill_btn(bcont, "Retry", 0, [](lv_event_t*){ s_safe_mode = false; net_init_and_fetch(); });
   lv_obj_set_size(b_try, 140, 56);
 
   lv_scr_load(s_scr_error);
@@ -2011,11 +2032,13 @@ void net_init_and_fetch(){
 }
 static void net_retry_cb(lv_timer_t* t){
   if(s_lib_ok){ lv_timer_del(t); return; }
+  if(s_safe_mode) return;                   // wait for a manual Retry
   if(WiFi.status() == WL_CONNECTED) net_init_and_fetch();
 }
 
 void setup(){
   Serial.begin(115200); Serial.setTxTimeoutMs(0);
+  crash_guard_init();
   // Route mbedTLS's big allocations (the two ~17KB SSL buffers per connection) to PSRAM.
   // Internal RAM fragments once the UI is up and can no longer host them — every runtime
   // HTTPS call died with "SSL - Memory allocation failed" (chapters, covers, commands).
@@ -2086,7 +2109,12 @@ void setup(){
   }
   lv_timer_create(tick_cb, 1000, NULL);     // 1 Hz heartbeat: progress/sleep timer/screensaver
 
-  if(WiFi.status()==WL_CONNECTED){
+  if(s_safe_mode){
+    start_hotspot();
+    show_error("Safe Mode",
+               (String("The controller crashed ") + (unsigned)s_crash_count + " times in a row while starting, so automatic loading was skipped.").c_str(),
+               "Open Settings to check WiFi / Core URL, then tap Retry. OTA updates still work.");
+  } else if(WiFi.status()==WL_CONNECTED){
     status((String("WiFi OK: ") + WiFi.localIP().toString() + "\nFetching library...").c_str());
     net_init_and_fetch();
     // (on fetch failure, status() already shows the reason; the retry timer keeps trying)
@@ -2107,6 +2135,7 @@ void setup(){
 }
 
 void loop(){
+  if(!s_crash_cleared && millis() > 60000){ s_crash_cleared = true; s_crash_count = 0; }
   ArduinoOTA.handle();        // cheap polls when idle; block only during an actual update
   s_ota_web.handleClient();
   ElegantOTA.loop();
