@@ -83,6 +83,61 @@ jobs:
           cp .pio/build/waveshare-s3-43b/bootloader.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-bootloader.bin || true
           cp .pio/build/waveshare-s3-43b/partitions.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-partitions.bin || true
 
+      - name: Generate Changelog & Release Notes
+        id: changelog
+        run: |
+          git fetch --tags --force
+
+          TAG="${{ steps.meta.outputs.tag }}"
+          IS_PRERELEASE="${{ steps.meta.outputs.prerelease }}"
+
+          echo "Resolving previous tag for changelog comparison..."
+          if [ "${IS_PRERELEASE}" = "true" ]; then
+            # Pre-release: Compare against the immediate previous tag (stable or pre-release)
+            PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n 1 || true)
+            echo "Pre-release: Previous tag resolved to '${PREV_TAG:-none}'"
+          else
+            # Full release: Compare against previous full/stable release (exclude pre-releases with '-')
+            PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -n 1 || true)
+            echo "Full release: Previous stable tag resolved to '${PREV_TAG:-none}'"
+          fi
+
+          NOTES_FILE="release_notes.md"
+          rm -f "${NOTES_FILE}"
+
+          # Mimic donetick pre-release warning callout
+          if [ "${IS_PRERELEASE}" = "true" ]; then
+            cat << 'EOF' >> "${NOTES_FILE}"
+> [!WARNING]
+> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions.
+
+EOF
+          fi
+
+          echo "## Changelog" >> "${NOTES_FILE}"
+
+          if [ -n "${PREV_TAG}" ]; then
+            COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"* %H: %s (@%an)")
+            if [ -n "${COMMITS}" ]; then
+              echo "${COMMITS}" >> "${NOTES_FILE}"
+            else
+              echo "* Maintenance release / no commit delta" >> "${NOTES_FILE}"
+            fi
+            echo "" >> "${NOTES_FILE}"
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}" >> "${NOTES_FILE}"
+          else
+            COMMITS=$(git log --pretty=format:"* %H: %s (@%an)")
+            if [ -n "${COMMITS}" ]; then
+              echo "${COMMITS}" >> "${NOTES_FILE}"
+            else
+              echo "* Initial release" >> "${NOTES_FILE}"
+            fi
+            echo "" >> "${NOTES_FILE}"
+          fi
+
+          echo "Generated release notes:"
+          cat "${NOTES_FILE}"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -91,7 +146,7 @@ jobs:
           name: StoryDeck Touch ${{ steps.meta.outputs.tag }}
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           draft: false
-          generate_release_notes: true
+          body_path: release_notes.md
           files: |
             dist/*
 
