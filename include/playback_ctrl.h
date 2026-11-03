@@ -179,10 +179,22 @@ static void tick_cb(lv_timer_t*){
   }
 
   if(s_sleep_sec > 0){
-    s_sleep_sec--;
-    if(s_sleep_sec == 0){
-      if(s_playing){ s_playing = false; np_set_playicon(); update_home_bar(); }
-      send_cmd("stop", "{}");
+    // Kiosk Sleep Timer Safety Gates:
+    // 1. Never stop an away/traveling player
+    const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
+    if(pi && pi->online && !pi->is_home){
+      s_sleep_sec = 0;
+    } else if(!cfg::sleep_bedtime || is_bedtime_now()){
+      s_sleep_sec--;
+      if(s_sleep_sec == 0){
+        if(s_playing && s_local_session_active){
+          s_playing = false;
+          s_local_session_active = false;
+          np_set_playicon();
+          update_home_bar();
+          send_cmd("stop", "{}");
+        }
+      }
     }
     if(s_set_sleep_lbl){ char b[24]; fmt_sleep(b, sizeof b); lv_label_set_text(s_set_sleep_lbl, b); }
   }
@@ -201,8 +213,16 @@ static void tick_cb(lv_timer_t*){
 // Every command below paints its new UI state FIRST (lv_refr_now) and only then does the
 // blocking TLS POST — taps feel instant instead of "dead" for the network round-trip,
 // which is exactly when a 7yo taps again and double-fires.
+static void arm_sleep_timer_if_needed(){
+  s_local_session_active = true;
+  if(cfg::sleep_min > 0 && s_sleep_sec == 0 && (!cfg::sleep_bedtime || is_bedtime_now())){
+    s_sleep_sec = cfg::sleep_min * 60;
+  }
+}
+
 static void np_goto_chapter(int k){
   if(k<0 || k>=s_ch_count) return;
+  arm_sleep_timer_if_needed();
   s_cur_ch=k; s_pos=0; s_playing=true;
   s_play_card=s_cur_card; s_play_ch=k;                 // keep the mini-player in sync
   s_play_author=s_cards[s_cur_card].author;
@@ -231,6 +251,17 @@ static void play_from(int chapterIdx){
   }
   if(chapterIdx >= s_ch_count) chapterIdx = 0;
 
+  // Away / Traveling Player Guard (cfg::block_remote parity with Kiosk initiatePlayback)
+  const core::PlayerInfo* target_pi = core::find_player_info(cfg::device_id);
+  if(target_pi && target_pi->online && !target_pi->is_home && cfg::block_remote){
+    Serial.printf("[PLAY] Blocked playback to away player %s (block_remote=1)\n", cfg::device_id.c_str());
+    if(s_detail_play_lbl){
+      lv_label_set_text(s_detail_play_lbl, "Blocked: Player is Away");
+      lv_refr_now(lv_disp_get_default());
+    }
+    return;
+  }
+
   // Kiosk initiatePlayback() parity: show "Starting..." feedback and confirm dispatch before switching to Now Playing
   if(s_detail_play_lbl){
     lv_label_set_text(s_detail_play_lbl, "Starting...");
@@ -243,6 +274,7 @@ static void play_from(int chapterIdx){
   int code = send_cmd("play", payload);
 
   if(code >= 200 && code < 300){
+    arm_sleep_timer_if_needed();
     s_cur_ch = chapterIdx; s_pos = 0; s_playing = true;
     s_play_card = s_cur_card; s_play_ch = chapterIdx;
     s_play_title = s_detail_title.length() ? s_detail_title : s_cards[s_cur_card].title;

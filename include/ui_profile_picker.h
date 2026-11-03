@@ -1,6 +1,6 @@
 #pragma once
 // Child Profile Carousel and Avatar Loader
-// StoryDeck Core multi-profile selection
+// StoryDeck Core multi-profile selection (100% parity with web-touch/js/screens/profile.js)
 #include <Arduino.h>
 #include <lvgl.h>
 #include "time.h"
@@ -17,6 +17,7 @@ extern int       s_card_count;
 extern bool      fetch_library_core();
 extern void      build_grid();
 extern void      load_thumbs();
+extern void      update_home_bar();
 
 
 // ---------------- Child Profile Selection Screen (profile.js parity) ----------------
@@ -32,11 +33,27 @@ static const char* get_time_greeting(){
   return "WHO IS LISTENING?";
 }
 
+// Kiosk App.syncActiveDevicePlayback() parity: sync target player's live volume/playing state on profile switch
+static void sync_active_device_playback(){
+  const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
+  if(!pi) return;
+  if(pi->volume > 0){
+    int vmax = pi->volume_max > 0 ? pi->volume_max : cfg::vol_max;
+    s_vol = pi->volume > vmax ? vmax : pi->volume;
+  }
+  if(pi->is_playing){
+    s_playing = true;
+  }
+}
+
 static void profile_card_cb(lv_event_t* e){
   int idx = (int)(intptr_t)lv_event_get_user_data(e);
   if(idx >= 0 && idx < core::s_profile_count){
     core::s_active_profile_idx = idx;
     cfg::device_id = core::resolve_active_device_id(idx);
+    cfg::save();
+    sync_active_device_playback();
+
     // Load s_scr_home and schedule s_scr_profile deletion before rebuilding the catalog grid
     if(s_scr_profile){
       lv_obj_t* p = s_scr_profile;
@@ -68,12 +85,13 @@ void open_profile_picker(){
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
   lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
-  // Settings Gear button (top right)
+  // Settings Gear button (top right) -> opens Parent PIN modal -> Grown-Ups Settings
   lv_obj_t* gear = lv_btn_create(scr);
   lv_obj_set_size(gear, 52, 52);
   lv_obj_set_pos(gear, LCD_H_RES - 68, 14);
   lv_obj_set_style_radius(gear, 26, 0);
   lv_obj_set_style_bg_color(gear, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(gear, lv_color_hex(0xE5352B), LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(gear, 8, 0);
   lv_obj_set_style_shadow_opa(gear, LV_OPA_30, 0);
   lv_obj_add_event_cb(gear, [](lv_event_t*){ s_scr_prev = s_scr_profile; open_pin_modal(false); }, LV_EVENT_CLICKED, NULL);
@@ -117,6 +135,7 @@ void open_profile_picker(){
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLL_ELASTIC);
 
   for(int i = 0; i < core::s_profile_count; i++){
+    core::Profile& pr = core::s_profiles[i];
     lv_obj_t* card = lv_btn_create(row);
     lv_obj_set_size(card, 180, 260);
     lv_obj_set_style_radius(card, 22, 0);
@@ -128,28 +147,32 @@ void open_profile_picker(){
     lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
     lv_obj_add_event_cb(card, profile_card_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
 
-    // Profile Avatar (Circular container with initial or placeholder)
+    // Profile Avatar (Circular container with profile's custom color and monogram/photo)
     lv_obj_t* av_box = lv_obj_create(card);
     lv_obj_set_size(av_box, 130, 130);
     lv_obj_set_style_radius(av_box, 65, 0);
     lv_obj_set_style_clip_corner(av_box, true, 0);
-    lv_obj_set_style_bg_color(av_box, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_bg_color(av_box, lv_color_hex(pr.avatar_color), 0);
     lv_obj_set_style_border_width(av_box, 0, 0);
     lv_obj_set_style_pad_all(av_box, 0, 0);
     lv_obj_align(av_box, LV_ALIGN_TOP_MID, 0, 16);
-    lv_obj_clear_flag(av_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(av_box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    // Check if avatar image is available and fetch/decode if not cached
+    // Only fetch/decode raster avatar if a custom uploaded photo URL is present (e.g. ?t=... or external http image).
+    // For default generated initial avatars (/api/avatar/<id> without ?t=), crisp native LVGL vector font looks
+    // sharper than a scaled 160->130 JPEG!
+    bool has_custom_photo = (pr.avatar_url.indexOf("?t=") >= 0) ||
+                            (pr.avatar_url.length() > 0 && pr.avatar_url.indexOf("/api/avatar/") < 0);
     bool av_loaded = false;
-    if(core::s_profiles[i].avatar_url.length() > 0){
+    if(has_custom_photo){
       const size_t AV_SZ = 130 * 130 * 2;
-      if(!core::s_profiles[i].avatar_buf){
-        core::s_profiles[i].avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
-        if(core::s_profiles[i].avatar_buf){
-          av_loaded = fetch_cover(core::s_profiles[i].avatar_url, 130, 130, core::s_profiles[i].avatar_buf);
+      if(!pr.avatar_buf){
+        pr.avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
+        if(pr.avatar_buf){
+          av_loaded = load_cover_cached(String("av_") + pr.id, pr.avatar_url, 130, 130, AV_SZ, pr.avatar_buf);
           if(!av_loaded){
-            free(core::s_profiles[i].avatar_buf);
-            core::s_profiles[i].avatar_buf = nullptr;
+            free(pr.avatar_buf);
+            pr.avatar_buf = nullptr;
           }
         }
       } else {
@@ -157,37 +180,41 @@ void open_profile_picker(){
       }
     }
 
-    if(av_loaded && core::s_profiles[i].avatar_buf){
+    if(av_loaded && pr.avatar_buf){
       lv_obj_t* av_img = lv_img_create(av_box);
       lv_obj_set_size(av_img, 130, 130);
-      set_img(core::s_profiles[i].avatar_dsc, av_img, core::s_profiles[i].avatar_buf, 130, 130, 130*130*2);
+      set_img(pr.avatar_dsc, av_img, pr.avatar_buf, 130, 130, 130*130*2);
+      lv_obj_clear_flag(av_img, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_center(av_img);
     } else {
-      // Fallback: Avatar Initial
+      // Crisp vector monogram using Core's household disambiguated initial (e.g. "J", "W", "Ja", "Jm")
       lv_obj_t* av_txt = lv_label_create(av_box);
-      char initial[2] = {core::s_profiles[i].display_name.length() > 0 ? core::s_profiles[i].display_name[0] : 'C', '\0'};
-      lv_label_set_text(av_txt, initial);
+      String mono = pr.avatar_initial.length() > 0 ? pr.avatar_initial : (pr.display_name.length() > 0 ? pr.display_name.substring(0, 1) : String("C"));
+      lv_label_set_text(av_txt, mono.c_str());
       lv_obj_set_style_text_font(av_txt, &lv_font_montserrat_36, 0);
       lv_obj_set_style_text_color(av_txt, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_clear_flag(av_txt, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_center(av_txt);
     }
 
     // Profile Name Label
     lv_obj_t* name = lv_label_create(card);
-    lv_label_set_text(name, core::s_profiles[i].display_name.c_str());
+    lv_label_set_text(name, pr.display_name.c_str());
     lv_obj_set_style_text_font(name, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(name, lv_color_hex(0x23303A), 0);
+    lv_obj_clear_flag(name, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(name, LV_ALIGN_BOTTOM_MID, 0, -42);
 
-    // Player assignment sub-label
+    // Player assignment sub-label (shows Locked player if Hardware Lock is active, else profile default player)
     lv_obj_t* target = lv_label_create(card);
-    lv_label_set_text(target, core::s_profiles[i].default_player_name.c_str());
+    String sub_player = cfg::lock_player ? get_active_player_name() : pr.default_player_name;
+    lv_label_set_text(target, sub_player.c_str());
     lv_obj_set_style_text_font(target, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(target, lv_color_hex(0x8A8276), 0);
+    lv_obj_clear_flag(target, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(target, LV_ALIGN_BOTTOM_MID, 0, -18);
   }
 
   lv_scr_load(scr);
   lv_refr_now(lv_disp_get_default());
 }
-

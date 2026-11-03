@@ -1,7 +1,6 @@
 import { state } from '../state.js';
 import { Utils } from '../config.js';
 import { PlayerScreen } from './player.js';
-
 /**
  * Screen 2: Catalog Browser & Navigation Component
  */
@@ -13,11 +12,9 @@ export const CatalogScreen = {
     const players = isStandalone ? state.getAllAvailablePlayers() : (p.players || []);
     const activeDev = state.activeDevice || state.resolveActiveDevice(isStandalone ? null : p);
     const hasMultiple = players.length > 1;
-
     const isAway = activeDev && activeDev.online && activeDev.is_home === false;
     const devStatusIcon = isAway ? '✈️' : (activeDev?.is_playing ? '▶' : (activeDev?.online ? '●' : '○'));
     const devStatusClass = isAway ? 'status-away' : (activeDev?.is_playing ? 'status-playing' : (activeDev?.online ? 'status-online' : 'status-offline'));
-
     // Dropdown options if picker is open (and player is not locked)
     const pickerDropdown = (state.isDevicePickerOpen && hasMultiple && !isLocked) ? `
       <div class="device-dropdown">
@@ -41,19 +38,17 @@ export const CatalogScreen = {
         }).join('')}
       </div>
     ` : '';
-
     return `
       <div class="topnav">
         <div class="topnav-left">
           ${!isStandalone ? `
-            <!-- Core Mode: Profile Selector Pill -->
-            <div class="prof-pill" data-act="switch-profile" title="Switch profile">
+            <!-- Core Mode: Profile Selector Pill (only clickable if allow_profile_switch is true) -->
+            <div class="prof-pill" ${state.deviceConfig?.allow_profile_switch !== false && state.profiles.length > 1 ? 'data-act="switch-profile" title="Switch profile"' : 'style="cursor:default;" title="Assigned profile"'}>
               ${p.avatar_url ? `<img src="${Utils.esc(p.avatar_url)}" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=${Utils.esc(p.id||'anon')}'">` : '<span style="font-size:16px;">👤</span>'}
               <span>${Utils.esc(p.display_name)}</span>
-              <span style="font-size:10px; color:#8a8276;">&#9660;</span>
+              ${state.deviceConfig?.allow_profile_switch !== false && state.profiles.length > 1 ? '<span style="font-size:10px; color:#8a8276;">&#9660;</span>' : ''}
             </div>
           ` : ''}
-
           <!-- Device / Player Selector Button (Primary identity in Standalone mode) -->
           <div class="device-pill-wrap">
             <div class="device-pill ${(!isLocked && hasMultiple) ? 'clickable' : ''}" 
@@ -67,7 +62,6 @@ export const CatalogScreen = {
             ${pickerDropdown}
           </div>
         </div>
-
         <div class="nav-tabs">
           <button class="tab-btn ${state.activeTab === 'all' ? 'active' : ''}" data-tab="all">All Books</button>
           <button class="tab-btn ${state.activeTab === 'series' ? 'active' : ''}" data-tab="series">Series / Groups</button>
@@ -80,20 +74,16 @@ export const CatalogScreen = {
       </div>
     `;
   },
-
   cleanTitle(t) {
     return (t || '').replace(/^(the|a|an)\s+/i, '').trim().toLowerCase();
   },
-
   renderSeriesView() {
     // Group books by series name, supporting cards belonging to multiple series/groups
     const groups = new Map();
-
     state.catalog.forEach(item => {
       const seriesEntries = (item.series_list && item.series_list.length > 0)
         ? item.series_list
         : (item.series ? [{ name: item.series, sequence: item.sequence }] : []);
-
       if (seriesEntries.length === 0) {
         const groupName = 'Standalone & Singles';
         if (!groups.has(groupName)) {
@@ -119,9 +109,7 @@ export const CatalogScreen = {
         });
       }
     });
-
     const shouldExcludeSingle = state.deviceConfig?.exclude_single_card_series !== false;
-
     // Filter out groups that have only 1 item if the setting is enabled
     const eligibleGroupNames = Array.from(groups.keys()).filter(name => {
       const count = (groups.get(name) || []).length;
@@ -130,21 +118,17 @@ export const CatalogScreen = {
       }
       return true;
     });
-
     // Sort series groups alphabetically ignoring 'The', 'A', 'An' (with standalone last)
     const sortedGroupNames = eligibleGroupNames.sort((a, b) => {
       if (a === 'Standalone & Singles') return 1;
       if (b === 'Standalone & Singles') return -1;
       return this.cleanTitle(a).localeCompare(this.cleanTitle(b));
     });
-
     if (!sortedGroupNames.length) {
       return '<div style="padding:40px; color:#888; text-align:center;">No multi-book series found in this library.</div>';
     }
-
     return sortedGroupNames.map(groupName => {
       const items = groups.get(groupName);
-
       // Sort books within series by group-specific sequence ascending, then clean title
       items.sort((a, b) => {
         const seqA = a.groupSequence != null ? a.groupSequence : 999999;
@@ -154,7 +138,6 @@ export const CatalogScreen = {
         }
         return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
       });
-
       const tiles = items.map(c => {
         let seqLabel = '';
         if (c.groupSequenceDisplay) {
@@ -162,7 +145,6 @@ export const CatalogScreen = {
         } else if (c.groupSequence != null) {
           seqLabel = `#${c.groupSequence % 1 === 0 ? c.groupSequence : c.groupSequence.toFixed(1)}`;
         }
-
         return `
           <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
             <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
@@ -172,7 +154,6 @@ export const CatalogScreen = {
           </div>
         `;
       }).join('');
-
       return `
         <div class="series-section">
           <div class="series-header">
@@ -186,7 +167,6 @@ export const CatalogScreen = {
       `;
     }).join('');
   },
-
   render() {
     if (state.activeTab === 'series') {
       return `
@@ -197,13 +177,11 @@ export const CatalogScreen = {
         ${PlayerScreen.renderNowbar()}
       `;
     }
-
     const filtered = state.catalog.filter(c => {
       if (state.activeTab === 'abs') return c.source === 'abs' || c.type === 'abs';
       if (state.activeTab === 'yoto') return c.source === 'yoto' || c.type === 'yoto';
       return true;
     });
-
     // In flat lists, sort highlights first, then by title ignoring articles 'The', 'A', 'An'
     filtered.sort((a, b) => {
       if (!!b.is_highlight !== !!a.is_highlight) {
@@ -211,7 +189,6 @@ export const CatalogScreen = {
       }
       return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
     });
-
     const tiles = filtered.map(c => `
       <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
         <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
@@ -219,7 +196,6 @@ export const CatalogScreen = {
         ${c.source === 'abs' || c.type === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
       </div>
     `).join('');
-
     return `
       ${this.renderTopNav()}
       <div class="grid">

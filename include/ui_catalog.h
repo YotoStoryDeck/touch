@@ -452,19 +452,22 @@ void build_grid(){
       }, LV_EVENT_CLICKED, NULL);
     }
 
+    const core::Profile& act_pr = core::s_profiles[core::s_active_profile_idx];
     lv_obj_t* idot = lv_obj_create(prof_btn);
     lv_obj_set_size(idot, 24, 24);
     lv_obj_set_style_radius(idot, 12, 0);
-    lv_obj_set_style_bg_color(idot, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_bg_color(idot, lv_color_hex(act_pr.avatar_color ? act_pr.avatar_color : 0xE5352B), 0);
     lv_obj_set_style_border_width(idot, 0, 0);
     lv_obj_set_style_pad_all(idot, 0, 0);
     lv_obj_clear_flag(idot, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(idot, LV_ALIGN_LEFT_MID, 7, 0);
 
     lv_obj_t* ilbl = lv_label_create(idot);
-    const String& cur_pname = core::s_profiles[core::s_active_profile_idx].display_name;
-    char ini[2] = {cur_pname.length() > 0 ? cur_pname[0] : 'P', '\0'};
-    lv_label_set_text(ilbl, ini);
+    const String& cur_pname = act_pr.display_name;
+    String ini_str = act_pr.avatar_initial.length() > 0
+                     ? act_pr.avatar_initial
+                     : (cur_pname.length() > 0 ? cur_pname.substring(0, 1) : String("P"));
+    lv_label_set_text(ilbl, ini_str.c_str());
     lv_obj_set_style_text_font(ilbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(ilbl, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(ilbl);

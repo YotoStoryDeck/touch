@@ -7,15 +7,11 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "secrets.h"
-
 #ifndef STORYDECK_VERSION
 #define STORYDECK_VERSION "dev"
 #endif
-
 namespace cfg {
-
 static Preferences s_prefs;
-
 // ---- connectivity / identity (web portal) ----
 static String kiosk_name;      // Friendly display name for this controller panel / hostname
 static String wifi_ssid;       // 2.4GHz only
@@ -27,18 +23,19 @@ static String op_mode;         // "core" (StoryDeck Core) vs "standalone" (Direc
 static String core_url;        // Base URL of StoryDeck Core container (e.g. http://192.168.1.11:5060)
 static bool   lock_player   = false; // Lock audio output to specific player vs profile roaming
 static String locked_dev_id = "";    // Locked player ID
-
 // ---- parent knobs (on-device settings screen) ----
-static int    vol_max   = 60;  // hard volume cap for little ears
-static int    saver_min = 10;  // idle minutes before the night-clock screensaver (0 = off)
-static int    wake_h    = 7;   // OK-to-wake: clock turns green at this time...
-static int    wake_m    = 0;
-static int    night_h   = 19;  // bedtime: clock turns red from this time...
-static int    night_m   = 0;
-static int    saver_size= 2;   // night-clock digit size: 0 small / 1 medium / 2 large
-static String tz;              // POSIX TZ for the clock (default US Eastern)
-static String parent_pin;      // 4-digit Grown-ups security PIN (default "1234")
-
+static int    vol_max      = 60;    // hard volume cap for little ears
+static int    sleep_min    = 0;     // sleep timer preset minutes (0 = Off / Continuous, 15, 30, 45, 60)
+static bool   sleep_bedtime= true;  // true = Bedtime Hours Only ("bedtime"), false = All the Time ("always")
+static bool   block_remote = true;  // true = Block Away Players, false = Allow / Prompt
+static int    saver_min    = 10;    // idle minutes before the night-clock screensaver (0 = off)
+static int    wake_h       = 7;     // OK-to-wake: clock turns green at this time...
+static int    wake_m       = 0;
+static int    night_h      = 19;    // bedtime: clock turns red from this time...
+static int    night_m      = 0;
+static int    saver_size   = 2;     // night-clock digit size: 0 small / 1 medium / 2 large
+static String tz;                   // POSIX TZ for the clock (default US Eastern)
+static String parent_pin;           // 4-digit Grown-ups security PIN (default "1234")
 static void load(){
   s_prefs.begin("appcfg", false);
   kiosk_name    = s_prefs.getString("kname", "StoryDeck Touch");
@@ -54,6 +51,9 @@ static void load(){
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
   parent_pin    = s_prefs.getString("pin",   "1234");
   vol_max       = s_prefs.getInt("volmax", 60);
+  sleep_min     = s_prefs.getInt("slpmin", 0);
+  sleep_bedtime = s_prefs.getBool("slpbed", true);
+  block_remote  = s_prefs.getBool("blkrem", true);
   saver_min     = s_prefs.getInt("saver",  10);
   wake_h        = s_prefs.getInt("wakeh",  7);
   wake_m        = s_prefs.getInt("wakem",  0);
@@ -61,7 +61,6 @@ static void load(){
   night_m       = s_prefs.getInt("nightm", 0);
   saver_size    = s_prefs.getInt("svsize", 2);
 }
-
 // Persist everything (NVS only rewrites changed keys, so blanket-saving is cheap).
 static void save(){
   s_prefs.putString("kname", kiosk_name);
@@ -77,6 +76,9 @@ static void save(){
   s_prefs.putString("tz",    tz);
   s_prefs.putString("pin",   parent_pin);
   s_prefs.putInt("volmax", vol_max);
+  s_prefs.putInt("slpmin", sleep_min);
+  s_prefs.putBool("slpbed", sleep_bedtime);
+  s_prefs.putBool("blkrem", block_remote);
   s_prefs.putInt("saver",  saver_min);
   s_prefs.putInt("wakeh",  wake_h);
   s_prefs.putInt("wakem",  wake_m);
@@ -84,5 +86,4 @@ static void save(){
   s_prefs.putInt("nightm", night_m);
   s_prefs.putInt("svsize", saver_size);
 }
-
 } // namespace cfg

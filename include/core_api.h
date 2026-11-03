@@ -27,6 +27,8 @@ struct Profile {
   String id;
   String display_name;
   String avatar_url;
+  uint32_t avatar_color = 0xE5352B;
+  String avatar_initial;
   String default_player_id;
   String default_player_name;
   PlayerInfo players[MAX_PROF_PLAYERS];
@@ -185,11 +187,48 @@ inline bool fetch_config_and_profiles(const String& base_url){
   free(body);
   if(jerr) return false;
 
+  bool cfg_changed = false;
   const char* pin = doc["parent_pin"];
-  if(pin && strlen(pin) == 4){
+  if(pin && strlen(pin) == 4 && cfg::parent_pin != pin){
     cfg::parent_pin = pin;
-    cfg::save();
+    cfg_changed = true;
   }
+  if(!doc["lock_player"].isNull()){
+    bool lp = (bool)doc["lock_player"];
+    if(cfg::lock_player != lp){ cfg::lock_player = lp; cfg_changed = true; }
+  }
+  const char* lpid = doc["locked_player_id"];
+  if(lpid && *lpid && cfg::locked_dev_id != lpid){
+    cfg::locked_dev_id = lpid;
+    cfg_changed = true;
+  }
+  if(!doc["settings"].isNull() && doc["settings"].is<JsonObject>()){
+    JsonObject st = doc["settings"].as<JsonObject>();
+    if(!st["sleepTimerMin"].isNull())  { cfg::sleep_min = (int)st["sleepTimerMin"]; cfg_changed = true; }
+    if(!st["sleepTimerMode"].isNull()) { cfg::sleep_bedtime = (String((const char*)st["sleepTimerMode"]) != "always"); cfg_changed = true; }
+    if(!st["screensaverMin"].isNull()) { cfg::saver_min = (int)st["screensaverMin"]; cfg_changed = true; }
+    if(!st["clockSize"].isNull())      { cfg::saver_size = (int)st["clockSize"]; cfg_changed = true; }
+    if(!st["blockRemotePlayback"].isNull()){ cfg::block_remote = (bool)st["blockRemotePlayback"]; cfg_changed = true; }
+    if(!st["bedtime"].isNull()){
+      String bt = (const char*)st["bedtime"];
+      int colon = bt.indexOf(':');
+      if(colon > 0){
+        cfg::night_h = bt.substring(0, colon).toInt();
+        cfg::night_m = bt.substring(colon + 1).toInt();
+        cfg_changed = true;
+      }
+    }
+    if(!st["wakeTime"].isNull()){
+      String wt = (const char*)st["wakeTime"];
+      int colon = wt.indexOf(':');
+      if(colon > 0){
+        cfg::wake_h = wt.substring(0, colon).toInt();
+        cfg::wake_m = wt.substring(colon + 1).toInt();
+        cfg_changed = true;
+      }
+    }
+  }
+  if(cfg_changed) cfg::save();
 
   s_assigned_profile = (const char*)(doc["assigned_profile"] | "");
   if(!doc["allow_profile_switch"].isNull()){
@@ -215,6 +254,21 @@ inline bool fetch_config_and_profiles(const String& base_url){
       av = base_url + av;
     }
     pr.avatar_url = av;
+    String col_str = (const char*)(p["avatar_color"] | "");
+    if(col_str.startsWith("#") && col_str.length() == 7){
+      pr.avatar_color = (uint32_t)strtoul(col_str.c_str() + 1, nullptr, 16);
+    } else {
+      static const uint32_t PALETTE[10] = {0x3B82F6, 0xEF4444, 0x10B981, 0xF59E0B, 0x8B5CF6, 0xEC4899, 0x06B6D4, 0xF97316, 0x14B8A6, 0x6366F1};
+      uint32_t h = 0;
+      String key = pr.display_name; key.toLowerCase();
+      for(size_t ci = 0; ci < key.length(); ci++) h = (h * 31 + (uint8_t)key[ci]);
+      pr.avatar_color = PALETTE[h % 10];
+    }
+    pr.avatar_initial = (const char*)(p["avatar_initial"] | "");
+    if(pr.avatar_initial.length() == 0){
+      pr.avatar_initial = pr.display_name.length() > 0 ? pr.display_name.substring(0, 1) : String("C");
+      pr.avatar_initial.toUpperCase();
+    }
     pr.default_player_id = (const char*)(p["default_player_id"] | "");
     pr.default_player_name = (const char*)(p["default_player_name"] | "Yoto Player");
 
@@ -312,6 +366,44 @@ inline const PlayerInfo* find_player_info(const String& dev_id){
     }
   }
   return nullptr;
+}
+
+
+// 3b. Push Grown-Ups Settings & PIN back to StoryDeck Core (/api/device/settings)
+inline bool sync_device_settings(const String& base_url){
+  if(base_url.length() == 0 || cfg::op_mode != "core") return false;
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/api/device/settings")) return false;
+  http.addHeader("Content-Type", "application/json");
+  if(s_access_token.length() > 0){
+    http.addHeader("Authorization", String("Bearer ") + s_access_token);
+  }
+  http.setTimeout(5000);
+
+  JsonDocument doc;
+  doc["device_id"]        = get_mac();
+  doc["friendly_name"]    = cfg::kiosk_name;
+  doc["parent_pin"]       = cfg::parent_pin;
+  doc["lock_player"]      = cfg::lock_player;
+  doc["locked_player_id"] = cfg::locked_dev_id;
+
+  JsonObject st = doc["settings"].to<JsonObject>();
+  st["sleepTimerMin"]       = cfg::sleep_min;
+  st["sleepTimerMode"]      = cfg::sleep_bedtime ? "bedtime" : "always";
+  st["screensaverMin"]      = cfg::saver_min;
+  st["clockSize"]           = cfg::saver_size;
+  st["blockRemotePlayback"] = cfg::block_remote;
+  char bbuf[8], wbuf[8];
+  snprintf(bbuf, sizeof(bbuf), "%02d:%02d", cfg::night_h, cfg::night_m);
+  snprintf(wbuf, sizeof(wbuf), "%02d:%02d", cfg::wake_h, cfg::wake_m);
+  st["bedtime"]  = bbuf;
+  st["wakeTime"] = wbuf;
+
+  String payload;
+  serializeJson(doc, payload);
+  int code = http.PUT(payload);
+  http.end();
+  return (code == 200);
 }
 
 // 4. Playback Dispatch via Core Hub (with automatic 401/403 JWT re-auth + diagnostic logging)

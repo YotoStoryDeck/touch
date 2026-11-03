@@ -42,7 +42,6 @@ export const state = {
   isPinError: false,
   failedPinAttempts: 0,
   pinLockoutUntil: 0,
-
   init() {
     try {
       const savedMode = localStorage.getItem('storydeck_mode');
@@ -61,29 +60,28 @@ export const state = {
       console.warn('Could not read stored settings:', e);
     }
   },
-
-  persistParentSettings() {
+  persistParentSettings(syncRemote = true) {
     try {
       localStorage.setItem('storydeck_mode', this.mode);
       localStorage.setItem('storydeck_lock_player', String(this.lockPlayer));
       if (this.lockedPlayerId) localStorage.setItem('storydeck_locked_player_id', this.lockedPlayerId);
       localStorage.setItem('storydeck_parent_settings', JSON.stringify(this.parentSettings));
       if (this.parentPin) localStorage.setItem('storydeck_parent_pin', this.parentPin);
+      if (syncRemote && typeof window !== 'undefined' && window.__storydeckSyncSettings) {
+        window.__storydeckSyncSettings();
+      }
     } catch (e) {
       console.warn('Could not persist settings:', e);
     }
   },
-
   setScreen(newScreen) {
     this.screen = newScreen;
   },
-
   setActiveProfile(profile) {
     this.activeProfile = profile;
     this.activeDevice = this.resolveActiveDevice(profile);
     this.isDevicePickerOpen = false;
   },
-
   setActiveDevice(device) {
     this.activeDevice = device;
     if (this.lockPlayer && device) {
@@ -92,11 +90,9 @@ export const state = {
     }
     this.isDevicePickerOpen = false;
   },
-
   toggleDevicePicker() {
     this.isDevicePickerOpen = !this.isDevicePickerOpen;
   },
-
   getAllAvailablePlayers() {
     const map = new Map();
     (this.profiles || []).forEach(p => {
@@ -106,7 +102,6 @@ export const state = {
     });
     return Array.from(map.values());
   },
-
   /**
    * Device Priority Resolution:
    * 1. If lockPlayer is enabled and lockedPlayerId exists, return that device.
@@ -120,49 +115,38 @@ export const state = {
       const lockedDev = allPlayers.find(p => p.id === this.lockedPlayerId);
       if (lockedDev) return lockedDev;
     }
-
     if (!profile) {
       return allPlayers.find(p => p.online) || allPlayers[0] || null;
     }
-
     const players = profile.players || [];
     if (!players.length) {
       return { id: profile.default_player_id, name: profile.default_player_name || 'Yoto Player', online: false };
     }
-
     // 1. Any device actively playing
     const playing = players.find(p => p.is_playing);
     if (playing) return playing;
-
     // 2. A device that is currently online
     const online = players.find(p => p.online);
     if (online) return online;
-
     // 3. The default device
     const def = players.find(p => p.id === profile.default_player_id);
     if (def) return def;
-
     return players[0];
   },
-
   setActiveTab(tab) {
     this.activeTab = tab;
   },
-
   setCard(card) {
     this.card = card;
   },
   setPreviewCard(card) {
     this.previewCard = card;
   },
-
   setChapter(idx) {
     this.chapterIndex = idx;
   },
-
   setPlaying(playing) {
     this.isPlaying = playing;
   }
 };
-
 state.init();

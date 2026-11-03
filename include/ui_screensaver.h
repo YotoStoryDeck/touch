@@ -123,6 +123,7 @@ static void saver_open(){
   s_sv_colon[0] = sv_bar(cont, xc, H/3   - t/2, t, t);
   s_sv_colon[1] = sv_bar(cont, xc, 2*H/3 - t/2, t, t);
 
+  s_saver_prev_scr = lv_scr_act();
   s_sv_lastmin = -999; s_sv_lastcol = 0; s_sv_last4 = -1;   // force the first paint
   s_scr_saver = scr;                       // before saver_tick — it guards on this
   saver_tick();
@@ -133,7 +134,12 @@ static void saver_close(){
   if(!s_scr_saver) return;
   lv_obj_t* s = s_scr_saver;
   s_scr_saver = nullptr;       // saver_tick guards on this, so the seg pointers can't be used stale
-  go_home();                   // also clears any detail/now/settings screens left behind it
+  if(s_saver_prev_scr && s_saver_prev_scr == s_scr_profile && s_scr_profile){
+    lv_scr_load(s_scr_profile);
+  } else {
+    go_home();                 // also clears any detail/now/settings screens left behind it
+  }
+  s_saver_prev_scr = nullptr;
   lv_obj_del_async(s);         // we're inside this screen's own click event — defer deletion
 }
 

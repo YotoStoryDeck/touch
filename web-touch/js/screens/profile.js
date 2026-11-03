@@ -3,7 +3,8 @@ import { Utils } from '../config.js';
 
 /**
  * Screen 1: Profile Selection Screen Component
- * Renders the avatar grid with scrolling support and friendly player names.
+ * Renders the avatar grid with scrolling support, friendly player names,
+ * and a top-right Grown-Ups gear button (Hold 2.5s -> PIN -> Grown-Ups Settings).
  */
 export const ProfileScreen = {
   getTimeGreeting() {
@@ -23,11 +24,14 @@ export const ProfileScreen = {
       <div class="profile-card" data-profile="${Utils.esc(p.id)}">
         <img class="profile-avatar" src="${Utils.esc(p.avatar_url)}" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=${Utils.esc(p.id)}'">
         <div class="profile-name">${Utils.esc(p.display_name)}</div>
+        <div class="profile-player">${Utils.esc(p.default_player_name || 'Yoto Player')}</div>
       </div>
     `).join('');
 
     return `
       <div class="profile-screen">
+        <!-- Grown-Ups Screen Gear (Hold 2.5s) -->
+        <button class="nav-gear-btn" data-act="gear-button" title="Hold for 2.5s to open Grown-ups settings" style="position:absolute; top:14px; right:18px; z-index:20;">&#9881;</button>
         <div class="profile-header">
           <div class="profile-title">${greeting}</div>
           <div class="profile-subtitle">Tap your profile avatar to explore your audiobooks</div>

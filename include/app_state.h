@@ -109,6 +109,8 @@ lv_obj_t* s_scr_profile=nullptr;
 lv_obj_t* s_scr_pairing=nullptr;
 static lv_timer_t* s_pairing_timer=nullptr;
 lv_obj_t* s_scr_prev=nullptr;               // tracks origin screen when opening PIN modal / settings
+lv_obj_t* s_saver_prev_scr=nullptr;         // tracks screen to restore when waking from screensaver
+static bool s_local_session_active=false;   // true if current audio was started/controlled on this unit
 static lv_obj_t* s_err_hs_client_lbl=nullptr;
 static bool      s_hotspot_wanted=false;
 lv_obj_t* s_set_sleep_lbl=nullptr;          // live countdown inside settings (null when closed)
@@ -157,6 +159,20 @@ static String clean_sort_title(const String& raw){
 
 static void fmt_mmss(char* b, int s){ if(s<0)s=0; sprintf(b, "%d:%02d", s/60, s%60); }
 static void fmt_total(char* b, int s){ int h=s/3600, m=(s%3600)/60; if(h) sprintf(b,"%dh %dm",h,m); else sprintf(b,"%dm",m); }
+
+
+// Kiosk App.isBedtimeNow() parity: returns true if current local wall-clock time is within Bedtime -> Wake window
+inline bool is_bedtime_now(){
+  struct tm tmv;
+  if(!getLocalTime(&tmv, 0)) return false;
+  int cur_m   = tmv.tm_hour * 60 + tmv.tm_min;
+  int night_m = cfg::night_h * 60 + cfg::night_m;
+  int wake_m  = cfg::wake_h  * 60 + cfg::wake_m;
+  if(night_m > wake_m){
+    return (cur_m >= night_m || cur_m < wake_m);
+  }
+  return (cur_m >= night_m && cur_m < wake_m);
+}
 
 inline void fmt_sleep(char* b, size_t n){
   if(s_sleep_sec <= 0)       snprintf(b, n, "Off");

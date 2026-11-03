@@ -8,18 +8,15 @@ import { PlayerScreen } from './screens/player.js';
 import { GrownUpsScreen } from './screens/grownups.js';
 import { PinScreen } from './screens/pin.js';
 import { ScreensaverScreen } from './screens/screensaver.js';
-
 /**
  * Main Controller & Event Router
  */
 const App = {
   container: null,
   statusBadge: null,
-
   init() {
     this.container = document.getElementById('app');
     this.statusBadge = document.getElementById('brokerStatus');
-
     // Check for Kiosk / Fullscreen parameter (?kiosk=1, ?fullscreen=true, or ?tablet=1)
     const params = new URLSearchParams(window.location.search);
     if (params.get('kiosk') === '1' || params.get('kiosk') === 'true' ||
@@ -27,31 +24,27 @@ const App = {
         params.get('tablet') === '1') {
       document.body.classList.add('kiosk-mode');
     }
-
+    window.__storydeckSyncSettings = () => BrokerApi.syncDeviceSettings();
     this.bindEvents();
     this.bindGearHoldTimer();
     this.startSleepTimerTicker();
     this.startInactivityTracker();
     this.bootstrap();
   },
-
   /**
    * Confirms playback has successfully initiated on the physical player before switching to Now Playing.
    */
   async initiatePlayback(card, chapterIndex = 0, triggerEl = null) {
     if (!card) return;
-
     // Safety Interlock: Away/Traveling Player Guard
     const activeDev = state.activeDevice;
     if (activeDev && activeDev.online && activeDev.is_home === false) {
       if (state.blockRemotePlayback) {
         alert(`${activeDev.name} is currently away from home (traveling).
-
 Remote playback from this bedside controller is blocked to avoid disturbing someone traveling.`);
         return;
       } else {
         const proceed = confirm(`${activeDev.name} is currently away from home (traveling).
-
 Are you sure you want to start audio playback on this remote player?`);
         if (!proceed) return;
       }
@@ -64,7 +57,6 @@ Are you sure you want to start audio playback on this remote player?`);
         triggerEl.innerHTML = '&#9203; Starting...';
       }
     }
-
     try {
       const res = await BrokerApi.playMedia(card, chapterIndex);
       if (res && (res.ok || res.status === 'success')) {
@@ -77,7 +69,6 @@ Are you sure you want to start audio playback on this remote player?`);
         // Immediately fetch fresh device status to verify live playback
         await BrokerApi.getDeviceConfig();
         this.syncActiveDevicePlayback();
-
         // Transition to Now Playing screen now that playback is confirmed
         state.setScreen('now');
         this.render();
@@ -100,15 +91,12 @@ Are you sure you want to start audio playback on this remote player?`);
       }
     }
   },
-
   render() {
     if (!this.container) return;
-
     // Preserve scroll positions for scrollable grids across renders
     const activeScrollEl = this.container.querySelector('.grid, .grid-series, .chapters');
     const savedScrollTop = activeScrollEl ? activeScrollEl.scrollTop : 0;
     const savedScrollLeft = activeScrollEl ? activeScrollEl.scrollLeft : 0;
-
     switch (state.screen) {
       case 'profile':
         this.container.innerHTML = ProfileScreen.render();
@@ -147,7 +135,6 @@ Are you sure you want to start audio playback on this remote player?`);
       default:
         this.container.innerHTML = ProfileScreen.render();
     }
-
     // Restore scroll position
     if (savedScrollTop > 0 || savedScrollLeft > 0) {
       const restoredEl = this.container.querySelector('.grid, .grid-series, .chapters');
@@ -157,15 +144,12 @@ Are you sure you want to start audio playback on this remote player?`);
       }
     }
   },
-
   async selectProfile(profileId) {
     const p = state.profiles.find(x => x.id === profileId);
     if (!p) return;
-
     state.setActiveProfile(p);
     state.setScreen('catalog');
     this.render();
-
     // Fetch dynamic live catalog for selected child
     try {
       await BrokerApi.fetchLiveCatalog(p.id);
@@ -177,32 +161,26 @@ Are you sure you want to start audio playback on this remote player?`);
       console.error('Failed to load profile catalog:', e);
     }
   },
-
   syncActiveDevicePlayback() {
     const dev = state.activeDevice;
     const hasCard = dev && (dev.has_card || dev.is_playing || dev.now_playing || dev.item_id);
-
     if (hasCard) {
       state.isPlaying = Boolean(dev.is_playing);
       if (dev.volume != null) {
         state.volume = Math.min(dev.volume_max != null ? dev.volume_max : 100, dev.volume);
       }
-
       // Find matching item in catalog by ID or Title
       const matched = state.catalog.find(c => 
         (dev.item_id && (c.id === dev.item_id || c.cardId === dev.item_id)) ||
         (dev.now_playing && c.title && c.title.toLowerCase().includes(dev.now_playing.toLowerCase())) ||
         (dev.now_playing && dev.now_playing.toLowerCase().includes(c.title ? c.title.toLowerCase() : '---'))
       );
-
       const coverUrl = (matched && (matched.cover || matched.img))
         ? (matched.cover || matched.img)
         : (dev.cover_url || (dev.item_id ? `${CONFIG.BROKER_BASE}/api/thumb?type=abs&id=${encodeURIComponent(dev.item_id)}&size=300` : null));
-
       const fullTitle = dev.now_playing || matched?.title || 'Audiobook';
       const chapterTitle = dev.chapter_title || (matched?.chapters?.[state.chapterIndex]?.title) || 'Playing Track';
       const author = dev.author || matched?.author || '';
-
       // Only overwrite state.card if user isn't currently browsing an alternate card detail view, or if state.card matches
       if (!state.card || state.screen !== 'detail' || (matched && (state.card.id === matched.id || state.card.cardId === matched.cardId))) {
         state.card = {
@@ -225,7 +203,6 @@ Are you sure you want to start audio playback on this remote player?`);
       }
     }
   },
-
   bindEvents() {
     this.container.addEventListener('change', (e) => {
       const guLockSelect = e.target.closest('[data-act="gu-select-lock-player"]');
@@ -241,7 +218,6 @@ Are you sure you want to start audio playback on this remote player?`);
         }
       }
     });
-
     this.container.addEventListener('click', (e) => {
       // 0. Dismiss screensaver on any tap/click
       if (state.screen === 'screensaver') {
@@ -254,7 +230,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.selectProfile(card.dataset.profile);
         return;
       }
-
       // 2. Profile Switcher Pill
       const switcher = e.target.closest('[data-act="switch-profile"]');
       if (switcher) {
@@ -262,7 +237,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // 2b. Device Picker Toggle
       const devToggle = e.target.closest('[data-act="toggle-device-picker"]');
       if (devToggle) {
@@ -270,7 +244,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // 2c. Target Device Selection
       const devOpt = e.target.closest('[data-act="select-device"]');
       if (devOpt) {
@@ -283,13 +256,11 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // Close device picker if clicking elsewhere
       if (state.isDevicePickerOpen && !e.target.closest('.device-pill-wrap')) {
         state.isDevicePickerOpen = false;
         this.render();
       }
-
       // 3. Catalog Tab Navigation (All / Series / ABS / Yoto)
       const tab = e.target.closest('.tab-btn[data-tab]');
       if (tab && state.screen === 'catalog') {
@@ -297,7 +268,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // 4. Media Card Selection (Catalog Grid)
       const tile = e.target.closest('[data-card]');
       if (tile) {
@@ -311,7 +281,6 @@ Are you sure you want to start audio playback on this remote player?`);
           }
           state.setScreen('detail');
           this.render();
-
           // Fetch real tracklist / chapters from Broker if not yet cached on the card
           if (!found.chapters || found.chapters.length === 0) {
             BrokerApi.fetchMediaTracks(id).then(tracks => {
@@ -332,7 +301,6 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // Change PIN button inside Grown-ups screen
       const guChangePin = e.target.closest('[data-act="gu-change-pin"]');
       if (guChangePin) {
@@ -344,7 +312,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // PIN Cancel Button
       const pinCancel = e.target.closest('[data-act="pin-cancel"]');
       if (pinCancel) {
@@ -356,7 +323,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // PIN Keypad Tap
       const pinKeyBtn = e.target.closest('.pin-key');
       if (pinKeyBtn && state.screen === 'pin') {
@@ -377,7 +343,6 @@ Are you sure you want to start audio playback on this remote player?`);
           state.currentEnteredPin = (state.currentEnteredPin || '') + key;
           state.isPinError = false;
           this.render();
-
           // Check if 4 digits reached
           if (state.currentEnteredPin.length === 4) {
             const entered = state.currentEnteredPin;
@@ -458,7 +423,6 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // Grown-ups Tab Navigation
       const guTabBtn = e.target.closest('[data-act="gu-tab"]');
       if (guTabBtn) {
@@ -466,7 +430,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Close Button
       const guClose = e.target.closest('[data-act="gu-close"]');
       if (guClose) {
@@ -476,7 +439,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Mode Switch
       const guModeBtn = e.target.closest('[data-act="gu-set-mode"]');
       if (guModeBtn) {
@@ -498,7 +460,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Lock Player Toggle
       const guLockBtn = e.target.closest('[data-act="gu-set-lock"]');
       if (guLockBtn) {
@@ -510,7 +471,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Lock Player Selection
       const guLockSelect = e.target.closest('[data-act="gu-select-lock-player"]');
       if (guLockSelect && e.type === 'change') {
@@ -525,7 +485,6 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // Grown-ups Sleep Timer Duration
       const guSleepBtn = e.target.closest('[data-act="gu-set-sleep"]');
       if (guSleepBtn) {
@@ -535,7 +494,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Sleep Timer Scope (Bedtime vs Always)
       const guSleepScopeBtn = e.target.closest('[data-act="gu-set-sleep-scope"]');
       if (guSleepScopeBtn) {
@@ -545,7 +503,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Remote/Travel Block Toggle
       const guRemoteBlockBtn = e.target.closest('[data-act="gu-set-remote-block"]');
       if (guRemoteBlockBtn) {
@@ -554,7 +511,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Screensaver Delay
       const guSaverBtn = e.target.closest('[data-act="gu-set-saver"]');
       if (guSaverBtn) {
@@ -563,7 +519,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Clock Size
       const guClockSizeBtn = e.target.closest('[data-act="gu-set-clock-size"]');
       if (guClockSizeBtn) {
@@ -572,7 +527,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // Grown-ups Restart Action
       const guRestartBtn = e.target.closest('[data-act="gu-restart"]');
       if (guRestartBtn) {
@@ -581,7 +535,6 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // Grown-ups Re-pair Action
       const guRepairBtn = e.target.closest('[data-act="gu-re-pair"]');
       if (guRepairBtn) {
@@ -590,7 +543,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.bootstrap();
         return;
       }
-
       // 4b. Inspect Active Card (Tap Cover or Title in Player Screen)
       const inspectCard = e.target.closest('[data-act="inspect-card"]');
       if (inspectCard) {
@@ -598,7 +550,6 @@ Are you sure you want to start audio playback on this remote player?`);
           state.setPreviewCard(state.card);
           state.setScreen('detail');
           this.render();
-
           // Fetch tracks if needed
           const id = state.card.id || state.card.cardId;
           if (id && (!state.card.chapters || state.card.chapters.length === 0)) {
@@ -618,7 +569,6 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // 5. Quick Action Button inside Nowbar (play/pause toggle should NOT navigate)
       const nbPlayBtn = e.target.closest('.nb-play');
       if (nbPlayBtn) {
@@ -635,7 +585,6 @@ Are you sure you want to start audio playback on this remote player?`);
         });
         return;
       }
-
       // 5b. Back / Screen Navigation Links
       const go = e.target.closest('[data-go]');
       if (go) {
@@ -643,7 +592,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
         return;
       }
-
       // 6. Track / Chapter Row Tap -> Play
       const chrow = e.target.closest('[data-ch]');
       if (chrow) {
@@ -652,7 +600,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.initiatePlayback(targetCard, chIdx, chrow);
         return;
       }
-
       // 7. Player Action Controls
       const actBtn = e.target.closest('[data-act]');
       const act = actBtn?.dataset.act;
@@ -661,14 +608,12 @@ Are you sure you want to start audio playback on this remote player?`);
         if (act === 'toggle' && actBtn.classList.contains('nb-play')) {
           e.stopPropagation();
         }
-
         if (act === 'playstart') {
           const btn = document.getElementById('btn-play-book') || actBtn;
           const targetCard = state.previewCard || state.card;
           this.initiatePlayback(targetCard, 0, btn);
           return;
         }
-
         if (act === 'toggle') {
           const nextState = !state.isPlaying;
           state.setPlaying(nextState);
@@ -683,7 +628,6 @@ Are you sure you want to start audio playback on this remote player?`);
           });
           return;
         }
-
         if (act === 'next') {
           BrokerApi.sendPlayerControl('next').then(res => {
             if (res && res.ok) {
@@ -700,7 +644,6 @@ Are you sure you want to start audio playback on this remote player?`);
           });
           return;
         }
-
         if (act === 'prev') {
           BrokerApi.sendPlayerControl('prev').then(res => {
             if (res && res.ok) {
@@ -719,7 +662,6 @@ Are you sure you want to start audio playback on this remote player?`);
           });
           return;
         }
-
         if (act === 'vol-down') {
           const maxLimit = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
           const cur = state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50);
@@ -730,7 +672,6 @@ Are you sure you want to start audio playback on this remote player?`);
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
           return;
         }
-
         if (act === 'vol-up') {
           const maxLimit = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
           const cur = state.volume != null ? state.volume : (state.activeDevice?.volume != null ? state.activeDevice.volume : 50);
@@ -741,7 +682,6 @@ Are you sure you want to start audio playback on this remote player?`);
           BrokerApi.sendPlayerControl('volume', { volume: newVol });
           return;
         }
-
         if (act === 'vol-set') {
           const maxLimit = (state.activeDevice && state.activeDevice.volume_max != null) ? state.activeDevice.volume_max : 100;
           const rect = actBtn.getBoundingClientRect();
@@ -758,10 +698,8 @@ Are you sure you want to start audio playback on this remote player?`);
       }
     });
   },
-
   bindGearHoldTimer() {
     let holdTimeout = null;
-
     const startHold = (e) => {
       const gearBtn = e.target.closest('[data-act="gear-button"]');
       if (!gearBtn) return;
@@ -782,7 +720,6 @@ Are you sure you want to start audio playback on this remote player?`);
         this.render();
       }, 2500);
     };
-
     const cancelHold = (e) => {
       const gearBtn = document.querySelector('.nav-gear-btn');
       if (gearBtn) gearBtn.classList.remove('pressing');
@@ -791,16 +728,13 @@ Are you sure you want to start audio playback on this remote player?`);
         holdTimeout = null;
       }
     };
-
     document.addEventListener('pointerdown', startHold);
     document.addEventListener('pointerup', cancelHold);
     document.addEventListener('pointercancel', cancelHold);
     document.addEventListener('pointerleave', cancelHold);
   },
-
   bindGrownUpsEvents() {
     // Parent volume ceiling slider removed - volume limits are dynamically queried per-device from Yoto
-
     const bedtimeInput = document.getElementById('guBedtimeInput');
     if (bedtimeInput) {
       bedtimeInput.addEventListener('change', (e) => {
@@ -808,7 +742,6 @@ Are you sure you want to start audio playback on this remote player?`);
         state.persistParentSettings();
       });
     }
-
     const wakeInput = document.getElementById('guWakeInput');
     if (wakeInput) {
       wakeInput.addEventListener('change', (e) => {
@@ -816,7 +749,6 @@ Are you sure you want to start audio playback on this remote player?`);
         state.persistParentSettings();
       });
     }
-
     const brightnessSlider = document.getElementById('guBrightnessSlider');
     const brightnessLabel = document.getElementById('guBrightnessLabel');
     if (brightnessSlider) {
@@ -830,7 +762,6 @@ Are you sure you want to start audio playback on this remote player?`);
       });
     }
   },
-
   async bootstrap() {
     try {
       // 1. Device Registration Handshake
@@ -852,12 +783,10 @@ Are you sure you want to start audio playback on this remote player?`);
         setTimeout(() => this.bootstrap(), 5000);
         return;
       }
-
       // 2. Discover Hardware Config & Dynamic Profiles
       const conf = await BrokerApi.getDeviceConfig();
       this.statusBadge.textContent = `Connected to Broker (${state.profiles.length} Profiles)`;
       this.statusBadge.className = 'broker-badge';
-
       // 3. Launch Initial Screen
       if (state.mode === 'standalone') {
         const allPlayers = state.getAllAvailablePlayers();
@@ -876,7 +805,6 @@ Are you sure you want to start audio playback on this remote player?`);
         state.setScreen('profile');
         this.render();
       }
-
       // 4. Start active health & ping monitor with recovery
       this.startHealthMonitor();
     } catch (err) {
@@ -884,7 +812,6 @@ Are you sure you want to start audio playback on this remote player?`);
       this.enterOfflineState();
     }
   },
-
   /**
    * Transitions UI into offline overlay and remembers prior screen for instant recovery
    */
@@ -911,7 +838,6 @@ Are you sure you want to start audio playback on this remote player?`);
       }, 3000);
     }
   },
-
   /**
    * Recovers from offline state, refreshes config/catalog, and restores previous screen
    */
@@ -930,7 +856,6 @@ Are you sure you want to start audio playback on this remote player?`);
       }
       this.statusBadge.textContent = `Connected to Broker (${state.profiles.length} Profiles)`;
       this.statusBadge.className = 'broker-badge';
-
       // Restore user's previous screen
       const returnTo = state.previousScreen || (state.activeProfile ? 'catalog' : 'profile');
       state.previousScreen = null;
@@ -942,7 +867,6 @@ Are you sure you want to start audio playback on this remote player?`);
       this.enterOfflineState();
     }
   },
-
   /**
    * Returns true if current wall-clock time falls within the configured bedtime window.
    */
@@ -953,10 +877,8 @@ Are you sure you want to start audio playback on this remote player?`);
     const [wH, wM] = wakeTimeStr.split(':').map(Number);
     const bMinutes = bH * 60 + bM;
     const wMinutes = wH * 60 + wM;
-
     const now = new Date();
     const curMinutes = now.getHours() * 60 + now.getMinutes();
-
     if (bMinutes > wMinutes) {
       // Overnight schedule (e.g. 19:00 -> 07:00)
       return (curMinutes >= bMinutes || curMinutes < wMinutes);
@@ -965,7 +887,6 @@ Are you sure you want to start audio playback on this remote player?`);
       return (curMinutes >= bMinutes && curMinutes < wMinutes);
     }
   },
-
   /**
    * Evaluates if sleep timer should arm or reset upon playback state change or setting modification.
    */
@@ -975,15 +896,12 @@ Are you sure you want to start audio playback on this remote player?`);
       state.sleepTimerRemainingSec = 0;
       return;
     }
-
     const mode = state.parentSettings.sleepTimerMode || 'bedtime';
     const shouldArm = (mode === 'always') || this.isBedtimeNow();
-
     if (!shouldArm) {
       state.sleepTimerRemainingSec = 0;
       return;
     }
-
     const isPlaying = Boolean(state.isPlaying || state.activeDevice?.is_playing);
     if (isPlaying) {
       if (forceReset || state.sleepTimerRemainingSec <= 0) {
@@ -994,7 +912,6 @@ Are you sure you want to start audio playback on this remote player?`);
       state.sleepTimerRemainingSec = 0;
     }
   },
-
   /**
    * Starts 1Hz sleep timer countdown ticker.
    */
@@ -1003,7 +920,6 @@ Are you sure you want to start audio playback on this remote player?`);
    */
   startInactivityTracker() {
     this._lastActivityTime = Date.now();
-
     const onUserActivity = () => {
       this._lastActivityTime = Date.now();
       // If currently on screensaver, wake up on any interaction
@@ -1011,40 +927,33 @@ Are you sure you want to start audio playback on this remote player?`);
         this.exitScreensaver();
       }
     };
-
     // Attach listeners on both window and document for full kiosk coverage
     ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(evt => {
       window.addEventListener(evt, onUserActivity, { passive: true });
     });
   },
-
   /**
    * Evaluates inactivity against parentSettings.screensaverMin.
    */
   checkInactivity() {
     const saverMin = state.parentSettings.screensaverMin ?? 10;
     if (saverMin <= 0) return; // 0 = off
-
     // Do not trigger screensaver if already active, offline, or inside pin / grownups portal
     if (state.screen === 'screensaver' || state.screen === 'offline' || state.screen === 'pin' || state.screen === 'grownups') {
       return;
     }
-
     const idleMs = Date.now() - (this._lastActivityTime || Date.now());
     const thresholdMs = saverMin * 60 * 1000;
-
     if (idleMs >= thresholdMs) {
       this.enterScreensaver();
     }
   },
-
   enterScreensaver() {
     console.log('[Screensaver] Inactivity threshold reached. Transitioning to Night Clock.');
     state.saverPreviousScreen = state.screen || 'profile';
     state.setScreen('screensaver');
     this.render();
   },
-
   exitScreensaver() {
     console.log('[Screensaver] Waking from Night Clock.');
     this._lastActivityTime = Date.now();
@@ -1053,13 +962,11 @@ Are you sure you want to start audio playback on this remote player?`);
     state.setScreen(returnTo);
     this.render();
   },
-
   startSleepTimerTicker() {
     if (this._sleepTicker) return;
     this._sleepTicker = setInterval(() => {
       // Check inactivity for screensaver transition
       this.checkInactivity();
-
       // If screensaver is actively displaying, re-render every second to tick the clock/colors
       if (state.screen === 'screensaver') {
         this.render();
@@ -1068,7 +975,6 @@ Are you sure you want to start audio playback on this remote player?`);
       if (!isPlaying) {
         return;
       }
-
       // Safety Gate 1: Never arm or stop an away/traveling player
       if (state.activeDevice && state.activeDevice.is_home === false) {
         if (state.sleepTimerRemainingSec > 0) {
@@ -1077,24 +983,20 @@ Are you sure you want to start audio playback on this remote player?`);
         }
         return;
       }
-
       // Safety Gate 2: Never stop an external session not initiated on this controller
       if (!state.localSessionActive) {
         return;
       }
-
       const mins = state.parentSettings.sleepTimerMin || 0;
       if (mins <= 0) {
         state.sleepTimerRemainingSec = 0;
         return;
       }
-
       const mode = state.parentSettings.sleepTimerMode || 'bedtime';
       if (mode === 'bedtime' && !this.isBedtimeNow()) {
         state.sleepTimerRemainingSec = 0;
         return;
       }
-
       if (state.sleepTimerRemainingSec > 0) {
         state.sleepTimerRemainingSec--;
         if (state.sleepTimerRemainingSec === 0) {
@@ -1112,7 +1014,6 @@ Are you sure you want to start audio playback on this remote player?`);
       }
     }, 1000);
   },
-
   /**
    * Continuous background health & telemetry monitor (every 5s)
    */
@@ -1127,7 +1028,6 @@ Are you sure you want to start audio playback on this remote player?`);
           this.enterOfflineState();
           return;
         }
-
         // Active background sync (every 5-10s)
         await BrokerApi.getDeviceConfig();
         this.syncActiveDevicePlayback();
@@ -1141,11 +1041,9 @@ Are you sure you want to start audio playback on this remote player?`);
     }, 5000);
   }
 };
-
 // Start application when DOM is ready or immediately if already loaded
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => App.init());
 } else {
   App.init();
 }
-
