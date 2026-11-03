@@ -111,7 +111,7 @@ static lv_obj_t* s_scr_now=nullptr;
 static int  s_cur_ch=-1;
 static bool s_playing=false;
 static int  s_pos=0;                        // optimistic seconds into the current chapter
-static int  s_vol=30;
+int s_vol=30;
 
 // playback IDENTITY — the card/chapter actually playing on the device, tracked separately
 // from s_cur_card (which follows browsing). Drives the home mini-player + reopening now-playing
@@ -133,7 +133,7 @@ static int  s_play_dur=0;                   // duration (s) of the chapter actua
                                             // lets the optimistic clock tick on ANY screen
 
 // bedtime sleep timer: wall-clock seconds until we auto-stop the player (0 = off)
-static int  s_sleep_sec=0;
+int s_sleep_sec=0;
 
 // grown-ups settings screen + night-clock screensaver
 static lv_obj_t* s_scr_settings=nullptr;
