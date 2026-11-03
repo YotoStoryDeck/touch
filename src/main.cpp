@@ -50,6 +50,7 @@ static void* tls_psram_calloc(size_t n, size_t size){
 
 #include "hal_display.h"
 #include "storage_sd.h"
+#include "ui_screensaver.h"
 
 // ---------------- app state ----------------
 #define THUMB_W   160
@@ -145,14 +146,6 @@ static bool      s_hotspot_wanted=false;
 static void ensure_hotspot_active();
 static lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
 static lv_timer_t* s_gear_timer=nullptr;    // hold-the-gear-to-open timer
-static lv_obj_t* s_scr_saver=nullptr;
-static lv_obj_t* s_sv_seg[4][7];            // big 7-segment clock: 4 digits x 7 bars
-static lv_obj_t* s_sv_colon[2];
-static lv_obj_t* s_sv_cont=nullptr;         // holds all the bars; slides to keep the time centered
-static int      s_sv_x4=0, s_sv_x3=0;       // container x for 4 visible cells vs 3 (hour 1-9)
-static int      s_sv_last4=-1;              // last layout used (-1 = unset)
-static int      s_sv_lastmin=-999;          // last painted hh*60+mm (-999 = force repaint)
-static uint32_t s_sv_lastcol=0;             // last painted color
 static bool s_lib_ok=false;                 // library fetched + grid built
 static bool s_net_ready=false;              // NTP/token init done after WiFi came up
 
@@ -700,143 +693,7 @@ static bool fetch_library(){
   return s_card_count > 0;
 }
 
-// ---- cover art: fetch a CDN-resized PNG (no auth) + decode to RGB565 on the MCU ----
-// Yoto's image CDN resizes server-side via ?width=&quality= (only PNG out), so we ask for the
-// exact tile size (~5-20KB) and stream it through pngle straight into the panel's pixel buffer.
-// Decode target: a W×H RGB565 tile. xoff/yoff center a smaller (e.g. square podcast) image
-// so it sits letterboxed in the tile instead of filling from the corner.
-struct DecCtx { uint8_t* buf; int W; int H; int xoff; int yoff; };
-static String s_thumb_diag;     // why the last cover decode failed (surfaced on-screen, no serial)
-static bool   s_png_done;       // set by pngle's done-callback when IEND is reached
-
-static inline void put_px(DecCtx* c, int px, int py, uint16_t v){
-  if(px < 0 || px >= c->W || py < 0 || py >= c->H) return;
-  size_t idx = ((size_t)py * c->W + px) * 2;
-  c->buf[idx] = v & 0xFF; c->buf[idx+1] = v >> 8;     // little-endian RGB565
-}
-static void png_on_init(pngle_t* p, uint32_t iw, uint32_t ih){
-  DecCtx* c = (DecCtx*)pngle_get_user_data(p);
-  c->xoff = ((int)c->W - (int)iw) / 2; if(c->xoff < 0) c->xoff = 0;
-  c->yoff = ((int)c->H - (int)ih) / 2; if(c->yoff < 0) c->yoff = 0;
-}
-static void png_on_draw(pngle_t* p, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint8_t rgba[4]){
-  DecCtx* c = (DecCtx*)pngle_get_user_data(p);
-  uint16_t v = ((rgba[0] & 0xF8) << 8) | ((rgba[1] & 0xFC) << 3) | (rgba[2] >> 3);
-  for(uint32_t yy=0; yy<h; yy++)
-    for(uint32_t xx=0; xx<w; xx++)
-      put_px(c, c->xoff + (int)(x+xx), c->yoff + (int)(y+yy), v);
-}
-static void png_on_done(pngle_t*){ s_png_done = true; }
-static int jpg_draw(JPEGDRAW* d){
-  DecCtx* c = (DecCtx*)d->pUser;
-  uint16_t* px = (uint16_t*)d->pPixels;        // RGB565 little-endian (set below)
-  for(int yy=0; yy<d->iHeight; yy++)
-    for(int xx=0; xx<d->iWidth; xx++)
-      put_px(c, c->xoff + d->x + xx, c->yoff + d->y + yy, px[yy*d->iWidth + xx]);
-  return 1;
-}
-
-// Fetch coverBase resized to width W and decode into buf (W*H*2 RGB565). Handles BOTH formats
-// Yoto serves: tall PNG book covers AND square JPEG podcast covers (sniffed by magic bytes).
-static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
-  String base = coverBase;
-  int q = base.indexOf('?'); if(q >= 0) base = base.substring(0, q);   // drop any existing query
-  if(base.length() == 0){ s_thumb_diag = "no cover url"; return false; }
-  String url = base + "?width=" + W + "&quality=70";
-  uint8_t* img = nullptr;
-  size_t got = 0;
-  {
-    tlsarena::Guard tg;                     // CDN fetch is TLS too; closed before the decode
-    WiFiClientSecure scli; scli.setInsecure();
-    WiFiClient pcli;
-    HTTPClient http;
-    bool begin_ok = url.startsWith("https://") ? http.begin(scli, url) : http.begin(pcli, url);
-    if(!begin_ok){ s_thumb_diag = "begin fail heap=" + String(ESP.getFreeHeap()); return false; }
-    http.setTimeout(8000);
-    int code = http.GET();
-    if(code != 200){ s_thumb_diag = "HTTP " + String(code) + " heap=" + String(ESP.getFreeHeap()); http.end(); return false; }
-    int len = http.getSize();
-    WiFiClient* stream = http.getStreamPtr();
-    // Buffer the whole (small, ~5-20KB) image, then dispatch by format — JPEG isn't streamable
-    // the way pngle is, and buffering keeps both decoders simple.
-    size_t cap = (len > 0) ? (size_t)len : 49152;
-    img = (uint8_t*)heap_caps_malloc(cap, MALLOC_CAP_SPIRAM);
-    if(!img){ s_thumb_diag = "img malloc fail heap=" + String(ESP.getFreeHeap()); http.end(); return false; }
-    uint32_t t0 = millis();
-    while(len < 0 || got < (size_t)len){
-      size_t avail = stream->available();
-      if(avail){
-        if(got + avail > cap){                // grow only for unknown-length (chunked) responses
-          size_t ncap = cap * 2; uint8_t* n = (uint8_t*)heap_caps_realloc(img, ncap, MALLOC_CAP_SPIRAM);
-          if(!n) break; img = n; cap = ncap;
-        }
-        int n = stream->readBytes(img + got, min(avail, cap - got));
-        got += n; t0 = millis();
-      } else if(!http.connected()){ break; }
-      else if(millis()-t0 > 15000){ break; }
-      else delay(1);
-    }
-    http.end();
-  }
-  if(got < 8){ s_thumb_diag = "short (" + String(got) + "B)"; free(img); return false; }
-
-  memset(buf, 0, (size_t)W * H * 2);          // black letterbox behind non-filling covers
-  DecCtx ctx{ buf, W, H, 0, 0 };
-  bool ok = false;
-  if(img[0]==0x89 && img[1]=='P'){            // ---- PNG ----
-    pngle_t* p = pngle_new();
-    if(!p){ s_thumb_diag = "pngle null heap=" + String(ESP.getFreeHeap()); free(img); return false; }
-    pngle_set_user_data(p, &ctx);
-    pngle_set_init_callback(p, png_on_init);
-    pngle_set_draw_callback(p, png_on_draw);
-    pngle_set_done_callback(p, png_on_done);
-    s_png_done = false;
-    if(pngle_feed(p, img, got) < 0) s_thumb_diag = String("png: ") + pngle_error(p);
-    ok = s_png_done;
-    pngle_destroy(p);
-  } else if(img[0]==0xFF && img[1]==0xD8){    // ---- JPEG (square podcast covers) ----
-    static JPEGDEC jpg;
-    if(jpg.openRAM(img, got, jpg_draw)){
-      jpg.setPixelType(RGB565_LITTLE_ENDIAN);
-      int iw = jpg.getWidth(), ih = jpg.getHeight();
-      ctx.xoff = (W - iw) / 2; if(ctx.xoff < 0) ctx.xoff = 0;
-      ctx.yoff = (H - ih) / 2; if(ctx.yoff < 0) ctx.yoff = 0;
-      jpg.setUserPointer(&ctx);
-      ok = (jpg.decode(0, 0, 0) == 1);
-      jpg.close();
-      if(!ok) s_thumb_diag = "jpg decode fail";
-    } else s_thumb_diag = "jpg open fail";
-  } else {
-    s_thumb_diag = "unknown fmt " + String(img[0], HEX) + String(img[1], HEX);
-  }
-  free(img);
-  return ok;
-}
-
-// Load a W×H RGB565 cover into buf: SD cache first (instant, no WiFi/decode), else fetch from
-// the CDN and write-through to SD so the next boot is offline-fast. With no SD mounted this
-// is exactly the plain fetch path. Keyed by (cardId,width) so grid/detail/now-playing each
-// get their own cached size.
-static bool load_cover_cached(const String& id, const String& coverUrl, int W, int H, size_t sz, uint8_t* buf){
-  if(sd_cache_read(id, W, buf, sz)) return true;
-  // Retry the CDN fetch a few times — like the API GET, the TLS handshake is flaky under the
-  // memory pressure of the concurrent MQTT session, and one success caches the cover for good.
-  bool ok = false;
-  for(int a = 0; a < 3 && !ok; a++){
-    ok = fetch_cover(coverUrl, W, H, buf);
-    if(!ok) delay(350);
-  }
-  if(ok) sd_cache_write(id, W, buf, sz);
-  return ok;
-}
-
-static void set_img(lv_img_dsc_t& dsc, lv_obj_t* obj, uint8_t* data, int w, int h, size_t sz){
-  dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
-  dsc.header.always_zero = 0;
-  dsc.header.w = w; dsc.header.h = h;
-  dsc.data_size = sz; dsc.data = data;
-  lv_img_set_src(obj, &dsc);
-}
+#include "cover_decoder.h"
 
 // Stream one cover thumbnail into a PSRAM buffer and blit it onto the grid tile.
 static bool load_thumb(int i){
@@ -1467,7 +1324,7 @@ static void np_next(){ if(s_cur_ch < s_ch_count-1) np_goto_chapter(s_cur_ch+1); 
 static void np_prev(){ if(s_cur_ch > 0)           np_goto_chapter(s_cur_ch-1); }
 static void np_volume(int v){ s_vol=v; send_cmd("volume", String("{\"volume\":")+v+"}"); }
 
-static void go_home(){
+void go_home(){
   s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=nullptr;
   s_set_sleep_lbl=nullptr;
   if(s_scr_home) lv_scr_load(s_scr_home);
@@ -2735,125 +2592,6 @@ static void open_settings(){
 
   s_scr_settings = scr;
   lv_scr_load(scr);
-}
-
-// ---------------- night-clock screensaver + OK-to-wake ----------------
-// After cfg::saver_min idle minutes the panel becomes a bedside clock: huge 7-segment
-// digits drawn from plain lv_objs (LVGL's biggest built-in font is 48px — far too small
-// to fill an 800x480 panel, and a 300px bitmap font would bloat flash; bars scale free).
-// RED from bedtime to wake time ("stay in bed"), GREEN for two hours from wake time (the
-// classic kids' "OK to get up" signal), dim cream the rest of the day. No words — the
-// color IS the message. Tap anywhere to get the cards back.
-static void saver_close_cb(lv_event_t*){ saver_close(); }
-
-// segment bit order: A top, B top-right, C bottom-right, D bottom, E bottom-left,
-// F top-left, G middle (the standard 7-seg encoding)
-static const uint8_t SEG_MAP[10] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F};
-
-static void sv_set_digit(int d, int v){   // v: 0-9 · -1 = dash (NTP not synced) · -2 = blank
-  uint8_t m = v >= 0 ? SEG_MAP[v] : (v == -1 ? 0x40 : 0x00);
-  for(int s = 0; s < 7; ++s){
-    if(m & (1u << s)) lv_obj_clear_flag(s_sv_seg[d][s], LV_OBJ_FLAG_HIDDEN);
-    else              lv_obj_add_flag(s_sv_seg[d][s], LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
-static void saver_tick(){
-  if(!s_scr_saver) return;
-  struct tm tmv;
-  bool ok    = getLocalTime(&tmv, 0);
-  int now_m  = ok ? tmv.tm_hour * 60 + tmv.tm_min : -1;
-  int wake_t  = cfg::wake_h  * 60 + cfg::wake_m;
-  int night_t = cfg::night_h * 60 + cfg::night_m;
-  bool night   = ok && ((now_m >= night_t) || (now_m < wake_t));
-  bool morning = ok && !night && (now_m < wake_t + 120);
-  uint32_t col = night ? 0xE5352B : morning ? 0x3AB06A : 0xF2EDE0;
-  if(now_m == s_sv_lastmin && col == s_sv_lastcol) return;   // only repaint on change —
-  s_sv_lastmin = now_m; s_sv_lastcol = col;                  // this ticks at 1 Hz
-  int hh = ok ? ((tmv.tm_hour + 11) % 12) + 1 : -1;
-  int four = (!ok || hh >= 10) ? 1 : 0;    // dashes + 10-12 o'clock use all 4 cells
-  if(four != s_sv_last4){                  // slide so the VISIBLE cells stay centered
-    s_sv_last4 = four;
-    lv_obj_set_x(s_sv_cont, four ? s_sv_x4 : s_sv_x3);
-  }
-  if(ok){
-    sv_set_digit(0, hh >= 10 ? 1 : -2);    // blank leading digit for 1:00-9:59
-    sv_set_digit(1, hh % 10);
-    sv_set_digit(2, tmv.tm_min / 10);
-    sv_set_digit(3, tmv.tm_min % 10);
-  } else {
-    for(int d = 0; d < 4; ++d) sv_set_digit(d, -1);          // ----  until NTP syncs
-  }
-  lv_color_t c = lv_color_hex(col);
-  for(int d = 0; d < 4; ++d)
-    for(int s = 0; s < 7; ++s) lv_obj_set_style_bg_color(s_sv_seg[d][s], c, 0);
-  lv_obj_set_style_bg_color(s_sv_colon[0], c, 0);
-  lv_obj_set_style_bg_color(s_sv_colon[1], c, 0);
-}
-
-static lv_obj_t* sv_bar(lv_obj_t* par, int x, int y, int w, int h){
-  lv_obj_t* o = lv_obj_create(par);
-  lv_obj_set_pos(o, x, y); lv_obj_set_size(o, w, h);
-  lv_obj_set_style_radius(o, (w < h ? w : h) / 2, 0);
-  lv_obj_set_style_border_width(o, 0, 0);
-  lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);  // taps fall through to the screen
-  return o;
-}
-
-static void saver_open(){
-  lv_obj_t* scr = lv_obj_create(NULL);
-  lv_obj_set_style_bg_color(scr, lv_color_hex(0x0A0E1A), 0);
-  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(scr, saver_close_cb, LV_EVENT_CLICKED, NULL);
-
-  // digit cell geometry from the configured size; Large fills most of the panel
-  static const int DIG_H[3] = {200, 260, 320};
-  int H = DIG_H[cfg::saver_size < 0 ? 0 : cfg::saver_size > 2 ? 2 : cfg::saver_size];
-  int t = H / 8, W = H / 2, gap = H / 16;
-  int vlen = (H - 3 * t) / 2;                      // vertical bar length (B,C,E,F)
-  int total = 4 * W + t + 4 * gap;                 // 4 digits + colon column + gaps
-  // all bars live in one transparent container that slides horizontally so the VISIBLE
-  // time stays centered: hours 1-9 hide the leading digit, which would otherwise leave
-  // the clock holding an empty cell on the left and sitting right of center all evening
-  s_sv_x4 = (LCD_H_RES - total) / 2;                              // 10:00-12:59 and ----
-  s_sv_x3 = (LCD_H_RES - (total - W - gap)) / 2 - (W + gap);      // 1:00-9:59
-  lv_obj_t* cont = lv_obj_create(scr);
-  lv_obj_set_size(cont, total, H);
-  lv_obj_set_pos(cont, s_sv_x4, (LCD_V_RES - H) / 2);
-  lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(cont, 0, 0);
-  lv_obj_set_style_pad_all(cont, 0, 0);
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-  s_sv_cont = cont;
-  int xs[4]; xs[0] = 0; xs[1] = W + gap;
-  int xc = xs[1] + W + gap;                        // colon column
-  xs[2] = xc + t + gap; xs[3] = xs[2] + W + gap;
-  for(int d = 0; d < 4; ++d){
-    int X = xs[d];
-    s_sv_seg[d][0] = sv_bar(cont, X + t,     0,             W - 2*t, t);  // A
-    s_sv_seg[d][1] = sv_bar(cont, X + W - t, t,             t, vlen);     // B
-    s_sv_seg[d][2] = sv_bar(cont, X + W - t, (H + t)/2,     t, vlen);     // C
-    s_sv_seg[d][3] = sv_bar(cont, X + t,     H - t,         W - 2*t, t);  // D
-    s_sv_seg[d][4] = sv_bar(cont, X,         (H + t)/2,     t, vlen);     // E
-    s_sv_seg[d][5] = sv_bar(cont, X,         t,             t, vlen);     // F
-    s_sv_seg[d][6] = sv_bar(cont, X + t,     (H - t)/2,     W - 2*t, t);  // G
-  }
-  s_sv_colon[0] = sv_bar(cont, xc, H/3   - t/2, t, t);
-  s_sv_colon[1] = sv_bar(cont, xc, 2*H/3 - t/2, t, t);
-
-  s_sv_lastmin = -999; s_sv_lastcol = 0; s_sv_last4 = -1;   // force the first paint
-  s_scr_saver = scr;                       // before saver_tick — it guards on this
-  saver_tick();
-  lv_scr_load(scr);
-}
-
-static void saver_close(){
-  if(!s_scr_saver) return;
-  lv_obj_t* s = s_scr_saver;
-  s_scr_saver = nullptr;       // saver_tick guards on this, so the seg pointers can't be used stale
-  go_home();                   // also clears any detail/now/settings screens left behind it
-  lv_obj_del_async(s);         // we're inside this screen's own click event — defer deletion
 }
 
 // ---------------- OTA: wireless firmware updates ----------------
