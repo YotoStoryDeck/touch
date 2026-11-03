@@ -432,6 +432,8 @@ static void tab_btn_cb(lv_event_t* e){
   apply_tab_filter();
 }
 
+static String get_active_player_name();
+
 static void build_grid(){
   lv_obj_clean(lv_scr_act());
   s_status=nullptr;
@@ -500,7 +502,7 @@ static void build_grid(){
 
     lv_obj_t* darr = lv_label_create(pcont);
     lv_label_set_text(darr, LV_SYMBOL_DOWN);
-    lv_obj_set_style_text_font(darr, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(darr, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(darr, lv_color_hex(0x8A8276), 0);
   }
 
