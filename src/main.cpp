@@ -238,12 +238,15 @@ static String clean_sort_title(const String& raw){
 static lv_obj_t* s_grid = nullptr;
 static lv_obj_t* s_tab_btns[4] = {nullptr, nullptr, nullptr, nullptr};
 static void populate_grid(); // fwd
+static void close_device_picker_popup(); // fwd
 
 static void tab_btn_cb(lv_event_t* e){
+  close_device_picker_popup();
   int tab = (int)(intptr_t)lv_event_get_user_data(e);
-  if(tab < 0 || tab > 3) return;
+  if(tab < 0 || tab > 1) return;
+  Serial.printf("[TAB] Switched catalog tab to %d (%s)\n", tab, tab == 1 ? "Series" : "All");
   s_active_tab = (TabFilter)tab;
-  for(int i = 0; i < 4; i++){
+  for(int i = 0; i < 2; i++){
     lv_obj_t* b = s_tab_btns[i];
     if(!b) continue;
     bool sel = (i == tab);
@@ -253,6 +256,7 @@ static void tab_btn_cb(lv_event_t* e){
     if(lbl) lv_obj_set_style_text_color(lbl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
   }
   populate_grid();
+  lv_refr_now(lv_disp_get_default());
 }
 
 String get_active_player_name();
@@ -318,7 +322,7 @@ static void toggle_device_picker_popup(){
   lv_obj_add_event_cb(s_dev_popup, [](lv_event_t*){ close_device_picker_popup(); }, LV_EVENT_CLICKED, NULL);
 
   // Dropdown card anchored right under the player pill
-  int card_x = (cfg::op_mode == "core" && core::s_profile_count > 0) ? 132 : 8;
+  int card_x = (cfg::op_mode == "core" && core::s_profile_count > 0) ? 156 : 8;
   int card_h = 44 + pcnt * 50;
   if(card_h > 320) card_h = 320;
   lv_obj_t* card = lv_obj_create(s_dev_popup);
@@ -651,7 +655,10 @@ void build_grid(){
   lv_obj_t* scr=s_scr_home;
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 
-  // Top Tab Navigation Bar (100% web-touch catalog.js parity: Left [Profile + Player], Right [All Books, Series, Audiobooks, Yoto Cards, Gear])
+  // Top Tab Navigation Bar (Direct flat children of nav for 100% reliable LVGL touch hit-testing)
+  // Left: [Profile Pill + Target Player Pill], Right: [All, Series, Gear]
+  if((int)s_active_tab > 1) s_active_tab = TAB_ALL;
+
   lv_obj_t* nav = lv_obj_create(scr);
   lv_obj_set_size(nav, LCD_H_RES, 48);
   lv_obj_align(nav, LV_ALIGN_TOP_MID, 0, 0);
@@ -660,38 +667,23 @@ void build_grid(){
   lv_obj_set_style_border_width(nav, 1, 0);
   lv_obj_set_style_border_color(nav, lv_color_hex(0xE7E0D2), 0);
   lv_obj_set_style_radius(nav, 0, 0);
-  lv_obj_set_style_pad_left(nav, 8, 0);
-  lv_obj_set_style_pad_right(nav, 8, 0);
-  lv_obj_set_style_pad_top(nav, 4, 0);
-  lv_obj_set_style_pad_bottom(nav, 4, 0);
-  lv_obj_set_style_pad_column(nav, 6, 0);
-  lv_obj_set_flex_flow(nav, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(nav, 0, 0);
   lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
-
-  // Left Group (.topnav-left)
-  lv_obj_t* nav_left = lv_obj_create(nav);
-  lv_obj_set_size(nav_left, LV_SIZE_CONTENT, 40);
-  lv_obj_set_style_bg_opa(nav_left, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(nav_left, 0, 0);
-  lv_obj_set_style_pad_all(nav_left, 0, 0);
-  lv_obj_set_style_pad_column(nav_left, 6, 0);
-  lv_obj_set_flex_flow(nav_left, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(nav_left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(nav_left, LV_OBJ_FLAG_SCROLLABLE);
 
   bool is_core_with_profs = (cfg::op_mode == "core" && core::s_profile_count > 0);
   bool can_switch_prof    = is_core_with_profs && core::s_allow_profile_switch && (core::s_profile_count > 1);
 
-  // 1. Left Group: Profile Pill (ONLY in Core Mode; Standalone Mode has no profiles, just players)
+  // 1. Left: Profile Pill (ONLY in Core Mode; Standalone Mode has no profiles, just players)
   if(is_core_with_profs){
-    lv_obj_t* prof_btn = lv_btn_create(nav_left);
-    lv_obj_set_size(prof_btn, 118, 36);
-    lv_obj_set_style_radius(prof_btn, 18, 0);
+    lv_obj_t* prof_btn = lv_btn_create(nav);
+    lv_obj_set_size(prof_btn, 140, 38);
+    lv_obj_set_pos(prof_btn, 8, 5);
+    lv_obj_set_style_radius(prof_btn, 19, 0);
     lv_obj_set_style_bg_color(prof_btn, lv_color_hex(0xF4EDE0), 0);
+    lv_obj_set_style_bg_color(prof_btn, lv_color_hex(0xE8DEC8), LV_STATE_PRESSED);
     lv_obj_set_style_border_width(prof_btn, 1, 0);
     lv_obj_set_style_border_color(prof_btn, lv_color_hex(0xE7E0D2), 0);
-    lv_obj_set_style_pad_all(prof_btn, 2, 0);
+    lv_obj_set_style_pad_all(prof_btn, 0, 0);
     lv_obj_set_style_shadow_width(prof_btn, 0, 0);
     if(can_switch_prof){
       lv_obj_add_event_cb(prof_btn, [](lv_event_t*){
@@ -701,23 +693,15 @@ void build_grid(){
       }, LV_EVENT_CLICKED, NULL);
     }
 
-    lv_obj_t* pcont = lv_obj_create(prof_btn);
-    lv_obj_set_size(pcont, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_bg_opa(pcont, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(pcont, 0, 0);
-    lv_obj_set_style_pad_all(pcont, 0, 0);
-    lv_obj_set_style_pad_column(pcont, 4, 0);
-    lv_obj_set_flex_flow(pcont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(pcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(pcont, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t* idot = lv_obj_create(pcont);
-    lv_obj_set_size(idot, 22, 22);
-    lv_obj_set_style_radius(idot, 11, 0);
+    lv_obj_t* idot = lv_obj_create(prof_btn);
+    lv_obj_set_size(idot, 24, 24);
+    lv_obj_set_style_radius(idot, 12, 0);
     lv_obj_set_style_bg_color(idot, lv_color_hex(0xE5352B), 0);
     lv_obj_set_style_border_width(idot, 0, 0);
     lv_obj_set_style_pad_all(idot, 0, 0);
     lv_obj_clear_flag(idot, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(idot, LV_ALIGN_LEFT_MID, 7, 0);
+
     lv_obj_t* ilbl = lv_label_create(idot);
     const String& cur_pname = core::s_profiles[core::s_active_profile_idx].display_name;
     char ini[2] = {cur_pname.length() > 0 ? cur_pname[0] : 'P', '\0'};
@@ -726,36 +710,42 @@ void build_grid(){
     lv_obj_set_style_text_color(ilbl, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(ilbl);
 
-    lv_obj_t* plbl = lv_label_create(pcont);
+    lv_obj_t* plbl = lv_label_create(prof_btn);
     lv_label_set_text(plbl, cur_pname.c_str());
     lv_obj_set_style_text_font(plbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(plbl, lv_color_hex(0x23303A), 0);
     lv_label_set_long_mode(plbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(plbl, can_switch_prof ? 54 : 70);
+    lv_obj_set_width(plbl, can_switch_prof ? 78 : 96);
+    lv_obj_clear_flag(plbl, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(plbl, LV_ALIGN_LEFT_MID, 36, 0);
 
     if(can_switch_prof){
-      lv_obj_t* darr = lv_label_create(pcont);
+      lv_obj_t* darr = lv_label_create(prof_btn);
       lv_label_set_text(darr, LV_SYMBOL_DOWN);
       lv_obj_set_style_text_font(darr, &lv_font_montserrat_14, 0);
       lv_obj_set_style_text_color(darr, lv_color_hex(0x8A8276), 0);
+      lv_obj_clear_flag(darr, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_align(darr, LV_ALIGN_RIGHT_MID, -10, 0);
     }
   }
 
-  // 2. Target Player Selector Pill
+  // 2. Left: Target Player Selector Pill
   const core::PlayerInfo* sel_players = nullptr;
   int sel_player_cnt = 0;
   get_selectable_players(sel_players, sel_player_cnt);
   bool can_pick_player = (!cfg::lock_player && sel_player_cnt > 1);
-  int dev_pill_w = is_core_with_profs ? 132 : 250;
+  int dev_pill_x = is_core_with_profs ? 156 : 8;
+  int dev_pill_w = is_core_with_profs ? 185 : 260;
 
-  lv_obj_t* dev_btn = lv_btn_create(nav_left);
-  lv_obj_set_size(dev_btn, dev_pill_w, 36);
-  lv_obj_set_style_radius(dev_btn, 18, 0);
+  lv_obj_t* dev_btn = lv_btn_create(nav);
+  lv_obj_set_size(dev_btn, dev_pill_w, 38);
+  lv_obj_set_pos(dev_btn, dev_pill_x, 5);
+  lv_obj_set_style_radius(dev_btn, 19, 0);
   lv_obj_set_style_bg_color(dev_btn, lv_color_hex(0xF4EDE0), 0);
   lv_obj_set_style_bg_color(dev_btn, lv_color_hex(0xE8DEC8), LV_STATE_PRESSED);
   lv_obj_set_style_border_width(dev_btn, 1, 0);
   lv_obj_set_style_border_color(dev_btn, lv_color_hex(0xE7E0D2), 0);
-  lv_obj_set_style_pad_all(dev_btn, 2, 0);
+  lv_obj_set_style_pad_all(dev_btn, 0, 0);
   lv_obj_set_style_shadow_width(dev_btn, 0, 0);
   if(can_pick_player){
     lv_obj_add_event_cb(dev_btn, [](lv_event_t*){
@@ -763,57 +753,44 @@ void build_grid(){
     }, LV_EVENT_CLICKED, NULL);
   }
 
-  lv_obj_t* dcont = lv_obj_create(dev_btn);
-  lv_obj_set_size(dcont, lv_pct(100), lv_pct(100));
-  lv_obj_set_style_bg_opa(dcont, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(dcont, 0, 0);
-  lv_obj_set_style_pad_all(dcont, 0, 0);
-  lv_obj_set_style_pad_column(dcont, 5, 0);
-  lv_obj_set_flex_flow(dcont, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(dcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(dcont, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-
-  lv_obj_t* dot = lv_obj_create(dcont);
+  lv_obj_t* dot = lv_obj_create(dev_btn);
   s_top_dev_dot = dot;
   lv_obj_set_size(dot, 10, 10);
   lv_obj_set_style_radius(dot, 5, 0);
   lv_obj_set_style_bg_color(dot, get_player_dot_color(cfg::device_id), 0);
   lv_obj_set_style_border_width(dot, 0, 0);
   lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_align(dot, LV_ALIGN_LEFT_MID, 12, 0);
 
-  lv_obj_t* dname = lv_label_create(dcont);
+  lv_obj_t* dname = lv_label_create(dev_btn);
   s_top_dev_lbl = dname;
   lv_label_set_text(dname, get_active_player_name().c_str());
   lv_obj_set_style_text_font(dname, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(dname, lv_color_hex(0x23303A), 0);
   lv_label_set_long_mode(dname, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(dname, dev_pill_w - (can_pick_player ? 44 : 26));
+  lv_obj_set_width(dname, dev_pill_w - (can_pick_player ? 52 : 34));
+  lv_obj_clear_flag(dname, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_align(dname, LV_ALIGN_LEFT_MID, 28, 0);
 
   if(can_pick_player){
-    lv_obj_t* dchev = lv_label_create(dcont);
+    lv_obj_t* dchev = lv_label_create(dev_btn);
     lv_label_set_text(dchev, LV_SYMBOL_DOWN);
     lv_obj_set_style_text_font(dchev, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(dchev, lv_color_hex(0x8A8276), 0);
+    lv_obj_clear_flag(dchev, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(dchev, LV_ALIGN_RIGHT_MID, -10, 0);
   }
 
-  // Right Group (.nav-tabs): 4 Category Tabs + Grown-Ups Settings Gear Button
-  lv_obj_t* nav_right = lv_obj_create(nav);
-  lv_obj_set_size(nav_right, LV_SIZE_CONTENT, 40);
-  lv_obj_set_style_bg_opa(nav_right, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(nav_right, 0, 0);
-  lv_obj_set_style_pad_all(nav_right, 0, 0);
-  lv_obj_set_style_pad_column(nav_right, 6, 0);
-  lv_obj_set_flex_flow(nav_right, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(nav_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(nav_right, LV_OBJ_FLAG_SCROLLABLE);
-
-  static const char* tab_names[4] = {"All Books", "Series", "Audiobooks", "Yoto Cards"};
-  static const int   tab_widths[4] = {100, 82, 110, 104};
-  for(int t = 0; t < 4; t++){
-    lv_obj_t* tb = lv_btn_create(nav_right);
+  // 3. Right: Category Pills (All + Series) + Grown-Ups Settings Gear Button
+  static const char* tab_names[2]  = {"All", "Series"};
+  static const int   tab_widths[2] = {96, 106};
+  static const int   tab_xs[2]     = {534, 638};
+  for(int t = 0; t < 2; t++){
+    lv_obj_t* tb = lv_btn_create(nav);
     s_tab_btns[t] = tb;
-    lv_obj_set_size(tb, tab_widths[t], 36);
-    lv_obj_set_style_radius(tb, 18, 0);
+    lv_obj_set_size(tb, tab_widths[t], 38);
+    lv_obj_set_pos(tb, tab_xs[t], 5);
+    lv_obj_set_style_radius(tb, 19, 0);
     bool sel = (t == (int)s_active_tab);
     lv_obj_set_style_bg_color(tb, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_width(tb, 1, 0);
@@ -824,15 +801,17 @@ void build_grid(){
 
     lv_obj_t* tl = lv_label_create(tb);
     lv_label_set_text(tl, tab_names[t]);
-    lv_obj_set_style_text_font(tl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(tl, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(tl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
+    lv_obj_clear_flag(tl, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_center(tl);
   }
 
-  // Grown-Ups Settings Gear Button (far right of nav_right, mirroring kiosk!)
-  lv_obj_t* top_gear = lv_btn_create(nav_right);
-  lv_obj_set_size(top_gear, 38, 36);
-  lv_obj_set_style_radius(top_gear, 18, 0);
+  // 4. Far Right: Grown-Ups Settings Gear Button
+  lv_obj_t* top_gear = lv_btn_create(nav);
+  lv_obj_set_size(top_gear, 40, 38);
+  lv_obj_set_pos(top_gear, 752, 5);
+  lv_obj_set_style_radius(top_gear, 19, 0);
   lv_obj_set_style_bg_color(top_gear, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_color(top_gear, lv_color_hex(0xE5352B), LV_STATE_PRESSED);
   lv_obj_set_style_border_width(top_gear, 1, 0);
@@ -848,6 +827,7 @@ void build_grid(){
   lv_label_set_text(tgi, LV_SYMBOL_SETTINGS);
   lv_obj_set_style_text_font(tgi, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(tgi, lv_color_hex(0x7A7060), 0);
+  lv_obj_clear_flag(tgi, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_center(tgi);
 
   // Scrollable grid container (offset 48px for the top nav tab bar)
@@ -1646,8 +1626,18 @@ static int send_cmd(const char* name, const String& body){
     cmd = "card/start";
     JsonDocument p;
     p["uri"] = String("https://yoto.io/") + (const char*)(in["id"] | "");
-    const char* ck = in["chapterKey"]; if(ck && *ck) p["chapterKey"] = ck;
-    const char* tk = in["trackKey"];   if(tk && *tk) p["trackKey"]   = tk;
+    auto pad_key = [](const char* k) -> String {
+      if(!k || !*k) return String("01");
+      String s(k);
+      if(s.length() == 1 && s[0] >= '1' && s[0] <= '9') return String("0") + s;
+      return s;
+    };
+    const char* ck = in["chapterKey"];
+    const char* tk = in["trackKey"];
+    String pck = pad_key(ck);
+    String ptk = (tk && *tk) ? pad_key(tk) : pck;
+    p["chapterKey"] = pck;
+    p["trackKey"]   = ptk;
     if(!in["secondsIn"].isNull()) p["secondsIn"] = in["secondsIn"];
     serializeJson(p, payload);
   } else if(nm == "pause" || nm == "resume" || nm == "stop"){

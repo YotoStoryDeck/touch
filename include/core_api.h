@@ -334,14 +334,26 @@ inline int play_media(const String& base_url, const String& child_id, const Stri
     String eff_dev = device_id;
     if(eff_dev.length() == 0) eff_dev = resolve_active_device_id(s_active_profile_idx);
 
+    // Only pass explicit chapter_key / track_key if they are non-numeric hash/special keys
+    // (e.g. podcasts or 'daily'). For normal numeric chapter keys ('1', '01', '2', '02'),
+    // omit chapter_key so Core and Bridge resolve the card's true chapterKey/trackKey or zero-pad '%02d',
+    // matching Kiosk BrokerApi.playMedia() 100%!
+    auto is_pure_digits = [](const String& s) -> bool {
+      if(s.length() == 0) return true;
+      for(size_t i = 0; i < s.length(); i++){
+        if(s[i] < '0' || s[i] > '9') return false;
+      }
+      return true;
+    };
+
     JsonDocument doc;
     doc["child"]     = child_id.length() ? child_id : "default";
     doc["type"]      = card_type.length() ? card_type : "yoto";
     doc["id"]        = media_id;
     doc["device_id"] = eff_dev;
     doc["chapter"]   = chapter_idx + 1; // 1-based chapter for broker
-    if(chapter_key.length() > 0) doc["chapter_key"] = chapter_key;
-    if(track_key.length() > 0)   doc["track_key"]   = track_key;
+    if(chapter_key.length() > 0 && !is_pure_digits(chapter_key)) doc["chapter_key"] = chapter_key;
+    if(track_key.length() > 0   && !is_pure_digits(track_key))   doc["track_key"]   = track_key;
 
     String payload;
     serializeJson(doc, payload);
@@ -488,7 +500,11 @@ inline bool fetch_media_tracks(const String& base_url, const String& media_id, S
   int idx = 1;
   for(JsonObject tr : tracks){
     String key = (const char*)(tr["key"] | tr["track_key"] | "");
-    if(key.length() == 0) key = String(idx);
+    if(key.length() == 0){
+      char kbuf[8];
+      snprintf(kbuf, sizeof(kbuf), "%02d", idx);
+      key = kbuf;
+    }
     String tr_title = (const char*)(tr["title"] | "");
     if(tr_title.length() == 0) tr_title = String("Chapter ") + idx;
     int dur = (int)(tr["duration_seconds"] | tr["duration"] | 0);
