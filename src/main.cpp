@@ -209,7 +209,7 @@ static int rgb_panel_init(){
 // boot -> "Library HTTP -1  heap=60160". 24 lines (38KB) frees ~26KB and restores the
 // handshake headroom while keeping a buffer >2x the LVGL default. Tune up if scroll suffers
 // AND free heap allows (watch the heap= readout on the library-error path).
-#define DRAW_LINES 24
+#define DRAW_LINES 16
 static lv_disp_draw_buf_t s_draw_buf;
 static lv_color_t* s_buf1=nullptr;
 static void flush_cb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px){
@@ -2239,10 +2239,9 @@ static void profile_card_cb(lv_event_t* e){
     }
     // In Core mode, reload catalog for this child profile
     if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-      if(fetch_library_core()){
-        build_grid();
-        load_thumbs();
-      }
+      fetch_library_core();
+      build_grid();
+      if(s_card_count > 0) load_thumbs();
     }
     // Transition from profile picker to card grid
     if(s_scr_profile){
@@ -2318,18 +2317,45 @@ static void open_profile_picker(){
     lv_obj_t* av_box = lv_obj_create(card);
     lv_obj_set_size(av_box, 130, 130);
     lv_obj_set_style_radius(av_box, 65, 0);
+    lv_obj_set_style_clip_corner(av_box, true, 0);
     lv_obj_set_style_bg_color(av_box, lv_color_hex(0xE5352B), 0);
     lv_obj_set_style_border_width(av_box, 0, 0);
+    lv_obj_set_style_pad_all(av_box, 0, 0);
     lv_obj_align(av_box, LV_ALIGN_TOP_MID, 0, 16);
     lv_obj_clear_flag(av_box, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Avatar Initial
-    lv_obj_t* av_txt = lv_label_create(av_box);
-    char initial[2] = {core::s_profiles[i].display_name.length() > 0 ? core::s_profiles[i].display_name[0] : 'C', '\0'};
-    lv_label_set_text(av_txt, initial);
-    lv_obj_set_style_text_font(av_txt, &lv_font_montserrat_36, 0);
-    lv_obj_set_style_text_color(av_txt, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(av_txt);
+    // Check if avatar image is available and fetch/decode if not cached
+    bool av_loaded = false;
+    if(core::s_profiles[i].avatar_url.length() > 0){
+      const size_t AV_SZ = 130 * 130 * 2;
+      if(!core::s_profiles[i].avatar_buf){
+        core::s_profiles[i].avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
+        if(core::s_profiles[i].avatar_buf){
+          av_loaded = fetch_cover(core::s_profiles[i].avatar_url, 130, 130, core::s_profiles[i].avatar_buf);
+          if(!av_loaded){
+            free(core::s_profiles[i].avatar_buf);
+            core::s_profiles[i].avatar_buf = nullptr;
+          }
+        }
+      } else {
+        av_loaded = true;
+      }
+    }
+
+    if(av_loaded && core::s_profiles[i].avatar_buf){
+      lv_obj_t* av_img = lv_img_create(av_box);
+      lv_obj_set_size(av_img, 130, 130);
+      set_img(core::s_profiles[i].avatar_dsc, av_img, core::s_profiles[i].avatar_buf, 130, 130, 130*130*2);
+      lv_obj_center(av_img);
+    } else {
+      // Fallback: Avatar Initial
+      lv_obj_t* av_txt = lv_label_create(av_box);
+      char initial[2] = {core::s_profiles[i].display_name.length() > 0 ? core::s_profiles[i].display_name[0] : 'C', '\0'};
+      lv_label_set_text(av_txt, initial);
+      lv_obj_set_style_text_font(av_txt, &lv_font_montserrat_36, 0);
+      lv_obj_set_style_text_color(av_txt, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_center(av_txt);
+    }
 
     // Profile Name Label
     lv_obj_t* name = lv_label_create(card);
@@ -3368,10 +3394,13 @@ static void net_init_and_fetch(){
     status("Registering with StoryDeck Core...");
     String err;
     if(!core::register_device(cfg::core_url, err)){
-      show_error("Core Kiosk Registration",
-                 err.c_str(),
-                 "Authorize this kiosk in Core Admin or verify the Core URL in Settings.");
-      return;
+      Serial.printf("Registration note: %s (is_reg=%d is_appr=%d)\n", err.c_str(), (int)core::s_is_registered, (int)core::s_is_approved);
+      if(!core::s_is_registered){
+        show_error("Core Kiosk Registration",
+                   err.c_str(),
+                   "Verify the StoryDeck Core URL or network link in Settings.");
+        return;
+      }
     }
   }
 
@@ -3413,6 +3442,14 @@ static void net_init_and_fetch(){
       } else {
         lv_scr_load(s_scr_home);
       }
+    } else if(cfg::op_mode == "core" && core::s_profile_count > 0){
+      // Device might be quarantined or catalog empty; still allow profile selection / grown-ups screen
+      build_grid();
+      if(core::s_profile_count > 1){
+        open_profile_picker();
+      } else {
+        lv_scr_load(s_scr_home);
+      }
     }
   }
   // Live device state over MQTT — start once the library is in (so event cardIds resolve to
@@ -3437,6 +3474,17 @@ void setup(){
   // Small hot allocations (bignum math during the handshake) stay in internal RAM for speed.
   mbedtls_platform_set_calloc_free(tls_psram_calloc, free);
   cfg::load();                              // NVS-backed settings (secrets.h = defaults)
+
+  // Start WiFi early while internal SRAM is completely unfragmented
+  WiFi.mode(WIFI_STA);
+  {
+    String hname = cfg::kiosk_name;
+    hname.replace(" ", "-");
+    if(hname.length() > 0) WiFi.setHostname(hname.c_str());
+    else WiFi.setHostname("yoto-controller");
+  }
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(cfg::wifi_ssid.c_str(), cfg::wifi_pass.c_str());
 
   // hardware: backlight + panel + touch
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000); delay(10);
@@ -3481,13 +3529,6 @@ void setup(){
   // board is ALWAYS wirelessly reachable (the old code returned on failure, which made a
   // wrong WiFi password recoverable only over USB at the wall).
   status("Connecting to WiFi...");
-  WiFi.mode(WIFI_STA);
-  String hname = cfg::kiosk_name;
-  hname.replace(" ", "-");
-  if(hname.length() > 0) WiFi.setHostname(hname.c_str());
-  else WiFi.setHostname("yoto-controller");
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(cfg::wifi_ssid.c_str(), cfg::wifi_pass.c_str());
   uint32_t t0=millis();
   while(WiFi.status()!=WL_CONNECTED && millis()-t0 < 20000){ delay(200); }
 

@@ -17,6 +17,8 @@ struct Profile {
   String avatar_url;
   String default_player_id;
   String default_player_name;
+  uint8_t* avatar_buf = nullptr;
+  lv_img_dsc_t avatar_dsc{};
 };
 
 #define MAX_PROFILES 8
@@ -68,6 +70,7 @@ inline bool register_device(const String& base_url, String& err_out){
 
   JsonDocument doc;
   doc["mac"]              = get_mac();
+  doc["mac_address"]      = get_mac();
   doc["friendly_name"]    = cfg::kiosk_name.length() > 0 ? cfg::kiosk_name : "StoryDeck Touch (ESP32-S3)";
   doc["firmware_version"] = STORYDECK_VERSION;
 
