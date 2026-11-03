@@ -413,72 +413,58 @@ static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
     lv_obj_center(lbl);
   }
 
-  // 1. Highlight Star Badge (top-left, gold pill)
+  // 1. Highlight Star Badge (top-left, single styled lv_label pill)
   if(c.is_highlight){
-    lv_obj_t* star_b = lv_obj_create(tile);
-    lv_obj_set_size(star_b, 26, 22);
-    lv_obj_align(star_b, LV_ALIGN_TOP_LEFT, 6, 6);
-    lv_obj_set_style_radius(star_b, 6, 0);
-    lv_obj_set_style_bg_color(star_b, lv_color_hex(0xF59E0B), 0);
-    lv_obj_set_style_bg_opa(star_b, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(star_b, 0, 0);
-    lv_obj_set_style_pad_all(star_b, 0, 0);
-    lv_obj_clear_flag(star_b, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* sl = lv_label_create(star_b);
-    lv_label_set_text(sl, "*");
-    lv_obj_set_style_text_font(sl, &lv_font_montserrat_18, 0);
+    lv_obj_t* sl = lv_label_create(tile);
+    lv_label_set_text(sl, " * ");
+    lv_obj_set_style_text_font(sl, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(sl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_color(sl, lv_color_hex(0xF59E0B), 0);
+    lv_obj_set_style_bg_opa(sl, LV_OPA_90, 0);
+    lv_obj_set_style_radius(sl, 6, 0);
+    lv_obj_set_style_pad_left(sl, 4, 0);
+    lv_obj_set_style_pad_right(sl, 4, 0);
+    lv_obj_set_style_pad_top(sl, 2, 0);
+    lv_obj_set_style_pad_bottom(sl, 0, 0);
     lv_obj_clear_flag(sl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(sl, LV_ALIGN_CENTER, 0, 3);
+    lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 6, 6);
   }
 
-  // 2. Sequence Badge in Series view (top-right, dark slate pill e.g. #1, #2)
+  // 2. Sequence Badge in Series view (top-right, single styled lv_label pill e.g. #1, #2)
   if(show_seq && (c.seq_display.length() > 0 || c.sequence > 0)){
     String s_txt = c.seq_display.length() > 0
                    ? (c.seq_display.startsWith("#") ? c.seq_display : (String("#") + c.seq_display))
                    : (String("#") + String(c.sequence));
-    lv_obj_t* seq_b = lv_obj_create(tile);
-    lv_obj_set_size(seq_b, LV_SIZE_CONTENT, 22);
-    lv_obj_align(seq_b, LV_ALIGN_TOP_RIGHT, -6, 6);
-    lv_obj_set_style_radius(seq_b, 6, 0);
-    lv_obj_set_style_bg_color(seq_b, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_bg_opa(seq_b, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(seq_b, 1, 0);
-    lv_obj_set_style_border_color(seq_b, lv_color_hex(0x475569), 0);
-    lv_obj_set_style_pad_left(seq_b, 6, 0);
-    lv_obj_set_style_pad_right(seq_b, 6, 0);
-    lv_obj_set_style_pad_top(seq_b, 2, 0);
-    lv_obj_set_style_pad_bottom(seq_b, 2, 0);
-    lv_obj_clear_flag(seq_b, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* ql = lv_label_create(seq_b);
+    lv_obj_t* ql = lv_label_create(tile);
     lv_label_set_text(ql, s_txt.c_str());
     lv_obj_set_style_text_font(ql, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(ql, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_color(ql, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_bg_opa(ql, LV_OPA_90, 0);
+    lv_obj_set_style_radius(ql, 6, 0);
+    lv_obj_set_style_pad_left(ql, 6, 0);
+    lv_obj_set_style_pad_right(ql, 6, 0);
+    lv_obj_set_style_pad_top(ql, 2, 0);
+    lv_obj_set_style_pad_bottom(ql, 2, 0);
     lv_obj_clear_flag(ql, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(ql, LV_ALIGN_TOP_RIGHT, -6, 6);
   }
 
-  // 3. Source Badge (bottom-right: ABS indigo #4F46E5 vs YOTO red #E5352B)
+  // 3. Source Badge (bottom-right: single styled lv_label pill, ABS indigo #4F46E5 vs YOTO red #E5352B)
   bool is_abs = (c.source == "abs");
-  lv_obj_t* src_b = lv_obj_create(tile);
-  lv_obj_set_size(src_b, LV_SIZE_CONTENT, 20);
-  lv_obj_align(src_b, LV_ALIGN_BOTTOM_RIGHT, -6, -6);
-  lv_obj_set_style_radius(src_b, 6, 0);
-  lv_obj_set_style_bg_color(src_b, is_abs ? lv_color_hex(0x4F46E5) : lv_color_hex(0xE5352B), 0);
-  lv_obj_set_style_bg_opa(src_b, LV_OPA_90, 0);
-  lv_obj_set_style_border_width(src_b, 0, 0);
-  lv_obj_set_style_pad_left(src_b, 6, 0);
-  lv_obj_set_style_pad_right(src_b, 6, 0);
-  lv_obj_set_style_pad_top(src_b, 1, 0);
-  lv_obj_set_style_pad_bottom(src_b, 1, 0);
-  lv_obj_clear_flag(src_b, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t* bl = lv_label_create(src_b);
+  lv_obj_t* bl = lv_label_create(tile);
   lv_label_set_text(bl, is_abs ? "ABS" : "YOTO");
   lv_obj_set_style_text_font(bl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(bl, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(bl, is_abs ? lv_color_hex(0x4F46E5) : lv_color_hex(0xE5352B), 0);
+  lv_obj_set_style_bg_opa(bl, LV_OPA_90, 0);
+  lv_obj_set_style_radius(bl, 6, 0);
+  lv_obj_set_style_pad_left(bl, 6, 0);
+  lv_obj_set_style_pad_right(bl, 6, 0);
+  lv_obj_set_style_pad_top(bl, 2, 0);
+  lv_obj_set_style_pad_bottom(bl, 2, 0);
   lv_obj_clear_flag(bl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_align(bl, LV_ALIGN_BOTTOM_RIGHT, -6, -6);
 }
 
 static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
