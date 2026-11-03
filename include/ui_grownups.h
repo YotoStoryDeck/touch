@@ -21,6 +21,8 @@ extern lv_obj_t*   s_set_sleep_lbl;
 extern void fmt_sleep(char* b, size_t n);
 extern void np_volume(int v);
 extern void go_home();
+extern void build_grid();
+extern void open_profile_picker();
 extern void start_hotspot_cb(lv_event_t* e);
 
 void open_settings();             // fwd
@@ -481,14 +483,22 @@ void open_settings(){
   // ==========================================
   lv_obj_t* p1 = s_gu_tab_panels[1];
 
-  set_section(p1, "Target Player Roaming vs Locking");
+  bool is_core_mode = (cfg::op_mode == "core");
+  set_section(p1, is_core_mode ? "Target Player & Profile Roaming" : "Target Player Assignment (Standalone)");
   lv_obj_t* r_lock = set_row(p1);
-  lv_obj_t* b_roam = pill_btn(r_lock, "Profile Roaming", 0, [](lv_event_t*){
+  lv_obj_t* b_roam = pill_btn(r_lock, is_core_mode ? "Profile Roaming" : "Roam Players", 0, [](lv_event_t*){
     cfg::lock_player = false;
+    cfg::locked_dev_id = "";
+    if(cfg::op_mode == "core"){
+      cfg::device_id = core::resolve_active_device_id(core::s_active_profile_idx);
+    } else {
+      cfg::device_id = core::resolve_active_device_id(-1);
+    }
     cfg::save();
+    if(s_scr_home) build_grid();
     open_settings();
   });
-  lv_obj_set_size(b_roam, 170, 52);
+  lv_obj_set_size(b_roam, 185, 52);
   if(!cfg::lock_player){
     lv_obj_set_style_bg_color(b_roam, lv_color_hex(0xE5352B), 0);
     lv_obj_set_style_text_color(lv_obj_get_child(b_roam, 0), lv_color_hex(0xFFFFFF), 0);
@@ -496,83 +506,121 @@ void open_settings(){
 
   lv_obj_t* b_lock = pill_btn(r_lock, "Lock to Player", 1, [](lv_event_t*){
     cfg::lock_player = true;
-    cfg::locked_dev_id = cfg::device_id;
+    if(cfg::locked_dev_id.length() == 0) cfg::locked_dev_id = cfg::device_id;
+    cfg::device_id = cfg::locked_dev_id;
     cfg::save();
+    if(s_scr_home) build_grid();
     open_settings();
   });
-  lv_obj_set_size(b_lock, 170, 52);
+  lv_obj_set_size(b_lock, 185, 52);
   if(cfg::lock_player){
     lv_obj_set_style_bg_color(b_lock, lv_color_hex(0xE5352B), 0);
     lv_obj_set_style_text_color(lv_obj_get_child(b_lock, 0), lv_color_hex(0xFFFFFF), 0);
   }
 
-  // Target Player Dropdown Selector
-  lv_obj_t* r_drop = set_row(p1);
-  lv_obj_t* dd_lbl = lv_label_create(r_drop);
-  lv_label_set_text(dd_lbl, "Target Player:");
-  lv_obj_set_style_text_font(dd_lbl, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(dd_lbl, lv_color_hex(0x23303A), 0);
-
-  lv_obj_t* dd = lv_dropdown_create(r_drop);
-  lv_obj_set_size(dd, 340, 48);
-  lv_obj_set_style_text_font(dd, &lv_font_montserrat_16, 0);
-
-  // Populate options from discovered profiles / default player
-  String opt_str = "";
-  int cur_sel = 0;
-  int opt_idx = 0;
-  String seen_ids[10];
-  int seen_count = 0;
-
-  auto add_opt = [&](const String& pid, const String& pname) {
-    if(pid.length() == 0) return;
-    for(int s = 0; s < seen_count; s++) if(seen_ids[s] == pid) return;
-    seen_ids[seen_count++] = pid;
-    if(opt_str.length() > 0) opt_str += "\n";
-    opt_str += (pname.length() > 0 ? pname : String("Player ") + pid);
-    if(cfg::device_id == pid) cur_sel = opt_idx;
-    opt_idx++;
-  };
-
-  if(cfg::device_id.length() > 0){
-    add_opt(cfg::device_id, get_active_player_name());
-  }
-  for(int p = 0; p < core::s_profile_count; p++){
-    add_opt(core::s_profiles[p].default_player_id, core::s_profiles[p].default_player_name);
-  }
-  if(opt_str.length() == 0) opt_str = "No players discovered";
-
-  lv_dropdown_set_options(dd, opt_str.c_str());
-  lv_dropdown_set_selected(dd, cur_sel);
-  lv_obj_add_event_cb(dd, [](lv_event_t* e){
-    lv_obj_t* d = lv_event_get_target(e);
-    uint16_t sel = lv_dropdown_get_selected(d);
-    // Find player ID for this option
-    String opts[10];
-    int o_cnt = 0;
-    auto reg_id = [&](const String& pid){
-      if(pid.length() == 0) return;
-      for(int s = 0; s < o_cnt; s++) if(opts[s] == pid) return;
-      opts[o_cnt++] = pid;
-    };
-    if(cfg::device_id.length() > 0) reg_id(cfg::device_id);
-    for(int p = 0; p < core::s_profile_count; p++) reg_id(core::s_profiles[p].default_player_id);
-    if(sel < o_cnt){
-      cfg::device_id = opts[sel];
-      if(cfg::lock_player) cfg::locked_dev_id = opts[sel];
-      cfg::save();
-    }
-  }, LV_EVENT_VALUE_CHANGED, NULL);
-
-  lv_obj_t* lock_hint = lv_label_create(p1);
+  // ONLY show the Locked Target Player selector when "Lock to Player" is selected!
   if(cfg::lock_player){
-    lv_label_set_text_fmt(lock_hint, "Locked: Output locked to selected player above.\nChanging profiles will update cards, but audio stays on this player.",
-                          cfg::device_id.c_str());
+    lv_obj_t* r_drop = set_row(p1);
+    lv_obj_t* dd_lbl = lv_label_create(r_drop);
+    lv_label_set_text(dd_lbl, "Locked Player:");
+    lv_obj_set_style_text_font(dd_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(dd_lbl, lv_color_hex(0x23303A), 0);
+
+    lv_obj_t* dd = lv_dropdown_create(r_drop);
+    lv_obj_set_size(dd, 360, 48);
+    lv_obj_set_style_text_font(dd, &lv_font_montserrat_16, 0);
+
+    // Populate options from all discovered players (across profiles in Core mode, or account in Standalone)
+    String opt_str = "";
+    int cur_sel = 0;
+    int opt_idx = 0;
+    String seen_ids[16];
+    int seen_count = 0;
+    String target_lock_id = cfg::locked_dev_id.length() ? cfg::locked_dev_id : cfg::device_id;
+
+    auto add_opt = [&](const String& pid, const String& pname) {
+      if(pid.length() == 0 || seen_count >= 16) return;
+      for(int s = 0; s < seen_count; s++) if(seen_ids[s] == pid) return;
+      seen_ids[seen_count++] = pid;
+      if(opt_str.length() > 0) opt_str += "\n";
+      opt_str += (pname.length() > 0 ? pname : String("Player ") + pid);
+      if(target_lock_id == pid) cur_sel = opt_idx;
+      opt_idx++;
+    };
+
+    if(cfg::op_mode == "core"){
+      for(int p = 0; p < core::s_profile_count; p++){
+        for(int k = 0; k < core::s_profiles[p].player_count; k++){
+          add_opt(core::s_profiles[p].players[k].id, core::s_profiles[p].players[k].name);
+        }
+        add_opt(core::s_profiles[p].default_player_id, core::s_profiles[p].default_player_name);
+      }
+    } else {
+      for(int k = 0; k < core::s_standalone_player_count; k++){
+        add_opt(core::s_standalone_players[k].id, core::s_standalone_players[k].name);
+      }
+    }
+    if(cfg::device_id.length() > 0){
+      add_opt(cfg::device_id, get_active_player_name());
+    }
+    if(opt_str.length() == 0) opt_str = "No players discovered";
+
+    lv_dropdown_set_options(dd, opt_str.c_str());
+    lv_dropdown_set_selected(dd, cur_sel);
+    lv_obj_add_event_cb(dd, [](lv_event_t* e){
+      lv_obj_t* d = lv_event_get_target(e);
+      uint16_t sel = lv_dropdown_get_selected(d);
+      String opts[16];
+      int o_cnt = 0;
+      auto reg_id = [&](const String& pid){
+        if(pid.length() == 0 || o_cnt >= 16) return;
+        for(int s = 0; s < o_cnt; s++) if(opts[s] == pid) return;
+        opts[o_cnt++] = pid;
+      };
+      if(cfg::op_mode == "core"){
+        for(int p = 0; p < core::s_profile_count; p++){
+          for(int k = 0; k < core::s_profiles[p].player_count; k++){
+            reg_id(core::s_profiles[p].players[k].id);
+          }
+          reg_id(core::s_profiles[p].default_player_id);
+        }
+      } else {
+        for(int k = 0; k < core::s_standalone_player_count; k++){
+          reg_id(core::s_standalone_players[k].id);
+        }
+      }
+      if(cfg::device_id.length() > 0) reg_id(cfg::device_id);
+      if(sel < o_cnt){
+        cfg::device_id = opts[sel];
+        cfg::locked_dev_id = opts[sel];
+        cfg::save();
+        if(s_scr_home) build_grid();
+      }
+    }, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t* lock_hint = lv_label_create(p1);
+    lv_label_set_text(lock_hint, "Locked Mode: Audio output is pinned to the selected player above.\nThe player picker on the catalog bar is disabled while locked.");
+    lv_obj_set_style_text_font(lock_hint, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(lock_hint, lv_color_hex(0x7A7060), 0);
   } else {
-    lv_label_set_text(lock_hint, "Profile Roaming: Audio dynamically routes to each child profile's bedroom player.\n(Lock to Player locks audio to the selected player above).");
+    // Roaming Mode Active: do NOT show the lock dropdown; explain roaming & offer quick profile switch
+    lv_obj_t* roam_hint = lv_label_create(p1);
+    if(is_core_mode){
+      const String& cur_p = (core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count)
+                            ? core::s_profiles[core::s_active_profile_idx].display_name : String("Active Profile");
+      lv_label_set_text_fmt(roam_hint,
+        "Roaming Active (%s -> %s):\n"
+        "You can switch profiles and pick between assigned players directly on the catalog top bar.",
+        cur_p.c_str(), get_active_player_name().c_str());
+    } else {
+      lv_label_set_text_fmt(roam_hint,
+        "Player Roaming Active (Current: %s):\n"
+        "Tap the player pill on the catalog top bar to switch between any Yoto player on your account.",
+        get_active_player_name().c_str());
+    }
+    lv_obj_set_style_text_font(roam_hint, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(roam_hint, lv_color_hex(0x137333), 0);
   }
-  lv_obj_set_style_text_font(lock_hint, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(lock_hint, lv_color_hex(0x7A7060), 0);
 
   set_section(p1, "Operational Mode");
   lv_obj_t* r_mode = set_row(p1);
@@ -694,7 +742,9 @@ void open_settings(){
   // Set initial active tab visibility
   gu_tab_switch(s_gu_active_tab);
 
+  lv_obj_t* old_s = s_scr_settings;
   s_scr_settings = scr;
   lv_scr_load(scr);
+  if(old_s && old_s != scr) lv_obj_del_async(old_s);
 }
 

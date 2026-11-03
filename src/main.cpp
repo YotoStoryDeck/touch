@@ -250,8 +250,148 @@ static void tab_btn_cb(lv_event_t* e){
 }
 
 String get_active_player_name();
+static lv_obj_t* s_dev_popup = nullptr;
+static lv_obj_t* s_top_dev_lbl = nullptr;
+static lv_obj_t* s_top_dev_dot = nullptr;
+
+// Return the list of players the user is allowed to select from on the catalog bar:
+// - Core mode: the active child profile's assigned players (s_profiles[s_active_profile_idx].players)
+// - Standalone mode: all discovered Yoto players on the account (s_standalone_players)
+static void get_selectable_players(const core::PlayerInfo*& out_list, int& out_count){
+  if(cfg::op_mode == "core"){
+    if(core::s_profile_count > 0 && core::s_active_profile_idx >= 0 && core::s_active_profile_idx < core::s_profile_count){
+      out_list  = core::s_profiles[core::s_active_profile_idx].players;
+      out_count = core::s_profiles[core::s_active_profile_idx].player_count;
+      return;
+    }
+    out_list = nullptr; out_count = 0;
+  } else {
+    out_list  = core::s_standalone_players;
+    out_count = core::s_standalone_player_count;
+  }
+}
+
+static lv_color_t get_player_dot_color(const String& dev_id){
+  const core::PlayerInfo* pi = core::find_player_info(dev_id);
+  if(pi){
+    if(pi->online && !pi->is_home) return lv_color_hex(0xEA580C); // orange = away / traveling
+    if(s_playing || pi->is_playing) return lv_color_hex(0xE5352B); // red = playing
+    if(pi->online) return lv_color_hex(0x16A34A);                 // green = online
+    return lv_color_hex(0x9CA3AF);                                // grey = offline
+  }
+  return s_playing ? lv_color_hex(0xE5352B) : lv_color_hex(0x16A34A);
+}
+
+static void close_device_picker_popup(){
+  if(s_dev_popup){
+    lv_obj_del(s_dev_popup);
+    s_dev_popup = nullptr;
+  }
+}
+
+static void toggle_device_picker_popup(){
+  if(s_dev_popup){
+    close_device_picker_popup();
+    return;
+  }
+  if(cfg::lock_player || !s_scr_home) return;
+  const core::PlayerInfo* plist = nullptr;
+  int pcnt = 0;
+  get_selectable_players(plist, pcnt);
+  if(!plist || pcnt <= 1) return;
+
+  // Create a full-screen transparent backdrop on s_scr_home so tapping outside dismisses the dropdown
+  s_dev_popup = lv_obj_create(s_scr_home);
+  lv_obj_set_size(s_dev_popup, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(s_dev_popup, 0, 0);
+  lv_obj_set_style_bg_opa(s_dev_popup, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(s_dev_popup, 0, 0);
+  lv_obj_set_style_pad_all(s_dev_popup, 0, 0);
+  lv_obj_clear_flag(s_dev_popup, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(s_dev_popup, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(s_dev_popup, [](lv_event_t*){ close_device_picker_popup(); }, LV_EVENT_CLICKED, NULL);
+
+  // Dropdown card anchored right under the player pill
+  int card_x = (cfg::op_mode == "core" && core::s_profile_count > 0) ? 132 : 8;
+  int card_h = 44 + pcnt * 50;
+  if(card_h > 320) card_h = 320;
+  lv_obj_t* card = lv_obj_create(s_dev_popup);
+  lv_obj_set_pos(card, card_x, 50);
+  lv_obj_set_size(card, 280, card_h);
+  lv_obj_set_style_bg_color(card, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_radius(card, 14, 0);
+  lv_obj_set_style_border_width(card, 1, 0);
+  lv_obj_set_style_border_color(card, lv_color_hex(0xE7E0D2), 0);
+  lv_obj_set_style_shadow_width(card, 16, 0);
+  lv_obj_set_style_shadow_opa(card, LV_OPA_30, 0);
+  lv_obj_set_style_pad_all(card, 8, 0);
+  lv_obj_set_style_pad_row(card, 4, 0);
+  lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scroll_dir(card, LV_DIR_VER);
+
+  lv_obj_t* hdr = lv_label_create(card);
+  lv_label_set_text(hdr, "SELECT TARGET PLAYER");
+  lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(hdr, lv_color_hex(0x8A8276), 0);
+  lv_obj_set_style_pad_left(hdr, 6, 0);
+  lv_obj_set_style_pad_bottom(hdr, 4, 0);
+
+  String def_id = (cfg::op_mode == "core" && core::s_profile_count > 0)
+                  ? core::s_profiles[core::s_active_profile_idx].default_player_id : String("");
+
+  for(int i = 0; i < pcnt; i++){
+    const core::PlayerInfo& pi = plist[i];
+    bool is_sel = (pi.id == cfg::device_id);
+    lv_obj_t* row = lv_btn_create(card);
+    lv_obj_set_size(row, lv_pct(100), 44);
+    lv_obj_set_style_radius(row, 10, 0);
+    lv_obj_set_style_bg_color(row, is_sel ? lv_color_hex(0xF4EDE0) : lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_color(row, lv_color_hex(0xE8DEC8), LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(row, is_sel ? 1 : 0, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_shadow_width(row, 0, 0);
+    lv_obj_set_style_pad_left(row, 10, 0);
+    lv_obj_set_style_pad_right(row, 10, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 8, 0);
+    lv_obj_add_event_cb(row, [](lv_event_t* e){
+      int idx = (int)(intptr_t)lv_event_get_user_data(e);
+      const core::PlayerInfo* pl = nullptr; int cnt = 0;
+      get_selectable_players(pl, cnt);
+      if(pl && idx >= 0 && idx < cnt){
+        cfg::device_id = pl[idx].id;
+        cfg::save();
+        if(s_top_dev_lbl) lv_label_set_text(s_top_dev_lbl, get_active_player_name().c_str());
+        if(s_top_dev_dot) lv_obj_set_style_bg_color(s_top_dev_dot, get_player_dot_color(cfg::device_id), 0);
+        update_home_bar();
+      }
+      close_device_picker_popup();
+    }, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+
+    lv_obj_t* d = lv_obj_create(row);
+    lv_obj_set_size(d, 10, 10);
+    lv_obj_set_style_radius(d, 5, 0);
+    lv_obj_set_style_bg_color(d, get_player_dot_color(pi.id), 0);
+    lv_obj_set_style_border_width(d, 0, 0);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t* nm = lv_label_create(row);
+    String label_txt = pi.name;
+    if(pi.online && !pi.is_home) label_txt += " (AWAY)";
+    else if(pi.id == def_id)     label_txt += " (Default)";
+    lv_label_set_text(nm, label_txt.c_str());
+    lv_obj_set_style_text_font(nm, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(nm, is_sel ? lv_color_hex(0xE5352B) : lv_color_hex(0x23303A), 0);
+    lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(nm, 1);
+  }
+}
 
 void build_grid(){
+  s_dev_popup = nullptr;
+  s_top_dev_lbl = nullptr;
+  s_top_dev_dot = nullptr;
   if(!s_scr_home){
     s_scr_home = lv_obj_create(NULL);
   } else {
@@ -261,7 +401,7 @@ void build_grid(){
   lv_obj_t* scr=s_scr_home;
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 
-  // Top Tab Navigation Bar (100% web-touch catalog.js parity: Profile Pill, Player Pill, 4 Tabs, Settings Gear)
+  // Top Tab Navigation Bar (100% web-touch catalog.js parity: Profile Pill, Player Pill, 4 Tabs, Top-Right Gear)
   lv_obj_t* nav = lv_obj_create(scr);
   lv_obj_set_size(nav, LCD_H_RES, 48);
   lv_obj_align(nav, LV_ALIGN_TOP_MID, 0, 0);
@@ -273,20 +413,26 @@ void build_grid(){
   lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
 
-  // Left Group: Profile Pill (Core mode) & Target Player Pill
-  if(cfg::op_mode == "core" && core::s_profile_count > 0){
+  bool is_core_with_profs = (cfg::op_mode == "core" && core::s_profile_count > 0);
+  bool can_switch_prof    = is_core_with_profs && core::s_allow_profile_switch && (core::s_profile_count > 1);
+
+  // 1. Left Group: Profile Pill (ONLY in Core Mode; Standalone Mode has no profiles, just players)
+  if(is_core_with_profs){
     lv_obj_t* prof_btn = lv_btn_create(nav);
-    lv_obj_set_size(prof_btn, 130, 38);
+    lv_obj_set_size(prof_btn, 126, 38);
     lv_obj_set_style_radius(prof_btn, 19, 0);
     lv_obj_set_style_bg_color(prof_btn, lv_color_hex(0xF4EDE0), 0);
     lv_obj_set_style_border_width(prof_btn, 1, 0);
     lv_obj_set_style_border_color(prof_btn, lv_color_hex(0xE7E0D2), 0);
     lv_obj_set_style_pad_all(prof_btn, 2, 0);
     lv_obj_set_style_shadow_width(prof_btn, 0, 0);
-    lv_obj_add_event_cb(prof_btn, [](lv_event_t*){
-      s_scr_prev = s_scr_home;
-      open_profile_picker();
-    }, LV_EVENT_CLICKED, NULL);
+    if(can_switch_prof){
+      lv_obj_add_event_cb(prof_btn, [](lv_event_t*){
+        close_device_picker_popup();
+        s_scr_prev = s_scr_home;
+        open_profile_picker();
+      }, LV_EVENT_CLICKED, NULL);
+    }
 
     lv_obj_t* pcont = lv_obj_create(prof_btn);
     lv_obj_set_size(pcont, lv_pct(100), lv_pct(100));
@@ -296,7 +442,7 @@ void build_grid(){
     lv_obj_set_style_pad_column(pcont, 4, 0);
     lv_obj_set_flex_flow(pcont, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(pcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(pcont, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(pcont, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t* idot = lv_obj_create(pcont);
     lv_obj_set_size(idot, 24, 24);
@@ -304,7 +450,7 @@ void build_grid(){
     lv_obj_set_style_bg_color(idot, lv_color_hex(0xE5352B), 0);
     lv_obj_set_style_border_width(idot, 0, 0);
     lv_obj_set_style_pad_all(idot, 0, 0);
-    lv_obj_clear_flag(idot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(idot, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     lv_obj_t* ilbl = lv_label_create(idot);
     const String& cur_pname = core::s_profiles[core::s_active_profile_idx].display_name;
     char ini[2] = {cur_pname.length() > 0 ? cur_pname[0] : 'P', '\0'};
@@ -318,46 +464,76 @@ void build_grid(){
     lv_obj_set_style_text_font(plbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(plbl, lv_color_hex(0x23303A), 0);
     lv_label_set_long_mode(plbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(plbl, 60);
+    lv_obj_set_width(plbl, can_switch_prof ? 58 : 74);
 
-    lv_obj_t* darr = lv_label_create(pcont);
-    lv_label_set_text(darr, LV_SYMBOL_DOWN);
-    lv_obj_set_style_text_font(darr, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(darr, lv_color_hex(0x8A8276), 0);
+    if(can_switch_prof){
+      lv_obj_t* darr = lv_label_create(pcont);
+      lv_label_set_text(darr, LV_SYMBOL_DOWN);
+      lv_obj_set_style_text_font(darr, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(darr, lv_color_hex(0x8A8276), 0);
+    }
   }
 
-  // Target Player Pill
-  lv_obj_t* dev_btn = lv_obj_create(nav);
-  lv_obj_set_size(dev_btn, 134, 38);
+  // 2. Target Player Selector Pill (Primary identity in Standalone Mode; next to Profile in Core Mode)
+  const core::PlayerInfo* sel_players = nullptr;
+  int sel_player_cnt = 0;
+  get_selectable_players(sel_players, sel_player_cnt);
+  bool can_pick_player = (!cfg::lock_player && sel_player_cnt > 1);
+  int dev_pill_w = is_core_with_profs ? 140 : 272;
+
+  lv_obj_t* dev_btn = lv_btn_create(nav);
+  lv_obj_set_size(dev_btn, dev_pill_w, 38);
   lv_obj_set_style_radius(dev_btn, 19, 0);
   lv_obj_set_style_bg_color(dev_btn, lv_color_hex(0xF4EDE0), 0);
+  lv_obj_set_style_bg_color(dev_btn, lv_color_hex(0xE8DEC8), LV_STATE_PRESSED);
   lv_obj_set_style_border_width(dev_btn, 1, 0);
   lv_obj_set_style_border_color(dev_btn, lv_color_hex(0xE7E0D2), 0);
   lv_obj_set_style_pad_all(dev_btn, 2, 0);
-  lv_obj_set_style_pad_column(dev_btn, 4, 0);
-  lv_obj_set_flex_flow(dev_btn, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(dev_btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(dev_btn, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_shadow_width(dev_btn, 0, 0);
+  if(can_pick_player){
+    lv_obj_add_event_cb(dev_btn, [](lv_event_t*){
+      toggle_device_picker_popup();
+    }, LV_EVENT_CLICKED, NULL);
+  }
 
-  lv_obj_t* dot = lv_obj_create(dev_btn);
+  lv_obj_t* dcont = lv_obj_create(dev_btn);
+  lv_obj_set_size(dcont, lv_pct(100), lv_pct(100));
+  lv_obj_set_style_bg_opa(dcont, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(dcont, 0, 0);
+  lv_obj_set_style_pad_all(dcont, 0, 0);
+  lv_obj_set_style_pad_column(dcont, 5, 0);
+  lv_obj_set_flex_flow(dcont, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(dcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(dcont, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t* dot = lv_obj_create(dcont);
+  s_top_dev_dot = dot;
   lv_obj_set_size(dot, 10, 10);
   lv_obj_set_style_radius(dot, 5, 0);
-  lv_obj_set_style_bg_color(dot, lv_color_hex(0x3AB06A), 0);
+  lv_obj_set_style_bg_color(dot, get_player_dot_color(cfg::device_id), 0);
   lv_obj_set_style_border_width(dot, 0, 0);
-  lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-  lv_obj_t* dname = lv_label_create(dev_btn);
+  lv_obj_t* dname = lv_label_create(dcont);
+  s_top_dev_lbl = dname;
   lv_label_set_text(dname, get_active_player_name().c_str());
   lv_obj_set_style_text_font(dname, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(dname, lv_color_hex(0x23303A), 0);
   lv_label_set_long_mode(dname, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(dname, 96);
+  lv_obj_set_width(dname, dev_pill_w - (can_pick_player ? 46 : 28));
 
-  // 4 Category Tabs (All Books, Series, Audiobooks, Yoto Cards)
+  if(can_pick_player){
+    lv_obj_t* dchev = lv_label_create(dcont);
+    lv_label_set_text(dchev, LV_SYMBOL_DOWN);
+    lv_obj_set_style_text_font(dchev, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(dchev, lv_color_hex(0x8A8276), 0);
+  }
+
+  // 3. 4 Category Tabs (All, Series, Audio, Cards)
   static const char* tab_names[4] = {"All", "Series", "Audio", "Cards"};
   for(int t = 0; t < 4; t++){
     lv_obj_t* tb = lv_btn_create(nav);
-    lv_obj_set_size(tb, 96, 38);
+    lv_obj_set_size(tb, 94, 38);
     lv_obj_set_style_radius(tb, 19, 0);
     bool sel = (t == (int)s_active_tab);
     lv_obj_set_style_bg_color(tb, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
@@ -373,15 +549,17 @@ void build_grid(){
     lv_obj_center(tl);
   }
 
-  // Right: Grown-Ups Settings Gear Button (Instant tap opens PIN modal)
+  // 4. Right: Grown-Ups Settings Gear Button (ONLY top-right, mirroring kiosk!)
   lv_obj_t* top_gear = lv_btn_create(nav);
   lv_obj_set_size(top_gear, 42, 38);
   lv_obj_set_style_radius(top_gear, 19, 0);
   lv_obj_set_style_bg_color(top_gear, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(top_gear, lv_color_hex(0xE5352B), LV_STATE_PRESSED);
   lv_obj_set_style_border_width(top_gear, 1, 0);
   lv_obj_set_style_border_color(top_gear, lv_color_hex(0xE7E0D2), 0);
   lv_obj_set_style_shadow_width(top_gear, 0, 0);
   lv_obj_add_event_cb(top_gear, [](lv_event_t*){
+    close_device_picker_popup();
     s_scr_prev = s_scr_home;
     open_pin_modal(false);
   }, LV_EVENT_CLICKED, NULL);
@@ -392,26 +570,21 @@ void build_grid(){
   lv_obj_set_style_text_color(tgi, lv_color_hex(0x7A7060), 0);
   lv_obj_center(tgi);
 
-  // scrollable grid container (offset 52px for the top nav tab bar)
+  // scrollable grid container (offset 50px for the top nav tab bar)
   lv_obj_t* cont=lv_obj_create(scr);
   s_grid=cont;
   lv_obj_set_size(cont, LCD_H_RES, 360);
   lv_obj_align(cont, LV_ALIGN_TOP_MID, 0, 50);
   lv_obj_set_style_bg_color(cont, lv_color_hex(0xFBF7F0), 0);
   lv_obj_set_style_border_width(cont, 0, 0);
-  // 4 columns of 160px tiles: 4*160 + 3*20 gap = 700; centered in the 800-wide row with ~32px
-  // side margins. Bigger tiles than the old 5-up 122px grid = an easier target for little fingers.
   lv_obj_set_style_pad_all(cont, 18, 0);
   lv_obj_set_style_pad_row(cont, 20, 0);
   lv_obj_set_style_pad_column(cont, 20, 0);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW_WRAP);
-  // main=CENTER (center tiles in each row), but track place = START so rows stack from the
-  // TOP — centering the track block hides the top rows once content overflows (unscrollable).
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_set_scroll_dir(cont, LV_DIR_VER);
 
   for(int i=0;i<s_card_count;i++){
-    // image tile (cover fills it once the thumb loads); red rounded placeholder until then
     lv_obj_t* tile=lv_img_create(cont);
     lv_obj_set_size(tile, THUMB_W, THUMB_H);
     lv_obj_set_style_bg_color(tile, lv_color_hex(0xE5352B), 0);
@@ -419,8 +592,6 @@ void build_grid(){
     lv_obj_set_style_radius(tile, 14, 0);
     lv_obj_set_style_clip_corner(tile, true, 0);
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-    // tactile press feedback: the tile dips + dims while a finger is on it, so every
-    // touch visibly reacts even before the (blocking) detail fetch starts
     lv_obj_set_style_translate_y(tile, 3, LV_STATE_PRESSED);
     lv_obj_set_style_opa(tile, LV_OPA_80, LV_STATE_PRESSED);
     lv_obj_set_user_data(tile, (void*)(intptr_t)i);
@@ -428,25 +599,23 @@ void build_grid(){
     s_cards[i].tile=tile;
   }
 
-  // bottom status bar (mini now-playing) — populated by update_home_bar()
+  // bottom status bar (Now Playing bar mirroring kiosk PlayerScreen.renderNowbar)
   s_bar=lv_obj_create(scr);
   lv_obj_set_size(s_bar, LCD_H_RES, 70);
   lv_obj_align(s_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_color(s_bar, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_border_width(s_bar, 0, 0);
+  lv_obj_set_style_border_side(s_bar, LV_BORDER_SIDE_TOP, 0);
+  lv_obj_set_style_border_width(s_bar, 1, 0);
+  lv_obj_set_style_border_color(s_bar, lv_color_hex(0xE7E0D2), 0);
   lv_obj_set_style_radius(s_bar, 0, 0);
   lv_obj_set_style_pad_all(s_bar, 0, 0);
   lv_obj_clear_flag(s_bar, LV_OBJ_FLAG_SCROLLABLE);
   update_home_bar();
 }
 
-// Reopen the now-playing screen for the card that's actually PLAYING (which may differ from
-// the card currently browsed). Re-fetch its chapters if we've since browsed elsewhere.
 static void minibar_open_cb(lv_event_t*){
   if(s_play_card < 0 || s_play_card >= s_card_count) return;
   if(s_cards[s_play_card].daily){
-    // Yoto Daily has no normal chapter list — rebuild the one-track state we play it with,
-    // from the preserved playback identity (don't refetch, which would load the wrong chapters).
     s_cur_card = s_play_card; s_detail_title = "Yoto Daily";
     s_ch_count = 1; s_cur_ch = 0;
     s_ch[0].key = "daily"; s_ch[0].title = s_play_chapter; s_ch[0].dur = s_play_dur;
@@ -455,33 +624,17 @@ static void minibar_open_cb(lv_event_t*){
   }
   if(s_cur_card != s_play_card){
     s_cur_card = s_play_card;
-    // repopulate s_ch + s_detail_title for the now screen — SD cache first, only hit the
-    // network if this card's chapters somehow aren't cached yet (matches open_detail/warmer)
     if(!sd_chap_read(s_cards[s_play_card].id)) fetch_card_detail(s_play_card);
   }
   s_cur_ch = s_play_ch;
   open_now();
 }
-static void minibar_toggle_cb(lv_event_t*){ np_toggle(); }   // np_toggle() refreshes the bar
+static void minibar_toggle_cb(lv_event_t*){ np_toggle(); }
 
-// settings gear: a deliberate 2.5s HOLD opens the grown-ups screen — a quick kid-tap does
-// nothing. The pending timer is cancelled the moment the finger lifts or slides off.
-static void gear_open_cb(lv_timer_t*){ s_gear_timer=nullptr; s_scr_prev=s_scr_home; open_pin_modal(false); }
-static void gear_event_cb(lv_event_t* e){
-  lv_event_code_t c = lv_event_get_code(e);
-  if(c==LV_EVENT_PRESSED && !s_gear_timer){
-    s_gear_timer = lv_timer_create(gear_open_cb, 2500, NULL);
-    lv_timer_set_repeat_count(s_gear_timer, 1);     // one-shot; self-deletes after firing
-  } else if((c==LV_EVENT_RELEASED || c==LV_EVENT_PRESS_LOST) && s_gear_timer){
-    lv_timer_del(s_gear_timer); s_gear_timer=nullptr;
-  }
-}
-
-// Rebuild the home bottom bar from current state: left = device status; right = either the
-// idle hint, or a mini now-playing (title + chapter, play/pause, tap-to-open).
-
-// Resolve friendly display name of the target player (from active profile or configured device ID)
+// Resolve friendly display name of the target player (from active device ID, profile, or standalone list)
 String get_active_player_name(){
+  const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
+  if(pi && pi->name.length() > 0) return pi->name;
   if(cfg::op_mode == "core" && core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
     const String& pn = core::s_profiles[core::s_active_profile_idx].default_player_name;
     if(pn.length() > 0) return pn;
@@ -490,58 +643,57 @@ String get_active_player_name(){
   return "Yoto Player";
 }
 
+// Rebuild the home bottom bar (100% kiosk PlayerScreen.renderNowbar parity; NO duplicate gear button)
 static void update_home_bar(){
   if(!s_bar) return;
-  // the gear is about to be deleted+rebuilt — if a finger was mid-hold on it, the deleted
-  // button can't deliver RELEASED, so disarm the pending open here
-  if(s_gear_timer){ lv_timer_del(s_gear_timer); s_gear_timer=nullptr; }
   lv_obj_clean(s_bar);
+  if(s_top_dev_dot) lv_obj_set_style_bg_color(s_top_dev_dot, get_player_dot_color(cfg::device_id), 0);
 
-  // left: green "online" dot + device name
+  // Left: live status dot + active player name
   lv_obj_t* dot=lv_obj_create(s_bar);
   lv_obj_set_size(dot, 12, 12);
   lv_obj_set_style_radius(dot, 6, 0);
-  lv_obj_set_style_bg_color(dot, lv_color_hex(0x3AB06A), 0);
+  lv_obj_set_style_bg_color(dot, get_player_dot_color(cfg::device_id), 0);
   lv_obj_set_style_border_width(dot, 0, 0);
   lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(dot, LV_ALIGN_LEFT_MID, 16, 0);
+  lv_obj_align(dot, LV_ALIGN_LEFT_MID, 18, 0);
 
   lv_obj_t* name=lv_label_create(s_bar);
   lv_label_set_text(name, get_active_player_name().c_str());
   lv_obj_set_style_text_font(name, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(name, lv_color_hex(0x3A6B50), 0);
-  lv_obj_align(name, LV_ALIGN_LEFT_MID, 36, 0);
-
-  // far right: settings gear — subtle grey, HOLD 2.5s to open (gear_event_cb). Text color
-  // set on the button (pressed state turns it red) and inherited by the icon label.
-  lv_obj_t* gear=lv_btn_create(s_bar);
-  lv_obj_set_size(gear, 52, 52);
-  lv_obj_align(gear, LV_ALIGN_RIGHT_MID, -8, 0);
-  lv_obj_set_style_bg_opa(gear, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_shadow_width(gear, 0, 0);
-  lv_obj_set_style_text_color(gear, lv_color_hex(0xC9C2B4), 0);
-  lv_obj_set_style_text_color(gear, lv_color_hex(0xE5352B), LV_STATE_PRESSED);
-  lv_obj_add_event_cb(gear, gear_event_cb, LV_EVENT_ALL, NULL);
-  lv_obj_t* gi=lv_label_create(gear);
-  lv_label_set_text(gi, LV_SYMBOL_SETTINGS);
-  lv_obj_set_style_text_font(gi, &lv_font_montserrat_28, 0);
-  lv_obj_center(gi);
+  lv_obj_set_style_text_color(name, lv_color_hex(0x23303A), 0);
+  lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(name, 165);
+  lv_obj_align(name, LV_ALIGN_LEFT_MID, 38, 0);
 
   if(s_play_card < 0){
-    // idle — keep the hint label (load_thumbs also writes cover-load progress here)
+    // Idle state mirroring kiosk: musical note icon badge + "Nothing playing — tap a book to listen"
+    lv_obj_t* mb = lv_obj_create(s_bar);
+    lv_obj_set_size(mb, 38, 38);
+    lv_obj_set_style_radius(mb, 10, 0);
+    lv_obj_set_style_bg_color(mb, lv_color_hex(0xF3ECE0), 0);
+    lv_obj_set_style_border_width(mb, 0, 0);
+    lv_obj_clear_flag(mb, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(mb, LV_ALIGN_LEFT_MID, 212, 0);
+    lv_obj_t* mbi = lv_label_create(mb);
+    lv_label_set_text(mbi, LV_SYMBOL_AUDIO);
+    lv_obj_set_style_text_font(mbi, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(mbi, lv_color_hex(0x8A8276), 0);
+    lv_obj_center(mbi);
+
     s_barlabel=lv_label_create(s_bar);
-    lv_obj_set_style_text_font(s_barlabel, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_barlabel, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(s_barlabel, lv_color_hex(0x9A9384), 0);
-    lv_label_set_text(s_barlabel, "");   // idle: left dot + player name is enough
-    lv_obj_align(s_barlabel, LV_ALIGN_LEFT_MID, 188, 0);
+    lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+    lv_obj_align(s_barlabel, LV_ALIGN_LEFT_MID, 262, 0);
     return;
   }
-  s_barlabel=nullptr;   // mini-player owns the right side while something is playing
+  s_barlabel=nullptr;   // mini-player owns the center/right while something is playing
 
-  // play/pause button (right of the tap block, left of the gear) — quick toggle from the grid
+  // Far right: circular red Play/Pause button
   lv_obj_t* pp=lv_btn_create(s_bar);
   lv_obj_set_size(pp, 54, 54);
-  lv_obj_align(pp, LV_ALIGN_RIGHT_MID, -68, 0);
+  lv_obj_align(pp, LV_ALIGN_RIGHT_MID, -16, 0);
   lv_obj_set_style_radius(pp, 27, 0);
   lv_obj_set_style_bg_color(pp, lv_color_hex(0xE5352B), 0);
   lv_obj_set_style_shadow_width(pp, 0, 0);
@@ -552,10 +704,10 @@ static void update_home_bar(){
   lv_obj_set_style_text_color(ppi, lv_color_hex(0xFFFFFF), 0);
   lv_obj_center(ppi);
 
-  // tappable title/chapter block → opens the full Now Playing screen
+  // Tappable title/chapter block -> opens full Now Playing screen
   lv_obj_t* tap=lv_obj_create(s_bar);
-  lv_obj_set_size(tap, 440, 64);
-  lv_obj_align(tap, LV_ALIGN_RIGHT_MID, -132, 0);
+  lv_obj_set_size(tap, 500, 64);
+  lv_obj_align(tap, LV_ALIGN_LEFT_MID, 212, 0);
   lv_obj_set_style_bg_opa(tap, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(tap, 0, 0);
   lv_obj_set_style_pad_all(tap, 0, 0);
@@ -565,7 +717,7 @@ static void update_home_bar(){
 
   lv_obj_t* tt=lv_label_create(tap);
   lv_label_set_long_mode(tt, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(tt, 440);
+  lv_obj_set_width(tt, 490);
   lv_label_set_text_fmt(tt, LV_SYMBOL_AUDIO "  %s", s_play_title.c_str());
   lv_obj_set_style_text_font(tt, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(tt, lv_color_hex(0x23303A), 0);
@@ -573,7 +725,7 @@ static void update_home_bar(){
 
   lv_obj_t* tc=lv_label_create(tap);
   lv_label_set_long_mode(tc, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(tc, 440);
+  lv_obj_set_width(tc, 490);
   if(s_play_author.length() > 0 && s_play_chapter.length() > 0){
     lv_label_set_text_fmt(tc, "%s  \xE2\x80\xA2  %s", s_play_author.c_str(), s_play_chapter.c_str());
   } else {
@@ -769,7 +921,7 @@ void load_thumbs(){
     if(ok < s_card_count)
       lv_label_set_text_fmt(s_barlabel, "covers %d/%d  -  %s", ok, s_card_count, firstErr.c_str());
     else
-      lv_label_set_text(s_barlabel, "");   // covers done: clear the loading progress, leave bar clean
+      lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
   }
 }
 
@@ -1164,8 +1316,12 @@ static int send_cmd(const char* name, const String& body){
       const char* cid = in["id"];
       int chIdx = 0;
       const char* ck = in["chapterKey"];
-      if(ck && *ck) chIdx = atoi(ck);
-      return core::play_media(cfg::core_url, "default", "yoto", cid ? cid : "", cfg::device_id, chIdx);
+      if(ck && *ck) chIdx = atoi(ck) > 0 ? atoi(ck) - 1 : 0;
+      String child_id = (core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count)
+                        ? core::s_profiles[core::s_active_profile_idx].id : String("default");
+      String ctype = (s_play_card >= 0 && s_play_card < s_card_count && s_cards[s_play_card].source.length() > 0)
+                     ? s_cards[s_play_card].source : String("yoto");
+      return core::play_media(cfg::core_url, child_id, ctype, cid ? cid : "", cfg::device_id, chIdx);
     } else if(nm == "volume"){
       int v = (int)(in["volume"] | 30); if(v < 0) v = 0; if(v > cfg::vol_max) v = cfg::vol_max;
       return core::player_control(cfg::core_url, cfg::device_id, "volume", v);
@@ -1990,17 +2146,47 @@ void net_init_and_fetch(){
     if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
       status("Loading StoryDeck Profiles...");
       if(core::fetch_config_and_profiles(cfg::core_url)){
-        if(!cfg::lock_player && core::s_profiles[core::s_active_profile_idx].default_player_id.length() > 0){
-          cfg::device_id = core::s_profiles[core::s_active_profile_idx].default_player_id;
-        }
+        cfg::device_id = core::resolve_active_device_id(core::s_active_profile_idx);
       }
+    } else if(cfg::op_mode != "core"){
+      // Standalone mode: discover all Yoto players on the account via GET /device-v2/devices/mine
+      status("Discovering Yoto Players...");
+      size_t blen = 0; char* body = nullptr;
+      {
+        tlsarena::Guard tg;
+        WiFiClientSecure cli; HTTPClient http;
+        int code = yoto::get(cli, http, "/device-v2/devices/mine");
+        if(code == 200) body = read_body_psram(http, blen);
+        if(code > 0) http.end();
+      }
+      if(body){
+        PsramAllocator psram; JsonDocument doc(&psram);
+        if(!deserializeJson(doc, (const char*)body, blen)){
+          core::s_standalone_player_count = 0;
+          for(JsonObject d : doc["devices"].as<JsonArray>()){
+            if(core::s_standalone_player_count >= MAX_PROF_PLAYERS) break;
+            String did = (const char*)(d["deviceId"] | d["id"] | "");
+            if(did.length() == 0) continue;
+            core::PlayerInfo& pi = core::s_standalone_players[core::s_standalone_player_count++];
+            pi.id      = did;
+            pi.name    = (const char*)(d["name"] | "Yoto Player");
+            pi.online  = (bool)(d["online"] | false);
+            pi.is_home = pi.online;
+          }
+        }
+        free(body);
+      }
+      cfg::device_id = core::resolve_active_device_id(-1);
     }
 
     Serial.printf("[HEAP] after-config: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
-    // If Core mode has multiple child profiles, open the Profile Picker IMMEDIATELY!
-    // We load the specific child's catalog + covers only AFTER a profile is tapped.
-    if(cfg::op_mode == "core" && core::s_profile_count > 1){
+    // Kiosk Profile Permissions:
+    // - If Core mode is active, profile switching is allowed, no specific profile was force-assigned to this hardware,
+    //   and multiple profiles exist -> open the Profile Picker immediately!
+    // - If a profile was force-assigned to this kiosk in Core Admin (or only 1 profile exists, or Standalone mode) ->
+    //   boot directly into the catalog!
+    if(cfg::op_mode == "core" && core::s_profile_count > 1 && core::s_allow_profile_switch && core::s_assigned_profile.length() == 0){
       build_grid();       // initialize empty s_scr_home backing screen
       s_lib_ok = true;
       open_profile_picker();

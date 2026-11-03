@@ -11,12 +11,26 @@
 
 namespace core {
 
+struct PlayerInfo {
+  String id;
+  String name;
+  bool   online     = false;
+  bool   is_home    = true;
+  bool   is_playing = false;
+  int    volume     = 50;
+  int    volume_max = 100;
+};
+
+#define MAX_PROF_PLAYERS 8
+
 struct Profile {
   String id;
   String display_name;
   String avatar_url;
   String default_player_id;
   String default_player_name;
+  PlayerInfo players[MAX_PROF_PLAYERS];
+  int    player_count = 0;
   uint8_t* avatar_buf = nullptr;
   lv_img_dsc_t avatar_dsc{};
 };
@@ -25,6 +39,12 @@ struct Profile {
 static Profile s_profiles[MAX_PROFILES];
 static int     s_profile_count = 0;
 static int     s_active_profile_idx = 0;
+static String  s_assigned_profile = "";
+static bool    s_allow_profile_switch = true;
+
+// Standalone mode discovered players (from /device-v2/devices/mine)
+static PlayerInfo s_standalone_players[MAX_PROF_PLAYERS];
+static int        s_standalone_player_count = 0;
 
 static String s_access_token = "";
 static bool   s_is_registered = false;
@@ -170,22 +190,114 @@ inline bool fetch_config_and_profiles(const String& base_url){
     cfg::save();
   }
 
+  s_assigned_profile = (const char*)(doc["assigned_profile"] | "");
+  if(!doc["allow_profile_switch"].isNull()){
+    s_allow_profile_switch = (bool)doc["allow_profile_switch"];
+  } else {
+    s_allow_profile_switch = (s_assigned_profile.length() == 0);
+  }
+
   s_profile_count = 0;
   JsonArray profs = doc["profiles"].as<JsonArray>();
   for(JsonObject p : profs){
     if(s_profile_count >= MAX_PROFILES) break;
-    s_profiles[s_profile_count].id = (const char*)(p["id"] | "");
-    s_profiles[s_profile_count].display_name = (const char*)(p["display_name"] | "Child");
+    Profile& pr = s_profiles[s_profile_count];
+    pr.id = (const char*)(p["id"] | "");
+    pr.display_name = (const char*)(p["display_name"] | "Child");
     String av = (const char*)(p["avatar_url"] | "");
     if(av.startsWith("/")){
       av = base_url + av;
     }
-    s_profiles[s_profile_count].avatar_url = av;
-    s_profiles[s_profile_count].default_player_id = (const char*)(p["default_player_id"] | "");
-    s_profiles[s_profile_count].default_player_name = (const char*)(p["default_player_name"] | "Yoto Player");
+    pr.avatar_url = av;
+    pr.default_player_id = (const char*)(p["default_player_id"] | "");
+    pr.default_player_name = (const char*)(p["default_player_name"] | "Yoto Player");
+
+    pr.player_count = 0;
+    JsonArray pls = p["players"].as<JsonArray>();
+    for(JsonObject pl : pls){
+      if(pr.player_count >= MAX_PROF_PLAYERS) break;
+      String pid = (const char*)(pl["id"] | "");
+      if(pid.length() == 0) continue;
+      PlayerInfo& pi = pr.players[pr.player_count++];
+      pi.id         = pid;
+      pi.name       = (const char*)(pl["name"] | "Yoto Player");
+      pi.online     = (bool)(pl["online"] | false);
+      pi.is_home    = pl["is_home"].isNull() ? pi.online : (bool)pl["is_home"];
+      pi.is_playing = (bool)(pl["is_playing"] | false);
+      pi.volume     = (int)(pl["volume"] | 50);
+      pi.volume_max = (int)(pl["volume_max"] | 100);
+    }
+    if(pr.player_count == 0 && pr.default_player_id.length() > 0){
+      PlayerInfo& pi = pr.players[pr.player_count++];
+      pi.id   = pr.default_player_id;
+      pi.name = pr.default_player_name;
+    }
     s_profile_count++;
   }
+
+  // If Core assigned a specific profile to this hardware controller, select it
+  if(s_assigned_profile.length() > 0){
+    for(int i = 0; i < s_profile_count; i++){
+      if(s_profiles[i].id == s_assigned_profile){
+        s_active_profile_idx = i;
+        break;
+      }
+    }
+  }
   return (s_profile_count > 0);
+}
+
+// Kiosk parity: resolve best active player for a profile (or standalone)
+inline String resolve_active_device_id(int prof_idx){
+  if(cfg::lock_player && cfg::locked_dev_id.length() > 0){
+    return cfg::locked_dev_id;
+  }
+  if(cfg::op_mode != "core"){
+    if(s_standalone_player_count > 0){
+      for(int i = 0; i < s_standalone_player_count; i++){
+        if(s_standalone_players[i].id == cfg::device_id) return cfg::device_id;
+      }
+      for(int i = 0; i < s_standalone_player_count; i++){
+        if(s_standalone_players[i].online) return s_standalone_players[i].id;
+      }
+      return s_standalone_players[0].id;
+    }
+    return cfg::device_id;
+  }
+  if(prof_idx < 0 || prof_idx >= s_profile_count) return cfg::device_id;
+  const Profile& pr = s_profiles[prof_idx];
+  for(int i = 0; i < pr.player_count; i++){
+    if(pr.players[i].is_playing) return pr.players[i].id;
+  }
+  for(int i = 0; i < pr.player_count; i++){
+    if(pr.players[i].online) return pr.players[i].id;
+  }
+  if(pr.default_player_id.length() > 0) return pr.default_player_id;
+  if(pr.player_count > 0) return pr.players[0].id;
+  return cfg::device_id;
+}
+
+// Lookup PlayerInfo by device_id across active profile / all profiles / standalone
+inline const PlayerInfo* find_player_info(const String& dev_id){
+  if(dev_id.length() == 0) return nullptr;
+  if(cfg::op_mode == "core"){
+    if(s_active_profile_idx >= 0 && s_active_profile_idx < s_profile_count){
+      const Profile& pr = s_profiles[s_active_profile_idx];
+      for(int i = 0; i < pr.player_count; i++){
+        if(pr.players[i].id == dev_id) return &pr.players[i];
+      }
+    }
+    for(int p = 0; p < s_profile_count; p++){
+      for(int i = 0; i < s_profiles[p].player_count; i++){
+        if(s_profiles[p].players[i].id == dev_id) return &s_profiles[p].players[i];
+      }
+    }
+  } else {
+    for(int i = 0; i < s_standalone_player_count; i++){
+      if(s_standalone_players[i].id == dev_id) return &s_standalone_players[i];
+    }
+  }
+  return nullptr;
 }
 
 // 4. Playback Dispatch via Core Hub
