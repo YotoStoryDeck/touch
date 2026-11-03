@@ -438,10 +438,13 @@ static void tab_btn_cb(lv_event_t* e){
 static String get_active_player_name();
 
 static void build_grid(){
-  lv_obj_clean(lv_scr_act());
+  if(!s_scr_home){
+    s_scr_home = lv_obj_create(NULL);
+  } else {
+    lv_obj_clean(s_scr_home);
+  }
   s_status=nullptr;
-  lv_obj_t* scr=lv_scr_act();
-  s_scr_home=scr;
+  lv_obj_t* scr=s_scr_home;
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 
   // Top Tab Navigation Bar (100% web-touch catalog.js parity: Profile Pill, Player Pill, 4 Tabs, Settings Gear)
@@ -951,9 +954,11 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
   size_t got = 0;
   {
     tlsarena::Guard tg;                     // CDN fetch is TLS too; closed before the decode
-    WiFiClientSecure cli; cli.setInsecure();
+    WiFiClientSecure scli; scli.setInsecure();
+    WiFiClient pcli;
     HTTPClient http;
-    if(!http.begin(cli, url)){ s_thumb_diag = "begin fail heap=" + String(ESP.getFreeHeap()); return false; }
+    bool begin_ok = url.startsWith("https://") ? http.begin(scli, url) : http.begin(pcli, url);
+    if(!begin_ok){ s_thumb_diag = "begin fail heap=" + String(ESP.getFreeHeap()); return false; }
     http.setTimeout(8000);
     int code = http.GET();
     if(code != 200){ s_thumb_diag = "HTTP " + String(code) + " heap=" + String(ESP.getFreeHeap()); http.end(); return false; }
@@ -1060,6 +1065,7 @@ static void load_thumbs(){
     if(s_barlabel)
       lv_label_set_text_fmt(s_barlabel, "loading covers  %d/%d", i+1, s_card_count);
     lv_refr_now(lv_disp_get_default());     // show each cover as it arrives
+    vTaskDelay(pdMS_TO_TICKS(10));           // yield so WiFi and IDLE/WDT tasks execute cleanly
   }
   // one retry pass for stragglers (transient CDN/WiFi hiccups) before reporting failure;
   // a failed tile is the one whose descriptor never got pixels
@@ -2720,12 +2726,70 @@ static void open_settings(){
     lv_obj_set_style_text_color(lv_obj_get_child(b_lock, 0), lv_color_hex(0xFFFFFF), 0);
   }
 
+  // Target Player Dropdown Selector
+  lv_obj_t* r_drop = set_row(p1);
+  lv_obj_t* dd_lbl = lv_label_create(r_drop);
+  lv_label_set_text(dd_lbl, "Target Player:");
+  lv_obj_set_style_text_font(dd_lbl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(dd_lbl, lv_color_hex(0x23303A), 0);
+
+  lv_obj_t* dd = lv_dropdown_create(r_drop);
+  lv_obj_set_size(dd, 340, 48);
+  lv_obj_set_style_text_font(dd, &lv_font_montserrat_16, 0);
+
+  // Populate options from discovered profiles / default player
+  String opt_str = "";
+  int cur_sel = 0;
+  int opt_idx = 0;
+  String seen_ids[10];
+  int seen_count = 0;
+
+  auto add_opt = [&](const String& pid, const String& pname) {
+    if(pid.length() == 0) return;
+    for(int s = 0; s < seen_count; s++) if(seen_ids[s] == pid) return;
+    seen_ids[seen_count++] = pid;
+    if(opt_str.length() > 0) opt_str += "\n";
+    opt_str += (pname.length() > 0 ? pname : String("Player ") + pid);
+    if(cfg::device_id == pid) cur_sel = opt_idx;
+    opt_idx++;
+  };
+
+  if(cfg::device_id.length() > 0){
+    add_opt(cfg::device_id, get_active_player_name());
+  }
+  for(int p = 0; p < core::s_profile_count; p++){
+    add_opt(core::s_profiles[p].default_player_id, core::s_profiles[p].default_player_name);
+  }
+  if(opt_str.length() == 0) opt_str = "No players discovered";
+
+  lv_dropdown_set_options(dd, opt_str.c_str());
+  lv_dropdown_set_selected(dd, cur_sel);
+  lv_obj_add_event_cb(dd, [](lv_event_t* e){
+    lv_obj_t* d = lv_event_get_target(e);
+    uint16_t sel = lv_dropdown_get_selected(d);
+    // Find player ID for this option
+    String opts[10];
+    int o_cnt = 0;
+    auto reg_id = [&](const String& pid){
+      if(pid.length() == 0) return;
+      for(int s = 0; s < o_cnt; s++) if(opts[s] == pid) return;
+      opts[o_cnt++] = pid;
+    };
+    if(cfg::device_id.length() > 0) reg_id(cfg::device_id);
+    for(int p = 0; p < core::s_profile_count; p++) reg_id(core::s_profiles[p].default_player_id);
+    if(sel < o_cnt){
+      cfg::device_id = opts[sel];
+      if(cfg::lock_player) cfg::locked_dev_id = opts[sel];
+      cfg::save();
+    }
+  }, LV_EVENT_VALUE_CHANGED, NULL);
+
   lv_obj_t* lock_hint = lv_label_create(p1);
   if(cfg::lock_player){
-    lv_label_set_text_fmt(lock_hint, "Locked to Player ID: %s\nChanging child profiles will update cards, but audio stays here.",
+    lv_label_set_text_fmt(lock_hint, "Locked: Output locked to selected player above.\nChanging profiles will update cards, but audio stays on this player.",
                           cfg::device_id.c_str());
   } else {
-    lv_label_set_text(lock_hint, "Profile Roaming: Audio dynamically routes to each child profile's bedroom player.");
+    lv_label_set_text(lock_hint, "Profile Roaming: Audio dynamically routes to each child profile's bedroom player.\n(Lock to Player locks audio to the selected player above).");
   }
   lv_obj_set_style_text_font(lock_hint, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(lock_hint, lv_color_hex(0x7A7060), 0);
@@ -3346,6 +3410,8 @@ static void net_init_and_fetch(){
       s_lib_ok = true;
       if(cfg::op_mode == "core" && core::s_profile_count > 1){
         open_profile_picker();
+      } else {
+        lv_scr_load(s_scr_home);
       }
     }
   }

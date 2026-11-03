@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <NetworkClientSecure.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "app_config.h"
 
@@ -32,12 +32,21 @@ inline String get_mac(){
   return WiFi.macAddress();
 }
 
+// Helper to correctly begin HTTP or HTTPS requests without panicking or requiring CA certs
+inline bool http_begin_url(HTTPClient& http, WiFiClientSecure& scli, WiFiClient& pcli, const String& url){
+  if(url.startsWith("https://")){
+    scli.setInsecure();
+    return http.begin(scli, url);
+  }
+  return http.begin(pcli, url);
+}
+
 // 1. Health Probe
 inline bool ping(const String& base_url){
   if(base_url.length() == 0) return false;
-  HTTPClient http;
-  http.begin(base_url + "/health");
-  http.setTimeout(3000);
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/health")) return false;
+  http.setTimeout(4000);
   int code = http.GET();
   http.end();
   return (code == 200);
@@ -49,10 +58,13 @@ inline bool register_device(const String& base_url, String& err_out){
     err_out = "Core URL not set";
     return false;
   }
-  HTTPClient http;
-  http.begin(base_url + "/api/devices/register");
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/api/devices/register")){
+    err_out = "Failed to initialize connection to Core";
+    return false;
+  }
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(5000);
+  http.setTimeout(6000);
 
   JsonDocument doc;
   doc["mac"]              = get_mac();
@@ -92,12 +104,12 @@ inline bool register_device(const String& base_url, String& err_out){
 // 3. Fetch Device Config & Child Profiles
 inline bool fetch_config_and_profiles(const String& base_url){
   if(base_url.length() == 0) return false;
-  HTTPClient http;
-  http.begin(base_url + "/api/device/config?device_id=" + get_mac());
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/api/device/config?device_id=" + get_mac())) return false;
   if(s_access_token.length() > 0){
     http.addHeader("Authorization", String("Bearer ") + s_access_token);
   }
-  http.setTimeout(5000);
+  http.setTimeout(6000);
   int code = http.GET();
   if(code != 200){ http.end(); return false; }
 
@@ -134,13 +146,13 @@ inline bool fetch_config_and_profiles(const String& base_url){
 // 4. Playback Dispatch via Core Hub
 inline int play_media(const String& base_url, const String& child_id, const String& card_type, const String& media_id, const String& device_id, int chapter_idx){
   if(base_url.length() == 0) return -1;
-  HTTPClient http;
-  http.begin(base_url + "/api/play");
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/api/play")) return -1;
   http.addHeader("Content-Type", "application/json");
   if(s_access_token.length() > 0){
     http.addHeader("Authorization", String("Bearer ") + s_access_token);
   }
-  http.setTimeout(5000);
+  http.setTimeout(6000);
 
   JsonDocument doc;
   doc["child"]     = child_id.length() ? child_id : "default";
@@ -160,13 +172,13 @@ inline int play_media(const String& base_url, const String& child_id, const Stri
 // 5. Transport Control (pause, resume, stop, volume)
 inline int player_control(const String& base_url, const String& device_id, const char* action, int volume = -1){
   if(base_url.length() == 0) return -1;
-  HTTPClient http;
-  http.begin(base_url + "/api/player/control");
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/api/player/control")) return -1;
   http.addHeader("Content-Type", "application/json");
   if(s_access_token.length() > 0){
     http.addHeader("Authorization", String("Bearer ") + s_access_token);
   }
-  http.setTimeout(5000);
+  http.setTimeout(6000);
 
   JsonDocument doc;
   doc["device_id"] = device_id;
@@ -181,18 +193,17 @@ inline int player_control(const String& base_url, const String& device_id, const
   return code;
 }
 
-
 // 6. Fetch Child Catalog (ABS + Yoto merged via Core hub)
 inline bool fetch_catalog(const String& base_url, const String& child_id, void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, int seq)){
   if(base_url.length() == 0 || child_id.length() == 0) return false;
 
   auto fetch_src = [&](const String& path, const String& src_name){
-    HTTPClient http;
-    http.begin(base_url + path);
+    WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+    if(!http_begin_url(http, scli, pcli, base_url + path)) return;
     if(s_access_token.length() > 0){
       http.addHeader("Authorization", String("Bearer ") + s_access_token);
     }
-    http.setTimeout(8000);
+    http.setTimeout(9000);
     int code = http.GET();
     if(code != 200){ http.end(); return; }
     String body = http.getString();
@@ -223,12 +234,12 @@ inline bool fetch_catalog(const String& base_url, const String& child_id, void (
 // 7. Fetch Media Tracks / Chapters via Core Hub
 inline bool fetch_media_tracks(const String& base_url, const String& media_id, String& title_out, void (*track_cb)(const String& key, const String& title, int dur)){
   if(base_url.length() == 0 || media_id.length() == 0) return false;
-  HTTPClient http;
-  http.begin(base_url + "/api/media/" + media_id + "/tracks");
+  WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
+  if(!http_begin_url(http, scli, pcli, base_url + "/api/media/" + media_id + "/tracks")) return false;
   if(s_access_token.length() > 0){
     http.addHeader("Authorization", String("Bearer ") + s_access_token);
   }
-  http.setTimeout(8000);
+  http.setTimeout(9000);
   int code = http.GET();
   if(code != 200){ http.end(); return false; }
   String body = http.getString();
