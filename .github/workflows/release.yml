@@ -62,6 +62,7 @@ jobs:
               IS_PRERELEASE="false"
             fi
           fi
+          [[ "$TAG" =~ ^v ]] || TAG="v${TAG}"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
           echo "Resolved Tag: ${TAG} (Pre-release: ${IS_PRERELEASE})"
@@ -107,11 +108,9 @@ jobs:
 
           # Mimic donetick pre-release warning callout
           if [ "${IS_PRERELEASE}" = "true" ]; then
-            cat << 'EOF' >> "${NOTES_FILE}"
-> [!WARNING]
-> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions.
-
-EOF
+            echo "> [!WARNING]" >> "${NOTES_FILE}"
+            echo "> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions." >> "${NOTES_FILE}"
+            echo "" >> "${NOTES_FILE}"
           fi
 
           echo "## Changelog" >> "${NOTES_FILE}"
@@ -143,7 +142,7 @@ EOF
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: StoryDeck Touch ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           draft: false
           body_path: release_notes.md
