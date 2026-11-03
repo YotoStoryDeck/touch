@@ -41,21 +41,35 @@ static char* read_body_psram(HTTPClient& http, size_t& outLen){
   return buf;
 }
 
-// Add single card from Core catalog
-static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, int seq, const String& seq_disp, bool is_hl){
+// Add single card from Core catalog (preserving multiple series_list memberships for Kiosk parity)
+static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list){
   if(s_card_count >= 64) return;
-  s_cards[s_card_count].id           = id;
-  s_cards[s_card_count].title        = title;
-  s_cards[s_card_count].author       = author;
-  s_cards[s_card_count].cover        = cover;
-  s_cards[s_card_count].source       = src;
-  s_cards[s_card_count].series       = series;
-  s_cards[s_card_count].sequence     = seq;
-  s_cards[s_card_count].seq_display  = seq_disp;
-  s_cards[s_card_count].is_highlight = is_hl;
-  s_cards[s_card_count].daily        = false;
-  s_cards[s_card_count].tile         = nullptr;
-  s_cards[s_card_count].dsc.data     = nullptr;
+  Card& c = s_cards[s_card_count];
+  c.id               = id;
+  c.title            = title;
+  c.author           = author;
+  c.cover            = cover;
+  c.source           = src;
+  c.series           = series;
+  c.sequence         = seq;
+  c.seq_display      = seq_disp;
+  c.extra_series_cnt = 0;
+  if(!series_list.isNull() && series_list.size() > 1){
+    for(size_t si = 1; si < series_list.size() && c.extra_series_cnt < 2; si++){
+      String sname = (const char*)(series_list[si]["name"] | "");
+      sname.trim();
+      if(sname.length() > 0 && !sname.equalsIgnoreCase(c.series)){
+        int idx = c.extra_series_cnt++;
+        c.extra_series[idx]   = sname;
+        c.extra_seq[idx]      = (float)(series_list[si]["sequence"] | seq);
+        c.extra_seq_disp[idx] = (const char*)(series_list[si]["sequence_display"] | seq_disp.c_str());
+      }
+    }
+  }
+  c.is_highlight = is_hl;
+  c.daily        = false;
+  c.tile         = nullptr;
+  c.dsc.data     = nullptr;
   s_card_count++;
 }
 
@@ -89,6 +103,7 @@ bool fetch_library_core(){
     core::fetch_catalog(cfg::core_url, "default", add_core_card);
   }
   sort_catalog_kiosk_order();
+  sync_active_player_playback();
   return (s_card_count > 0);
 }
 
@@ -171,24 +186,57 @@ static bool load_thumb(int i){
   return true;
 }
 
+// Non-blocking cover loader:
+// 1. Immediately blits any covers already cached on MicroSD (fast ~10ms reads) so cached libraries appear instantly.
+// 2. Defers any uncached HTTP cover fetches to thumb_load_step() called from loop() between lv_timer_handler() passes,
+//    guaranteeing that all Catalog top-bar buttons (All, Series, Player Picker, Profile, Gear) and tiles are 100% responsive immediately!
 void load_thumbs(){
-  int ok=0; String firstErr;
-  for(int i=0;i<s_card_count;i++){
-    if(load_thumb(i)) ok++;
-    else if(firstErr.length()==0){ firstErr = s_thumb_diag; }
-    if(s_barlabel)
-      lv_label_set_text_fmt(s_barlabel, "loading covers  %d/%d", i+1, s_card_count);
+  s_thumb_ok = 0;
+  s_thumb_first_err = "";
+  s_thumb_cursor = 0;
+
+  // Fast pass: load covers that already exist on MicroSD without any network block
+  if(s_sd_ok){
+    for(int i = 0; i < s_card_count; i++){
+      if(SD.exists(sd_cache_path(s_cards[i].id, THUMB_W))){
+        if(load_thumb(i)) s_thumb_ok++;
+      }
+    }
     lv_refr_now(lv_disp_get_default());
-    vTaskDelay(pdMS_TO_TICKS(10));
   }
-  for(int i=0;i<s_card_count && ok<s_card_count;i++){
-    if(!s_cards[i].dsc.data && load_thumb(i)){ ok++; lv_refr_now(lv_disp_get_default()); }
+
+  if(s_thumb_ok >= s_card_count){
+    s_thumbs_loading = false;
+    if(s_barlabel) lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+  } else {
+    s_thumbs_loading = true;
+    if(s_barlabel) lv_label_set_text_fmt(s_barlabel, "loading covers  %d/%d", s_thumb_ok, s_card_count);
+  }
+}
+
+inline void thumb_load_step(){
+  if(!s_thumbs_loading) return;
+  while(s_thumb_cursor < s_card_count && s_cards[s_thumb_cursor].dsc.data != nullptr){
+    s_thumb_cursor++;
+  }
+  if(s_thumb_cursor >= s_card_count){
+    s_thumbs_loading = false;
+    if(s_barlabel){
+      if(s_thumb_ok < s_card_count && s_thumb_first_err.length() > 0)
+        lv_label_set_text_fmt(s_barlabel, "covers %d/%d  -  %s", s_thumb_ok, s_card_count, s_thumb_first_err.c_str());
+      else
+        lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+    }
+    return;
+  }
+  int i = s_thumb_cursor++;
+  if(load_thumb(i)){
+    s_thumb_ok++;
+  } else if(s_thumb_first_err.length() == 0){
+    s_thumb_first_err = s_thumb_diag;
   }
   if(s_barlabel){
-    if(ok < s_card_count)
-      lv_label_set_text_fmt(s_barlabel, "covers %d/%d  -  %s", ok, s_card_count, firstErr.c_str());
-    else
-      lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+    lv_label_set_text_fmt(s_barlabel, "loading covers  %d/%d", i + 1, s_card_count);
   }
 }
 

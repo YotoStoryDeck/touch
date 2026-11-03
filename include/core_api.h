@@ -14,11 +14,18 @@ namespace core {
 struct PlayerInfo {
   String id;
   String name;
-  bool   online     = false;
-  bool   is_home    = true;
-  bool   is_playing = false;
-  int    volume     = 50;
-  int    volume_max = 100;
+  bool   online        = false;
+  bool   is_home       = true;
+  bool   is_playing    = false;
+  bool   has_card      = false;
+  String item_id       = "";
+  String now_playing   = "";
+  String author        = "";
+  String chapter_title = "";
+  int    position      = 0;
+  int    duration      = 0;
+  int    volume        = 50;
+  int    volume_max    = 100;
 };
 
 #define MAX_PROF_PLAYERS 8
@@ -281,11 +288,18 @@ inline bool fetch_config_and_profiles(const String& base_url){
       PlayerInfo& pi = pr.players[pr.player_count++];
       pi.id         = pid;
       pi.name       = (const char*)(pl["name"] | "Yoto Player");
-      pi.online     = (bool)(pl["online"] | false);
-      pi.is_home    = pl["is_home"].isNull() ? pi.online : (bool)pl["is_home"];
-      pi.is_playing = (bool)(pl["is_playing"] | false);
-      pi.volume     = (int)(pl["volume"] | 50);
-      pi.volume_max = (int)(pl["volume_max"] | 100);
+      pi.online        = (bool)(pl["online"] | false);
+      pi.is_home       = pl["is_home"].isNull() ? pi.online : (bool)pl["is_home"];
+      pi.is_playing    = (bool)(pl["is_playing"] | false);
+      pi.has_card      = (bool)(pl["has_card"] | pi.is_playing);
+      pi.item_id       = (const char*)(pl["item_id"] | "");
+      pi.now_playing   = (const char*)(pl["now_playing"] | "");
+      pi.author        = (const char*)(pl["author"] | "");
+      pi.chapter_title = (const char*)(pl["chapter_title"] | "");
+      pi.position      = (int)(pl["position"] | 0);
+      pi.duration      = (int)(pl["duration"] | 0);
+      pi.volume        = (int)(pl["volume"] | 50);
+      pi.volume_max    = (int)(pl["volume_max"] | 100);
     }
     if(pr.player_count == 0 && pr.default_player_id.length() > 0){
       PlayerInfo& pi = pr.players[pr.player_count++];
@@ -508,7 +522,7 @@ inline int player_control(const String& base_url, const String& device_id, const
 
 // 6. Fetch Child Catalog (ABS + Yoto merged via Core hub)
 inline bool fetch_catalog(const String& base_url, const String& child_id,
-  void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, int seq, const String& seq_disp, bool is_hl)){
+  void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list)){
   if(base_url.length() == 0 || child_id.length() == 0) return false;
 
   auto fetch_src = [&](const String& path, const String& src_name){
@@ -539,27 +553,22 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
       }
       String author = (const char*)(item["author"] | "");
       String series = (const char*)(item["series"] | "");
-      if(series.length() == 0 && !item["series_list"].isNull()){
-        JsonArray sl = item["series_list"].as<JsonArray>();
-        if(sl.size() > 0){
-          series = (const char*)(sl[0]["name"] | "");
-        }
+      JsonArray sl = item["series_list"].as<JsonArray>();
+      if(series.length() == 0 && !sl.isNull() && sl.size() > 0){
+        series = (const char*)(sl[0]["name"] | "");
       }
-      int seq = (int)(item["sequence"] | 0);
+      float seq = (float)(item["sequence"] | 0.0f);
       String seq_disp = (const char*)(item["sequence_display"] | "");
-      if(seq == 0 && !item["series_list"].isNull()){
-        JsonArray sl = item["series_list"].as<JsonArray>();
-        if(sl.size() > 0){
-          seq = (int)(sl[0]["sequence"] | 0);
-          if(seq_disp.length() == 0) seq_disp = (const char*)(sl[0]["sequence_display"] | "");
-        }
+      if(seq == 0.0f && !sl.isNull() && sl.size() > 0){
+        seq = (float)(sl[0]["sequence"] | 0.0f);
+        if(seq_disp.length() == 0) seq_disp = (const char*)(sl[0]["sequence_display"] | "");
       }
       bool is_hl = (bool)(item["is_highlight"] | false);
       String item_src = (const char*)(item["source"] | item["type"] | src_name.c_str());
       if(item_src.startsWith("yoto")) item_src = "yoto";
       else if(item_src == "abs") item_src = "abs";
       else item_src = src_name;
-      card_cb(id, title, author, cover, item_src, series, seq, seq_disp, is_hl);
+      card_cb(id, title, author, cover, item_src, series, seq, seq_disp, is_hl, sl);
     }
   };
 

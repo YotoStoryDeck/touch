@@ -44,7 +44,9 @@ export const CatalogScreen = {
           ${!isStandalone ? `
             <!-- Core Mode: Profile Selector Pill (only clickable if allow_profile_switch is true) -->
             <div class="prof-pill" ${state.deviceConfig?.allow_profile_switch !== false && state.profiles.length > 1 ? 'data-act="switch-profile" title="Switch profile"' : 'style="cursor:default;" title="Assigned profile"'}>
-              ${p.avatar_url ? `<img src="${Utils.esc(p.avatar_url)}" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=${Utils.esc(p.id||'anon')}'">` : '<span style="font-size:16px;">👤</span>'}
+              ${(p.avatar_url && p.avatar_url.includes('?t='))
+                ? `<img src="${Utils.esc(p.avatar_url)}" onerror="this.style.display='none'">`
+                : `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${Utils.esc(p.avatar_color || '#e5352b')};color:#fff;font-size:12px;font-weight:800;">${Utils.esc(p.avatar_initial || (p.display_name || 'P').charAt(0).toUpperCase())}</span>`}
               <span>${Utils.esc(p.display_name)}</span>
               ${state.deviceConfig?.allow_profile_switch !== false && state.profiles.length > 1 ? '<span style="font-size:10px; color:#8a8276;">&#9660;</span>' : ''}
             </div>

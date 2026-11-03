@@ -131,7 +131,11 @@ static void toggle_device_picker_popup(){
       if(pl && idx >= 0 && idx < cnt){
         cfg::device_id = pl[idx].id;
         cfg::save();
-        if(s_top_dev_lbl) lv_label_set_text(s_top_dev_lbl, get_active_player_name().c_str());
+        sync_active_player_playback();
+        if(s_top_dev_lbl){
+          String dtxt = cfg::lock_player ? (String("Locked: ") + get_active_player_name()) : get_active_player_name();
+          lv_label_set_text(s_top_dev_lbl, dtxt.c_str());
+        }
         if(s_top_dev_dot) lv_obj_set_style_bg_color(s_top_dev_dot, get_player_dot_color(cfg::device_id), 0);
         update_home_bar();
       }
@@ -147,8 +151,9 @@ static void toggle_device_picker_popup(){
 
     lv_obj_t* nm = lv_label_create(row);
     String label_txt = pi.name;
-    if(pi.online && !pi.is_home) label_txt += " (AWAY)";
-    else if(pi.id == def_id)     label_txt += " (Default)";
+    if(pi.online && !pi.is_home) label_txt += " [AWAY]";
+    if(pi.id == def_id)          label_txt += " [DEFAULT]";
+    if(pi.is_playing)            label_txt += " [PLAYING]";
     lv_label_set_text(nm, label_txt.c_str());
     lv_obj_set_style_text_font(nm, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(nm, is_sel ? lv_color_hex(0xE5352B) : lv_color_hex(0x23303A), 0);
@@ -267,8 +272,8 @@ static void populate_grid(){
     int group_counts[64];
     int gcnt = 0;
 
-    for(int i = 0; i < s_card_count; i++){
-      String gname = s_cards[i].series;
+    auto add_to_group = [&](const String& raw_name){
+      String gname = raw_name;
       gname.trim();
       if(gname.length() == 0) gname = "Standalone & Singles";
       int found = -1;
@@ -282,16 +287,23 @@ static void populate_grid(){
         group_counts[gcnt] = 1;
         gcnt++;
       }
+    };
+
+    for(int i = 0; i < s_card_count; i++){
+      add_to_group(s_cards[i].series);
+      for(int ex = 0; ex < s_cards[i].extra_series_cnt; ex++){
+        if(s_cards[i].extra_series[ex].length() > 0){
+          add_to_group(s_cards[i].extra_series[ex]);
+        }
+      }
     }
 
-    // Filter out single-card series when exclude_single_card_series is enabled (and filter out Standalone & Singles if excluding singles)
+    // Kiosk CatalogScreen.renderSeriesView() parity:
+    // Filter out groups that have only 1 item when exclude_single_card_series is enabled
     int elig_idx[64];
     int elig_cnt = 0;
     for(int g = 0; g < gcnt; g++){
-      if(core::s_exclude_single_series){
-        if(group_names[g] == "Standalone & Singles") continue;
-        if(group_counts[g] <= 1) continue;
-      }
+      if(core::s_exclude_single_series && group_counts[g] <= 1) continue;
       elig_idx[elig_cnt++] = g;
     }
 
@@ -324,21 +336,37 @@ static void populate_grid(){
       const String& gname = group_names[elig_idx[e]];
       int m_idx[64];
       int m_cnt = 0;
+      auto card_seq_in_group = [&](const Card& c, const String& grp) -> float {
+        String cs = c.series; cs.trim();
+        if(cs.length() == 0) cs = "Standalone & Singles";
+        if(cs.equalsIgnoreCase(grp)) return c.sequence > 0.0f ? c.sequence : 999999.0f;
+        for(int ex = 0; ex < c.extra_series_cnt; ex++){
+          if(c.extra_series[ex].equalsIgnoreCase(grp)) return c.extra_seq[ex] > 0.0f ? c.extra_seq[ex] : 999999.0f;
+        }
+        return 999999.0f;
+      };
+
       for(int i = 0; i < s_card_count; i++){
         String cs = s_cards[i].series;
         cs.trim();
         if(cs.length() == 0) cs = "Standalone & Singles";
-        if(cs.equalsIgnoreCase(gname)){
+        bool match = cs.equalsIgnoreCase(gname);
+        if(!match){
+          for(int ex = 0; ex < s_cards[i].extra_series_cnt; ex++){
+            if(s_cards[i].extra_series[ex].equalsIgnoreCase(gname)){ match = true; break; }
+          }
+        }
+        if(match){
           m_idx[m_cnt++] = i;
         }
       }
-      // Sort books within this series by sequence ascending, then clean title
+      // Sort books within this series by group-specific sequence ascending, then clean title
       for(int a = 0; a < m_cnt; a++){
         for(int b = a + 1; b < m_cnt; b++){
           const Card& ca = s_cards[m_idx[a]];
           const Card& cb = s_cards[m_idx[b]];
-          int sa = ca.sequence > 0 ? ca.sequence : 999999;
-          int sb = cb.sequence > 0 ? cb.sequence : 999999;
+          float sa = card_seq_in_group(ca, gname);
+          float sb = card_seq_in_group(cb, gname);
           bool swap_it = false;
           if(sb != sa) swap_it = (sb < sa);
           else swap_it = (clean_sort_title(cb.title) < clean_sort_title(ca.title));
@@ -526,7 +554,8 @@ void build_grid(){
 
   lv_obj_t* dname = lv_label_create(dev_btn);
   s_top_dev_lbl = dname;
-  lv_label_set_text(dname, get_active_player_name().c_str());
+  String top_dtxt = cfg::lock_player ? (String("Locked: ") + get_active_player_name()) : get_active_player_name();
+  lv_label_set_text(dname, top_dtxt.c_str());
   lv_obj_set_style_text_font(dname, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(dname, lv_color_hex(0x23303A), 0);
   lv_label_set_long_mode(dname, LV_LABEL_LONG_DOT);
@@ -655,7 +684,10 @@ static void update_home_bar(){
   lv_obj_align(dot, LV_ALIGN_LEFT_MID, 18, 0);
 
   lv_obj_t* name=lv_label_create(s_bar);
-  lv_label_set_text(name, get_active_player_name().c_str());
+  const core::PlayerInfo* bar_pi = core::find_player_info(cfg::device_id);
+  String bar_dname = get_active_player_name();
+  if(bar_pi && bar_pi->online && !bar_pi->is_home) bar_dname += " (AWAY)";
+  lv_label_set_text(name, bar_dname.c_str());
   lv_obj_set_style_text_font(name, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(name, lv_color_hex(0x23303A), 0);
   lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);

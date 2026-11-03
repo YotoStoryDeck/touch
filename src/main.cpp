@@ -297,6 +297,9 @@ void loop(){
   s_ota_web.handleClient();
   ElegantOTA.loop();
   lv_timer_handler();
+  if(s_thumbs_loading && heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 14000){
+    thumb_load_step();
+  }
 
   // Warm the library cache during idle: only on the home screen or screensaver, and only after
   // a short lull, so the ~1s blocking fetch lands when nobody's mid-tap. Runs after

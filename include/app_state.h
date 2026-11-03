@@ -31,9 +31,13 @@ struct Card {
   String lp;                               // lastPlayedAt (direct-API path sorts on it)
   String cover;                            // cover imageL URL (direct-API: fetch+decode from CDN)
   String source="yoto";                    // "yoto" or "abs"
-  String series="";                        // optional series / collection name
-  int    sequence=0;                       // book sequence in series
+  String series="";                        // primary series / collection name
+  float  sequence=0;                       // book sequence in series (supports fractional e.g. 1.5)
   String seq_display="";                   // e.g. "#1" or "1-3"
+  String extra_series[2];                  // up to 2 additional series/groups from series_list
+  float  extra_seq[2] = {0, 0};
+  String extra_seq_disp[2];
+  int    extra_series_cnt=0;
   bool   is_highlight=false;               // highlighted / pinned card
   bool   daily=false;                      // synthetic "Yoto Daily" tile — one-tap, plays today
   lv_obj_t* tile=nullptr;                  // the lv_img tile in the grid
@@ -232,6 +236,56 @@ inline void go_home(){
   if(s_scr_profile){  lv_obj_del_async(s_scr_profile);  s_scr_profile=nullptr; }
   if(s_pairing_timer){ lv_timer_del(s_pairing_timer); s_pairing_timer=nullptr; }
   if(s_scr_pairing){  lv_obj_del_async(s_scr_pairing);  s_scr_pairing=nullptr; }
+}
+
+// Non-blocking cover loader state (runs 1 HTTP cover per loop() pass so UI touch is never blocked)
+static bool s_thumbs_loading = false;
+static int  s_thumb_cursor   = 0;
+static int  s_thumb_ok       = 0;
+static String s_thumb_first_err = "";
+
+// Kiosk App.syncActiveDevicePlayback() parity:
+// Binds the active target player's live playback state from Core to the Now Playing Mini-Bar and state vars
+inline void sync_active_player_playback(){
+  if(cfg::op_mode != "core") return;
+  const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
+  if(!pi) return;
+  if(pi->volume > 0){
+    int vmax = pi->volume_max > 0 ? pi->volume_max : cfg::vol_max;
+    s_vol = pi->volume < vmax ? pi->volume : vmax;
+  }
+  bool has_media = (pi->is_playing || pi->has_card || pi->item_id.length() > 0 || pi->now_playing.length() > 0);
+  if(has_media){
+    s_playing = pi->is_playing;
+    int matched = -1;
+    for(int i = 0; i < s_card_count; i++){
+      if(pi->item_id.length() > 0 && s_cards[i].id == pi->item_id){ matched = i; break; }
+    }
+    if(matched < 0 && pi->now_playing.length() > 0){
+      String np_low = pi->now_playing; np_low.toLowerCase();
+      for(int i = 0; i < s_card_count; i++){
+        String tl = s_cards[i].title; tl.toLowerCase();
+        if(tl.length() > 0 && (tl.indexOf(np_low) >= 0 || np_low.indexOf(tl) >= 0)){ matched = i; break; }
+      }
+    }
+    if(matched >= 0){
+      s_play_card   = matched;
+      s_play_title  = pi->now_playing.length() > 0 ? pi->now_playing : s_cards[matched].title;
+      s_play_author = pi->author.length() > 0 ? pi->author : s_cards[matched].author;
+    } else if(s_card_count > 0){
+      // External card not in filtered list: still show on mini-bar using index 0 as anchor
+      if(s_play_card < 0) s_play_card = 0;
+      s_play_title  = pi->now_playing.length() > 0 ? pi->now_playing : String("Playing Track");
+      s_play_author = pi->author;
+    }
+    if(pi->chapter_title.length() > 0) s_play_chapter = pi->chapter_title;
+    else if(s_play_chapter.length() == 0) s_play_chapter = "Playing";
+    if(pi->duration > 0) s_play_dur = pi->duration;
+    if(pi->position >= 0) s_pos = pi->position;
+  } else if(!s_local_session_active){
+    s_playing   = false;
+    s_play_card = -1;
+  }
 }
 
 // Shared cross-module forward declarations
