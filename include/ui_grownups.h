@@ -13,6 +13,9 @@ extern lv_obj_t*   s_scr_profile;
 extern lv_obj_t*   s_scr_settings;
 extern lv_obj_t*   s_scr_pin;
 extern lv_obj_t*   s_scr_prev;
+extern lv_obj_t*   s_scr_error;
+extern int         s_card_count;
+extern String      get_active_player_name();
 extern lv_obj_t*   s_set_sleep_lbl;
 
 extern void fmt_sleep(char* b, size_t n);
@@ -21,7 +24,7 @@ extern void go_home();
 extern void start_hotspot_cb(lv_event_t* e);
 
 void open_settings();             // fwd
-void open_pin_modal(bool for_settings_change = false); // fwd
+void open_pin_modal(bool for_settings_change); // fwd
 
 // ---------------- grown-ups settings screen ----------------
 // Opened by HOLDING the gear in the home bar for 2.5s. Parent knobs live here; WiFi and
@@ -38,7 +41,7 @@ static void fmt_wake(char* b, size_t n){
   snprintf(b, n, "%d:%02d %s", h12, cfg::wake_m, cfg::wake_h < 12 ? "am" : "pm");
 }
 
-static lv_obj_t* set_section(lv_obj_t* p, const char* t){
+inline lv_obj_t* set_section(lv_obj_t* p, const char* t){
   lv_obj_t* l = lv_label_create(p);
   lv_label_set_text(l, t);
   lv_obj_set_style_text_font(l, &lv_font_montserrat_24, 0);
@@ -46,7 +49,7 @@ static lv_obj_t* set_section(lv_obj_t* p, const char* t){
   lv_obj_set_style_pad_top(l, 12, 0);
   return l;
 }
-static lv_obj_t* set_row(lv_obj_t* p){
+inline lv_obj_t* set_row(lv_obj_t* p){
   lv_obj_t* r = lv_obj_create(p);
   lv_obj_set_size(r, lv_pct(100), LV_SIZE_CONTENT);
   lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
@@ -58,7 +61,7 @@ static lv_obj_t* set_row(lv_obj_t* p){
   lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
   return r;
 }
-static lv_obj_t* pill_btn(lv_obj_t* row, const char* txt, int ud, lv_event_cb_t cb){
+inline lv_obj_t* pill_btn(lv_obj_t* row, const char* txt, int ud, lv_event_cb_t cb){
   lv_obj_t* b = lv_btn_create(row);
   lv_obj_set_size(b, 88, 56);
   lv_obj_set_style_radius(b, 14, 0);
@@ -221,7 +224,7 @@ static void pin_digit_cb(lv_event_t* e){
   }
 }
 
-static void open_pin_modal(bool for_settings_change){
+void open_pin_modal(bool for_settings_change){
   if(!for_settings_change && !s_scr_prev){
     s_scr_prev = lv_scr_act();
   }
@@ -348,7 +351,7 @@ static void gu_tab_btn_cb(lv_event_t* e){
   gu_tab_switch((SettingsTab)tab);
 }
 
-static void open_settings(){
+void open_settings(){
   lv_obj_t* scr = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
 

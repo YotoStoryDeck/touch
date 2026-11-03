@@ -51,6 +51,9 @@ static void* tls_psram_calloc(size_t n, size_t size){
 #include "hal_display.h"
 #include "storage_sd.h"
 #include "ui_screensaver.h"
+#include "ui_grownups.h"
+#include "ui_profile_picker.h"
+#include "ui_screensaver.h"
 
 // ---------------- app state ----------------
 #define THUMB_W   160
@@ -80,13 +83,13 @@ static const char* YOTO_DAILY_ID    = "3nC80";
 static const char* YOTO_DAILY_COVER  =
   "https://card-content.yotoplay.com/yoto/pub/jC1GVU5Iwhl0yo5Lpcsn_OtXvp-5q2H2KwGAqeZR9ds";
 static Card s_cards[64];
-static int  s_card_count=0;
+int s_card_count=0;
 static lv_obj_t* s_status=nullptr;
 static lv_obj_t* s_barlabel=nullptr;        // idle-state hint / cover-load progress (left side)
 static lv_obj_t* s_bar=nullptr;             // home bottom bar — holds the mini now-playing
 
 // screens (home persists so the 49 covers stay loaded; detail is rebuilt per card)
-static lv_obj_t* s_scr_home=nullptr;
+lv_obj_t* s_scr_home=nullptr;
 static lv_obj_t* s_scr_detail=nullptr;
 static int s_cur_card=-1;                    // card being BROWSED (detail/now screens read this)
 
@@ -136,15 +139,15 @@ static int  s_play_dur=0;                   // duration (s) of the chapter actua
 int s_sleep_sec=0;
 
 // grown-ups settings screen + night-clock screensaver
-static lv_obj_t* s_scr_settings=nullptr;
-static lv_obj_t* s_scr_error=nullptr;
-static lv_obj_t* s_scr_pin=nullptr;
-static lv_obj_t* s_scr_profile=nullptr;
-static lv_obj_t* s_scr_prev=nullptr;      // tracks origin screen when opening PIN modal / settings
+lv_obj_t* s_scr_settings=nullptr;
+lv_obj_t* s_scr_error=nullptr;
+lv_obj_t* s_scr_pin=nullptr;
+lv_obj_t* s_scr_profile=nullptr;
+lv_obj_t* s_scr_prev=nullptr;      // tracks origin screen when opening PIN modal / settings
 static lv_obj_t* s_err_hs_client_lbl=nullptr;
 static bool      s_hotspot_wanted=false;
 static void ensure_hotspot_active();
-static lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
+lv_obj_t* s_set_sleep_lbl=nullptr;   // live countdown inside settings (null when closed)
 static lv_timer_t* s_gear_timer=nullptr;    // hold-the-gear-to-open timer
 static bool s_lib_ok=false;                 // library fetched + grid built
 static bool s_net_ready=false;              // NTP/token init done after WiFi came up
@@ -164,14 +167,14 @@ static void open_detail(int i);          // fwd
 static void play_from(int chapterIdx);   // fwd
 static void open_now();                  // fwd
 static void np_toggle();                 // fwd
-static void np_volume(int v);            // fwd
+void np_volume(int v);            // fwd
 static void update_home_bar();           // fwd
 static bool fetch_card_detail(int i);    // fwd
 static bool sd_chap_read(const String& id);  // fwd (SD chapter cache read)
 static void play_yoto_daily(int idx);    // fwd
-static void open_settings();             // fwd
-static void open_pin_modal(bool for_settings_change=false); // fwd
-static void open_profile_picker(); // fwd
+void open_settings();             // fwd
+void open_pin_modal(bool for_settings_change=false); // fwd
+void open_profile_picker(); // fwd
 static void show_error(const char* title, const char* message, const char* action_hint=nullptr); // fwd
 static void net_init_and_fetch();         // fwd
 static void saver_open();                // fwd
@@ -221,9 +224,9 @@ static void tab_btn_cb(lv_event_t* e){
   apply_tab_filter();
 }
 
-static String get_active_player_name();
+String get_active_player_name();
 
-static void build_grid(){
+void build_grid(){
   if(!s_scr_home){
     s_scr_home = lv_obj_create(NULL);
   } else {
@@ -453,7 +456,7 @@ static void gear_event_cb(lv_event_t* e){
 // idle hint, or a mini now-playing (title + chapter, play/pause, tap-to-open).
 
 // Resolve friendly display name of the target player (from active profile or configured device ID)
-static String get_active_player_name(){
+String get_active_player_name(){
   if(cfg::op_mode == "core" && core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
     const String& pn = core::s_profiles[core::s_active_profile_idx].default_player_name;
     if(pn.length() > 0) return pn;
@@ -612,7 +615,7 @@ static void add_core_card(const String& id, const String& title, const String& a
   s_card_count++;
 }
 
-static bool fetch_library_core(){
+bool fetch_library_core(){
   s_card_count = 0;
   String prof_id = "default";
   if(core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
@@ -707,7 +710,7 @@ static bool load_thumb(int i){
   return true;
 }
 
-static void load_thumbs(){
+void load_thumbs(){
   int ok=0; String firstErr;
   for(int i=0;i<s_card_count;i++){
     if(load_thumb(i)) ok++;
@@ -1182,7 +1185,7 @@ static void np_set_playicon(){
 }
 
 // Sleep-timer countdown as label text ("Off" / "23 min left").
-static void fmt_sleep(char* b, size_t n){
+void fmt_sleep(char* b, size_t n){
   if(s_sleep_sec <= 0)       snprintf(b, n, "Off");
   else if(s_sleep_sec >= 60) snprintf(b, n, "%d min left", (s_sleep_sec + 59) / 60);
   else                       snprintf(b, n, "%d sec left", s_sleep_sec);
@@ -1322,7 +1325,7 @@ static void np_toggle(){
 }
 static void np_next(){ if(s_cur_ch < s_ch_count-1) np_goto_chapter(s_cur_ch+1); }
 static void np_prev(){ if(s_cur_ch > 0)           np_goto_chapter(s_cur_ch-1); }
-static void np_volume(int v){ s_vol=v; send_cmd("volume", String("{\"volume\":")+v+"}"); }
+void np_volume(int v){ s_vol=v; send_cmd("volume", String("{\"volume\":")+v+"}"); }
 
 void go_home(){
   s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=nullptr;
@@ -1598,109 +1601,6 @@ static void open_now(){
   if(oldn) lv_obj_del_async(oldn);
 }
 
-// ---------------- grown-ups settings screen ----------------
-// Opened by HOLDING the gear in the home bar for 2.5s. Parent knobs live here; WiFi and
-// Yoto credentials live on the web portal instead (typing a 64-char client secret on a
-// wall panel is nobody's idea of fun).
-static lv_obj_t* s_set_vol_lbl=nullptr;     // only touched by callbacks living on the
-static lv_obj_t* s_set_saver_lbl=nullptr;   // settings screen itself, so they can't dangle
-static lv_obj_t* s_set_wake_lbl=nullptr;    // (s_set_sleep_lbl is tick-updated -> go_home nulls it)
-static lv_obj_t* s_set_night_lbl=nullptr;
-static lv_obj_t* s_set_size_lbl=nullptr;
-
-static void fmt_wake(char* b, size_t n){
-  int h12 = ((cfg::wake_h + 11) % 12) + 1;
-  snprintf(b, n, "%d:%02d %s", h12, cfg::wake_m, cfg::wake_h < 12 ? "am" : "pm");
-}
-
-static lv_obj_t* set_section(lv_obj_t* p, const char* t){
-  lv_obj_t* l = lv_label_create(p);
-  lv_label_set_text(l, t);
-  lv_obj_set_style_text_font(l, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(l, lv_color_hex(0x3A6B50), 0);
-  lv_obj_set_style_pad_top(l, 12, 0);
-  return l;
-}
-static lv_obj_t* set_row(lv_obj_t* p){
-  lv_obj_t* r = lv_obj_create(p);
-  lv_obj_set_size(r, lv_pct(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(r, 0, 0);
-  lv_obj_set_style_pad_all(r, 0, 0);
-  lv_obj_set_style_pad_column(r, 12, 0);
-  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
-  return r;
-}
-static lv_obj_t* pill_btn(lv_obj_t* row, const char* txt, int ud, lv_event_cb_t cb){
-  lv_obj_t* b = lv_btn_create(row);
-  lv_obj_set_size(b, 88, 56);
-  lv_obj_set_style_radius(b, 14, 0);
-  lv_obj_set_style_bg_color(b, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_bg_color(b, lv_color_hex(0xF3E9D8), LV_STATE_PRESSED);
-  lv_obj_set_style_shadow_width(b, 0, 0);
-  lv_obj_set_style_border_width(b, 1, 0);
-  lv_obj_set_style_border_color(b, lv_color_hex(0xE7E0D2), 0);
-  lv_obj_set_user_data(b, (void*)(intptr_t)ud);
-  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
-  lv_obj_t* l = lv_label_create(b);
-  lv_label_set_text(l, txt);
-  lv_obj_set_style_text_font(l, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(l, lv_color_hex(0x23303A), 0);
-  lv_obj_center(l);
-  return b;
-}
-
-static void set_sleep_cb(lv_event_t* e){
-  s_sleep_sec = 60 * (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
-  if(s_set_sleep_lbl){ char b[24]; fmt_sleep(b, sizeof b); lv_label_set_text(s_set_sleep_lbl, b); }
-}
-static void set_saver_cb(lv_event_t* e){
-  cfg::saver_min = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
-  cfg::save();
-  if(s_set_saver_lbl){
-    if(cfg::saver_min) lv_label_set_text_fmt(s_set_saver_lbl, "after %d min", cfg::saver_min);
-    else               lv_label_set_text(s_set_saver_lbl, "Off");
-  }
-}
-static void set_wake_cb(lv_event_t* e){
-  int t = cfg::wake_h * 60 + cfg::wake_m + (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
-  if(t < 5*60)  t = 5*60;                    // sane bedroom range: 5:00 – 10:00 am
-  if(t > 10*60) t = 10*60;
-  cfg::wake_h = t / 60; cfg::wake_m = t % 60;
-  cfg::save();
-  if(s_set_wake_lbl){ char b[16]; fmt_wake(b, sizeof b); lv_label_set_text(s_set_wake_lbl, b); }
-}
-static void fmt_night(char* b, size_t n){
-  int h12 = ((cfg::night_h + 11) % 12) + 1;
-  snprintf(b, n, "%d:%02d %s", h12, cfg::night_m, cfg::night_h < 12 ? "am" : "pm");
-}
-static void set_night_cb(lv_event_t* e){
-  int t = cfg::night_h * 60 + cfg::night_m + (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
-  if(t < 17*60) t = 17*60;                   // sane bedtime range: 5:00 – 11:00 pm
-  if(t > 23*60) t = 23*60;
-  cfg::night_h = t / 60; cfg::night_m = t % 60;
-  cfg::save();
-  if(s_set_night_lbl){ char b[16]; fmt_night(b, sizeof b); lv_label_set_text(s_set_night_lbl, b); }
-}
-static const char* SV_SIZE_NAME[3] = {"Small", "Medium", "Large"};
-static void set_size_cb(lv_event_t* e){
-  int v = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
-  cfg::saver_size = v < 0 ? 0 : v > 2 ? 2 : v;
-  cfg::save();                               // applies the next time the clock comes on
-  if(s_set_size_lbl) lv_label_set_text(s_set_size_lbl, SV_SIZE_NAME[cfg::saver_size]);
-}
-static void set_vol_drag_cb(lv_event_t* e){   // live readout while dragging
-  if(s_set_vol_lbl) lv_label_set_text_fmt(s_set_vol_lbl, "%d", lv_slider_get_value(lv_event_get_target(e)));
-}
-static void set_vol_done_cb(lv_event_t* e){   // persist + apply on release
-  int v = lv_slider_get_value(lv_event_get_target(e));
-  cfg::vol_max = v; cfg::save();
-  if(s_vol > v) np_volume(v);                 // pull the live volume under the new cap
-}
-
-
 // ---------------- Hotspot Watchdog & Visual UI Indicators ----------------
 static lv_obj_t* s_err_hs_badge = nullptr;
 static lv_obj_t* s_err_qr = nullptr;
@@ -1723,7 +1623,7 @@ static void ensure_hotspot_active(){
   }
 }
 
-static void start_hotspot_cb(lv_event_t*){
+void start_hotspot_cb(lv_event_t*){
   start_hotspot();
   show_error("Setup Hotspot Active",
              "Connect your phone to WiFi 'Yoto-Setup' or scan the QR code to join.\nNavigate to http://192.168.4.1/settings to set up WiFi.",
@@ -1867,1051 +1767,15 @@ static void show_error(const char* title, const char* message, const char* actio
 
 
 
-// ---------------- Child Profile Selection Screen (profile.js parity) ----------------
-static const char* get_time_greeting(){
-  time_t now = time(nullptr);
-  struct tm tmv;
-  if(localtime_r(&now, &tmv)){
-    int h = tmv.tm_hour;
-    if(h >= 5 && h < 12) return "WHO IS LISTENING THIS MORNING?";
-    if(h >= 12 && h < 17) return "WHO IS LISTENING THIS AFTERNOON?";
-    return "WHO IS LISTENING TONIGHT?";
-  }
-  return "WHO IS LISTENING?";
-}
+#include "ui_profile_picker.h"
 
-static void profile_card_cb(lv_event_t* e){
-  int idx = (int)(intptr_t)lv_event_get_user_data(e);
-  if(idx >= 0 && idx < core::s_profile_count){
-    core::s_active_profile_idx = idx;
-    if(!cfg::lock_player && core::s_profiles[idx].default_player_id.length() > 0){
-      cfg::device_id = core::s_profiles[idx].default_player_id;
-    }
-    // In Core mode, reload catalog for this child profile
-    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-      fetch_library_core();
-      build_grid();
-      if(s_card_count > 0) load_thumbs();
-    }
-    // Transition from profile picker to card grid
-    if(s_scr_profile){
-      lv_obj_t* p = s_scr_profile;
-      s_scr_profile = nullptr;
-      if(s_scr_home) lv_scr_load(s_scr_home);
-      lv_obj_del_async(p);
-    }
-  }
-}
+#include "ui_grownups.h"
 
-static void open_profile_picker(){
-  if(core::s_profile_count <= 0) return;
+#include "ota_manager.h"
 
-  lv_obj_t* scr = lv_obj_create(NULL);
-  s_scr_profile = scr;
-  lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
-  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+#include "ota_manager.h"
 
-  // Settings Gear button (top right)
-  lv_obj_t* gear = lv_btn_create(scr);
-  lv_obj_set_size(gear, 52, 52);
-  lv_obj_set_pos(gear, LCD_H_RES - 68, 14);
-  lv_obj_set_style_radius(gear, 26, 0);
-  lv_obj_set_style_bg_color(gear, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_shadow_width(gear, 8, 0);
-  lv_obj_set_style_shadow_opa(gear, LV_OPA_30, 0);
-  lv_obj_add_event_cb(gear, [](lv_event_t*){ s_scr_prev = s_scr_profile; open_pin_modal(false); }, LV_EVENT_CLICKED, NULL);
-  lv_obj_t* gl = lv_label_create(gear);
-  lv_label_set_text(gl, LV_SYMBOL_SETTINGS);
-  lv_obj_set_style_text_font(gl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(gl, lv_color_hex(0x23303A), 0);
-  lv_obj_center(gl);
-
-  // Greeting Banner
-  lv_obj_t* title = lv_label_create(scr);
-  lv_label_set_text(title, get_time_greeting());
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 36);
-
-  lv_obj_t* sub = lv_label_create(scr);
-  lv_label_set_text(sub, "Tap your profile avatar to explore your audiobooks");
-  lv_obj_set_style_text_font(sub, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(sub, lv_color_hex(0x7A7060), 0);
-  lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 78);
-
-  // Horizontal Scrolling Row for Profile Cards
-  lv_obj_t* row = lv_obj_create(scr);
-  lv_obj_set_size(row, LCD_H_RES - 60, 310);
-  lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, -25);
-  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(row, 0, 0);
-  lv_obj_set_style_pad_all(row, 10, 0);
-  lv_obj_set_style_pad_column(row, 28, 0);
-  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_scroll_dir(row, LV_DIR_HOR);
-
-  for(int i = 0; i < core::s_profile_count; i++){
-    lv_obj_t* card = lv_btn_create(row);
-    lv_obj_set_size(card, 180, 260);
-    lv_obj_set_style_radius(card, 22, 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0xF3E9D8), LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(card, 2, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(0xE7E0D2), 0);
-    lv_obj_set_style_shadow_width(card, 12, 0);
-    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
-    lv_obj_add_event_cb(card, profile_card_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-
-    // Profile Avatar (Circular container with initial or placeholder)
-    lv_obj_t* av_box = lv_obj_create(card);
-    lv_obj_set_size(av_box, 130, 130);
-    lv_obj_set_style_radius(av_box, 65, 0);
-    lv_obj_set_style_clip_corner(av_box, true, 0);
-    lv_obj_set_style_bg_color(av_box, lv_color_hex(0xE5352B), 0);
-    lv_obj_set_style_border_width(av_box, 0, 0);
-    lv_obj_set_style_pad_all(av_box, 0, 0);
-    lv_obj_align(av_box, LV_ALIGN_TOP_MID, 0, 16);
-    lv_obj_clear_flag(av_box, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Check if avatar image is available and fetch/decode if not cached
-    bool av_loaded = false;
-    if(core::s_profiles[i].avatar_url.length() > 0){
-      const size_t AV_SZ = 130 * 130 * 2;
-      if(!core::s_profiles[i].avatar_buf){
-        core::s_profiles[i].avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
-        if(core::s_profiles[i].avatar_buf){
-          av_loaded = fetch_cover(core::s_profiles[i].avatar_url, 130, 130, core::s_profiles[i].avatar_buf);
-          if(!av_loaded){
-            free(core::s_profiles[i].avatar_buf);
-            core::s_profiles[i].avatar_buf = nullptr;
-          }
-        }
-      } else {
-        av_loaded = true;
-      }
-    }
-
-    if(av_loaded && core::s_profiles[i].avatar_buf){
-      lv_obj_t* av_img = lv_img_create(av_box);
-      lv_obj_set_size(av_img, 130, 130);
-      set_img(core::s_profiles[i].avatar_dsc, av_img, core::s_profiles[i].avatar_buf, 130, 130, 130*130*2);
-      lv_obj_center(av_img);
-    } else {
-      // Fallback: Avatar Initial
-      lv_obj_t* av_txt = lv_label_create(av_box);
-      char initial[2] = {core::s_profiles[i].display_name.length() > 0 ? core::s_profiles[i].display_name[0] : 'C', '\0'};
-      lv_label_set_text(av_txt, initial);
-      lv_obj_set_style_text_font(av_txt, &lv_font_montserrat_36, 0);
-      lv_obj_set_style_text_color(av_txt, lv_color_hex(0xFFFFFF), 0);
-      lv_obj_center(av_txt);
-    }
-
-    // Profile Name Label
-    lv_obj_t* name = lv_label_create(card);
-    lv_label_set_text(name, core::s_profiles[i].display_name.c_str());
-    lv_obj_set_style_text_font(name, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(name, lv_color_hex(0x23303A), 0);
-    lv_obj_align(name, LV_ALIGN_BOTTOM_MID, 0, -42);
-
-    // Player assignment sub-label
-    lv_obj_t* target = lv_label_create(card);
-    lv_label_set_text(target, core::s_profiles[i].default_player_name.c_str());
-    lv_obj_set_style_text_font(target, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(target, lv_color_hex(0x8A8276), 0);
-    lv_obj_align(target, LV_ALIGN_BOTTOM_MID, 0, -18);
-  }
-
-  lv_scr_load(scr);
-  lv_refr_now(lv_disp_get_default());
-}
-
-// ---------------- Parent PIN Keypad Modal (pin.js parity) ----------------
-static String s_pin_entered = "";
-static int    s_pin_fails = 0;
-static uint32_t s_pin_lockout_until = 0;
-static lv_obj_t* s_pin_dots[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t* s_pin_msg_lbl = nullptr;
-static bool s_pin_change_mode = false;
-static String s_pin_new_temp = "";
-
-static void update_pin_dots(){
-  int len = s_pin_entered.length();
-  for(int i = 0; i < 4; i++){
-    if(s_pin_dots[i]){
-      if(i < len){
-        lv_obj_set_style_bg_color(s_pin_dots[i], lv_color_hex(0xE5352B), 0);
-      } else {
-        lv_obj_set_style_bg_color(s_pin_dots[i], lv_color_hex(0xE2DCD2), 0);
-      }
-    }
-  }
-}
-
-static void close_pin_modal(){
-  s_pin_entered = "";
-  if(s_scr_pin){
-    lv_obj_t* p = s_scr_pin;
-    s_scr_pin = nullptr;
-    if(s_scr_prev) lv_scr_load(s_scr_prev);
-    else if(s_scr_home) lv_scr_load(s_scr_home);
-    else if(s_scr_error) lv_scr_load(s_scr_error);
-    lv_obj_del_async(p);
-  }
-}
-
-static void pin_digit_cb(lv_event_t* e){
-  if(millis() < s_pin_lockout_until) return; // locked out
-  const char* val = (const char*)lv_event_get_user_data(e);
-  if(!val) return;
-
-  if(strcmp(val, "C") == 0){
-    s_pin_entered = "";
-    update_pin_dots();
-    if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, s_pin_change_mode ? "Enter new 4-digit PIN" : "Enter 4-digit PIN to access Grown-ups settings");
-    return;
-  }
-  if(strcmp(val, "<") == 0){
-    if(s_pin_entered.length() > 0){
-      s_pin_entered.remove(s_pin_entered.length() - 1);
-      update_pin_dots();
-    }
-    return;
-  }
-
-  if(s_pin_entered.length() < 4){
-    s_pin_entered += val[0];
-    update_pin_dots();
-  }
-
-  // Auto-validate once 4 digits entered
-  if(s_pin_entered.length() == 4){
-    if(s_pin_change_mode){
-      // PIN change mode: saves new PIN to NVS
-      cfg::parent_pin = s_pin_entered;
-      cfg::save();
-      if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, "PIN changed successfully!");
-      lv_refr_now(lv_disp_get_default());
-      delay(600);
-      close_pin_modal();
-      return;
-    }
-
-    if(s_pin_entered == cfg::parent_pin){
-      s_pin_fails = 0;
-      s_pin_entered = "";
-      if(s_scr_pin){
-        lv_obj_t* p = s_scr_pin;
-        s_scr_pin = nullptr;
-        open_settings();
-        lv_obj_del_async(p);
-      }
-    } else {
-      s_pin_fails++;
-      s_pin_entered = "";
-      update_pin_dots();
-      if(s_pin_fails >= 3){
-        s_pin_lockout_until = millis() + 10000;
-        if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, "Too many attempts! Locked for 10s");
-      } else {
-        if(s_pin_msg_lbl) lv_label_set_text(s_pin_msg_lbl, "Incorrect PIN. Try again.");
-      }
-    }
-  }
-}
-
-static void open_pin_modal(bool for_settings_change){
-  if(!for_settings_change && !s_scr_prev){
-    s_scr_prev = lv_scr_act();
-  }
-  s_pin_change_mode = for_settings_change;
-  s_pin_entered = "";
-
-  lv_obj_t* scr = lv_obj_create(NULL);
-  s_scr_pin = scr;
-  lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
-
-  // Close / Cancel button (top-left)
-  lv_obj_t* back = lv_btn_create(scr);
-  lv_obj_set_size(back, 52, 52);
-  lv_obj_set_pos(back, 14, 14);
-  lv_obj_set_style_radius(back, 26, 0);
-  lv_obj_set_style_bg_color(back, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_shadow_width(back, 8, 0);
-  lv_obj_set_style_shadow_opa(back, LV_OPA_30, 0);
-  lv_obj_add_event_cb(back, [](lv_event_t*){ close_pin_modal(); }, LV_EVENT_CLICKED, NULL);
-  lv_obj_t* bk = lv_label_create(back);
-  lv_label_set_text(bk, LV_SYMBOL_CLOSE);
-  lv_obj_set_style_text_font(bk, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(bk, lv_color_hex(0x23303A), 0);
-  lv_obj_center(bk);
-
-  // Modal Title
-  lv_obj_t* title = lv_label_create(scr);
-  lv_label_set_text(title, for_settings_change ? "Change Parent PIN" : "Parent PIN Required");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
-
-  // Subtitle / message
-  s_pin_msg_lbl = lv_label_create(scr);
-  lv_label_set_text(s_pin_msg_lbl, for_settings_change ? "Enter new 4-digit PIN" : "Enter 4-digit PIN to access Grown-ups settings");
-  lv_obj_set_style_text_font(s_pin_msg_lbl, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(s_pin_msg_lbl, lv_color_hex(0x7A7060), 0);
-  lv_obj_align(s_pin_msg_lbl, LV_ALIGN_TOP_MID, 0, 60);
-
-  // 4 PIN Dots indicator container
-  lv_obj_t* dcont = lv_obj_create(scr);
-  lv_obj_set_size(dcont, 160, 36);
-  lv_obj_align(dcont, LV_ALIGN_TOP_MID, 0, 95);
-  lv_obj_set_style_bg_opa(dcont, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(dcont, 0, 0);
-  lv_obj_set_style_pad_all(dcont, 0, 0);
-  lv_obj_set_flex_flow(dcont, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(dcont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(dcont, LV_OBJ_FLAG_SCROLLABLE);
-
-  for(int i = 0; i < 4; i++){
-    s_pin_dots[i] = lv_obj_create(dcont);
-    lv_obj_set_size(s_pin_dots[i], 20, 20);
-    lv_obj_set_style_radius(s_pin_dots[i], 10, 0);
-    lv_obj_set_style_bg_color(s_pin_dots[i], lv_color_hex(0xE2DCD2), 0);
-    lv_obj_set_style_border_width(s_pin_dots[i], 0, 0);
-  }
-
-  // 3x4 Keypad Container
-  lv_obj_t* kpad = lv_obj_create(scr);
-  lv_obj_set_size(kpad, 360, 310);
-  lv_obj_align(kpad, LV_ALIGN_BOTTOM_MID, 0, -15);
-  lv_obj_set_style_bg_opa(kpad, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(kpad, 0, 0);
-  lv_obj_set_style_pad_all(kpad, 0, 0);
-  lv_obj_set_style_pad_row(kpad, 10, 0);
-  lv_obj_set_style_pad_column(kpad, 16, 0);
-  lv_obj_set_flex_flow(kpad, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_flex_align(kpad, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(kpad, LV_OBJ_FLAG_SCROLLABLE);
-
-  static const char* keys[12] = {
-    "1", "2", "3",
-    "4", "5", "6",
-    "7", "8", "9",
-    "C", "0", "<"
-  };
-
-  for(int i = 0; i < 12; i++){
-    lv_obj_t* btn = lv_btn_create(kpad);
-    lv_obj_set_size(btn, 98, 62);
-    lv_obj_set_style_radius(btn, 14, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xF3E9D8), LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(btn, 1, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(0xE7E0D2), 0);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_add_event_cb(btn, pin_digit_cb, LV_EVENT_CLICKED, (void*)keys[i]);
-
-    lv_obj_t* l = lv_label_create(btn);
-    lv_label_set_text(l, keys[i]);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(l, lv_color_hex(0x23303A), 0);
-    lv_obj_center(l);
-  }
-
-  lv_scr_load(scr);
-  lv_refr_now(lv_disp_get_default());
-}
-
-enum SettingsTab { GU_TAB_SLEEP = 0, GU_TAB_TARGET = 1, GU_TAB_DISPLAY = 2, GU_TAB_NETWORK = 3 };
-static SettingsTab s_gu_active_tab = GU_TAB_SLEEP;
-static lv_obj_t* s_gu_tab_panels[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t* s_gu_tab_btns[4]   = {nullptr, nullptr, nullptr, nullptr};
-
-static void gu_tab_switch(SettingsTab tab){
-  s_gu_active_tab = tab;
-  for(int i = 0; i < 4; i++){
-    if(s_gu_tab_panels[i]){
-      if(i == (int)tab) lv_obj_clear_flag(s_gu_tab_panels[i], LV_OBJ_FLAG_HIDDEN);
-      else              lv_obj_add_flag(s_gu_tab_panels[i], LV_OBJ_FLAG_HIDDEN);
-    }
-    if(s_gu_tab_btns[i]){
-      bool sel = (i == (int)tab);
-      lv_obj_set_style_bg_color(s_gu_tab_btns[i], sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
-      lv_obj_t* lbl = lv_obj_get_child(s_gu_tab_btns[i], 0);
-      if(lbl) lv_obj_set_style_text_color(lbl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
-    }
-  }
-}
-
-static void gu_tab_btn_cb(lv_event_t* e){
-  int tab = (int)(intptr_t)lv_event_get_user_data(e);
-  gu_tab_switch((SettingsTab)tab);
-}
-
-static void open_settings(){
-  lv_obj_t* scr = lv_obj_create(NULL);
-  lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
-
-  // Header Back Button
-  lv_obj_t* back = lv_btn_create(scr);
-  lv_obj_set_size(back, 50, 50);
-  lv_obj_set_pos(back, 14, 12);
-  lv_obj_set_style_radius(back, 25, 0);
-  lv_obj_set_style_bg_color(back, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_shadow_width(back, 6, 0);
-  lv_obj_set_style_shadow_opa(back, LV_OPA_30, 0);
-  lv_obj_add_event_cb(back, [](lv_event_t*){
-    if(s_scr_prev == s_scr_profile && s_scr_profile){
-      if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
-      lv_scr_load(s_scr_profile);
-      s_scr_prev = nullptr;
-    } else {
-      go_home();
-    }
-  }, LV_EVENT_CLICKED, NULL);
-  lv_obj_t* bk = lv_label_create(back);
-  lv_label_set_text(bk, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(bk, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(bk, lv_color_hex(0x23303A), 0);
-  lv_obj_center(bk);
-
-  // Title
-  lv_obj_t* title = lv_label_create(scr);
-  lv_label_set_text(title, "Grown-ups Settings");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
-  lv_obj_set_pos(title, 76, 22);
-
-  // Change PIN button
-  lv_obj_t* chg_pin = pill_btn(scr, "Change PIN", 0, [](lv_event_t*){ open_pin_modal(true); });
-  lv_obj_set_size(chg_pin, 140, 42);
-  lv_obj_set_pos(chg_pin, LCD_H_RES - 156, 16);
-  lv_obj_set_style_text_font(lv_obj_get_child(chg_pin, 0), &lv_font_montserrat_18, 0);
-
-  // 4-Tab Navigation Bar (grownups.js parity)
-  lv_obj_t* nav = lv_obj_create(scr);
-  lv_obj_set_size(nav, LCD_H_RES - 28, 48);
-  lv_obj_set_pos(nav, 14, 68);
-  lv_obj_set_style_bg_color(nav, lv_color_hex(0xF4EDE0), 0);
-  lv_obj_set_style_border_width(nav, 0, 0);
-  lv_obj_set_style_pad_all(nav, 4, 0);
-  lv_obj_set_style_pad_column(nav, 8, 0);
-  lv_obj_set_flex_flow(nav, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
-
-  static const char* tab_titles[4] = {"Sleep / Bed", "Audio Target", "Display / Dim", "Network"};
-  for(int t = 0; t < 4; t++){
-    lv_obj_t* tb = lv_btn_create(nav);
-    lv_obj_set_size(tb, 180, 40);
-    lv_obj_set_style_radius(tb, 20, 0);
-    bool sel = (t == (int)s_gu_active_tab);
-    lv_obj_set_style_bg_color(tb, sel ? lv_color_hex(0xE5352B) : lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(tb, 1, 0);
-    lv_obj_set_style_border_color(tb, lv_color_hex(0xE7E0D2), 0);
-    lv_obj_set_style_shadow_width(tb, 0, 0);
-    lv_obj_add_event_cb(tb, gu_tab_btn_cb, LV_EVENT_CLICKED, (void*)(intptr_t)t);
-
-    lv_obj_t* tl = lv_label_create(tb);
-    lv_label_set_text(tl, tab_titles[t]);
-    lv_obj_set_style_text_font(tl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(tl, sel ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x23303A), 0);
-    lv_obj_center(tl);
-
-    s_gu_tab_btns[t] = tb;
-  }
-
-  // Common content area below tab bar
-  const int cont_y = 122;
-  const int cont_h = LCD_V_RES - cont_y - 10;
-
-  for(int i = 0; i < 4; i++){
-    lv_obj_t* panel = lv_obj_create(scr);
-    lv_obj_set_size(panel, LCD_H_RES - 28, cont_h);
-    lv_obj_set_pos(panel, 14, cont_y);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(panel, 0, 0);
-    lv_obj_set_style_pad_all(panel, 6, 0);
-    lv_obj_set_style_pad_row(panel, 10, 0);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
-    s_gu_tab_panels[i] = panel;
-  }
-
-  // ==========================================
-  // TAB 0: 🌙 SLEEP / BED
-  // ==========================================
-  lv_obj_t* p0 = s_gu_tab_panels[0];
-
-  set_section(p0, "Sleep timer  (stops player when elapsed)");
-  lv_obj_t* r_sleep = set_row(p0);
-  pill_btn(r_sleep, "Off", 0,  set_sleep_cb);
-  pill_btn(r_sleep, "15m", 15, set_sleep_cb);
-  pill_btn(r_sleep, "30m", 30, set_sleep_cb);
-  pill_btn(r_sleep, "45m", 45, set_sleep_cb);
-  pill_btn(r_sleep, "60m", 60, set_sleep_cb);
-  s_set_sleep_lbl = lv_label_create(r_sleep);
-  { char b[24]; fmt_sleep(b, sizeof b); lv_label_set_text(s_set_sleep_lbl, b); }
-  lv_obj_set_style_text_font(s_set_sleep_lbl, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(s_set_sleep_lbl, lv_color_hex(0x9A9384), 0);
-
-  set_section(p0, "Bedtime Curfew  (clock turns red)");
-  lv_obj_t* r_night = set_row(p0);
-  pill_btn(r_night, "-15m", -15, set_night_cb);
-  s_set_night_lbl = lv_label_create(r_night);
-  { char b[16]; fmt_night(b, sizeof b); lv_label_set_text(s_set_night_lbl, b); }
-  lv_obj_set_style_text_font(s_set_night_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_night_lbl, lv_color_hex(0x23303A), 0);
-  pill_btn(r_night, "+15m", 15, set_night_cb);
-
-  set_section(p0, "OK-to-wake Schedule  (clock turns green)");
-  lv_obj_t* r_wake = set_row(p0);
-  pill_btn(r_wake, "-15m", -15, set_wake_cb);
-  s_set_wake_lbl = lv_label_create(r_wake);
-  { char b[16]; fmt_wake(b, sizeof b); lv_label_set_text(s_set_wake_lbl, b); }
-  lv_obj_set_style_text_font(s_set_wake_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_wake_lbl, lv_color_hex(0x23303A), 0);
-  pill_btn(r_wake, "+15m", 15, set_wake_cb);
-
-  // ==========================================
-  // TAB 1: 🎯 AUDIO TARGET & ROAMING
-  // ==========================================
-  lv_obj_t* p1 = s_gu_tab_panels[1];
-
-  set_section(p1, "Target Player Roaming vs Locking");
-  lv_obj_t* r_lock = set_row(p1);
-  lv_obj_t* b_roam = pill_btn(r_lock, "Profile Roaming", 0, [](lv_event_t*){
-    cfg::lock_player = false;
-    cfg::save();
-    open_settings();
-  });
-  lv_obj_set_size(b_roam, 170, 52);
-  if(!cfg::lock_player){
-    lv_obj_set_style_bg_color(b_roam, lv_color_hex(0xE5352B), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(b_roam, 0), lv_color_hex(0xFFFFFF), 0);
-  }
-
-  lv_obj_t* b_lock = pill_btn(r_lock, "Lock to Player", 1, [](lv_event_t*){
-    cfg::lock_player = true;
-    cfg::locked_dev_id = cfg::device_id;
-    cfg::save();
-    open_settings();
-  });
-  lv_obj_set_size(b_lock, 170, 52);
-  if(cfg::lock_player){
-    lv_obj_set_style_bg_color(b_lock, lv_color_hex(0xE5352B), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(b_lock, 0), lv_color_hex(0xFFFFFF), 0);
-  }
-
-  // Target Player Dropdown Selector
-  lv_obj_t* r_drop = set_row(p1);
-  lv_obj_t* dd_lbl = lv_label_create(r_drop);
-  lv_label_set_text(dd_lbl, "Target Player:");
-  lv_obj_set_style_text_font(dd_lbl, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(dd_lbl, lv_color_hex(0x23303A), 0);
-
-  lv_obj_t* dd = lv_dropdown_create(r_drop);
-  lv_obj_set_size(dd, 340, 48);
-  lv_obj_set_style_text_font(dd, &lv_font_montserrat_16, 0);
-
-  // Populate options from discovered profiles / default player
-  String opt_str = "";
-  int cur_sel = 0;
-  int opt_idx = 0;
-  String seen_ids[10];
-  int seen_count = 0;
-
-  auto add_opt = [&](const String& pid, const String& pname) {
-    if(pid.length() == 0) return;
-    for(int s = 0; s < seen_count; s++) if(seen_ids[s] == pid) return;
-    seen_ids[seen_count++] = pid;
-    if(opt_str.length() > 0) opt_str += "\n";
-    opt_str += (pname.length() > 0 ? pname : String("Player ") + pid);
-    if(cfg::device_id == pid) cur_sel = opt_idx;
-    opt_idx++;
-  };
-
-  if(cfg::device_id.length() > 0){
-    add_opt(cfg::device_id, get_active_player_name());
-  }
-  for(int p = 0; p < core::s_profile_count; p++){
-    add_opt(core::s_profiles[p].default_player_id, core::s_profiles[p].default_player_name);
-  }
-  if(opt_str.length() == 0) opt_str = "No players discovered";
-
-  lv_dropdown_set_options(dd, opt_str.c_str());
-  lv_dropdown_set_selected(dd, cur_sel);
-  lv_obj_add_event_cb(dd, [](lv_event_t* e){
-    lv_obj_t* d = lv_event_get_target(e);
-    uint16_t sel = lv_dropdown_get_selected(d);
-    // Find player ID for this option
-    String opts[10];
-    int o_cnt = 0;
-    auto reg_id = [&](const String& pid){
-      if(pid.length() == 0) return;
-      for(int s = 0; s < o_cnt; s++) if(opts[s] == pid) return;
-      opts[o_cnt++] = pid;
-    };
-    if(cfg::device_id.length() > 0) reg_id(cfg::device_id);
-    for(int p = 0; p < core::s_profile_count; p++) reg_id(core::s_profiles[p].default_player_id);
-    if(sel < o_cnt){
-      cfg::device_id = opts[sel];
-      if(cfg::lock_player) cfg::locked_dev_id = opts[sel];
-      cfg::save();
-    }
-  }, LV_EVENT_VALUE_CHANGED, NULL);
-
-  lv_obj_t* lock_hint = lv_label_create(p1);
-  if(cfg::lock_player){
-    lv_label_set_text_fmt(lock_hint, "Locked: Output locked to selected player above.\nChanging profiles will update cards, but audio stays on this player.",
-                          cfg::device_id.c_str());
-  } else {
-    lv_label_set_text(lock_hint, "Profile Roaming: Audio dynamically routes to each child profile's bedroom player.\n(Lock to Player locks audio to the selected player above).");
-  }
-  lv_obj_set_style_text_font(lock_hint, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(lock_hint, lv_color_hex(0x7A7060), 0);
-
-  set_section(p1, "Operational Mode");
-  lv_obj_t* r_mode = set_row(p1);
-  lv_obj_t* b_mcore = pill_btn(r_mode, "Core Managed", 0, [](lv_event_t*){
-    cfg::op_mode = "core";
-    cfg::save();
-    open_settings();
-  });
-  lv_obj_set_size(b_mcore, 160, 52);
-  if(cfg::op_mode == "core"){
-    lv_obj_set_style_bg_color(b_mcore, lv_color_hex(0xE5352B), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(b_mcore, 0), lv_color_hex(0xFFFFFF), 0);
-  }
-
-  lv_obj_t* b_mstand = pill_btn(r_mode, "Standalone Cloud", 1, [](lv_event_t*){
-    cfg::op_mode = "standalone";
-    cfg::save();
-    open_settings();
-  });
-  lv_obj_set_size(b_mstand, 170, 52);
-  if(cfg::op_mode != "core"){
-    lv_obj_set_style_bg_color(b_mstand, lv_color_hex(0xE5352B), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(b_mstand, 0), lv_color_hex(0xFFFFFF), 0);
-  }
-
-  lv_obj_t* mode_hint = lv_label_create(p1);
-  lv_label_set_text(mode_hint, cfg::op_mode == "core"
-    ? "Core Managed: Hub-assisted multi-child profiles, ABS audiobooks & local proxy."
-    : "Standalone: Direct connection to Yoto Cloud without requiring a local Core server.");
-  lv_obj_set_style_text_font(mode_hint, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(mode_hint, lv_color_hex(0x7A7060), 0);
-
-  // ==========================================
-  // TAB 2: 💡 DISPLAY / DIM
-  // ==========================================
-  lv_obj_t* p2 = s_gu_tab_panels[2];
-
-  set_section(p2, "Volume limit  (maximum ear-safe cap)");
-  lv_obj_t* r_vol = set_row(p2);
-  lv_obj_set_style_pad_all(r_vol, 6, 0);
-  lv_obj_t* vs = lv_slider_create(r_vol);
-  lv_obj_set_size(vs, 500, 18);
-  lv_slider_set_range(vs, 10, 100);
-  lv_slider_set_value(vs, cfg::vol_max, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_KNOB);
-  lv_obj_set_style_pad_all(vs, 10, LV_PART_KNOB);
-  lv_obj_add_event_cb(vs, set_vol_drag_cb, LV_EVENT_VALUE_CHANGED, NULL);
-  lv_obj_add_event_cb(vs, set_vol_done_cb, LV_EVENT_RELEASED, NULL);
-  s_set_vol_lbl = lv_label_create(r_vol);
-  lv_label_set_text_fmt(s_set_vol_lbl, "%d", cfg::vol_max);
-  lv_obj_set_style_text_font(s_set_vol_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_vol_lbl, lv_color_hex(0x23303A), 0);
-
-  set_section(p2, "Night clock inactivity timeout");
-  lv_obj_t* r_saver = set_row(p2);
-  pill_btn(r_saver, "Off", 0,  set_saver_cb);
-  pill_btn(r_saver, "5m",  5,  set_saver_cb);
-  pill_btn(r_saver, "10m", 10, set_saver_cb);
-  pill_btn(r_saver, "30m", 30, set_saver_cb);
-  s_set_saver_lbl = lv_label_create(r_saver);
-  if(cfg::saver_min) lv_label_set_text_fmt(s_set_saver_lbl, "after %d min", cfg::saver_min);
-  else               lv_label_set_text(s_set_saver_lbl, "Off");
-  lv_obj_set_style_text_font(s_set_saver_lbl, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(s_set_saver_lbl, lv_color_hex(0x9A9384), 0);
-
-  set_section(p2, "Bedside clock digit size");
-  lv_obj_t* r_size = set_row(p2);
-  lv_obj_set_size(pill_btn(r_size, "Small",  0, set_size_cb), 124, 52);
-  lv_obj_set_size(pill_btn(r_size, "Medium", 1, set_size_cb), 124, 52);
-  lv_obj_set_size(pill_btn(r_size, "Large",  2, set_size_cb), 124, 52);
-  s_set_size_lbl = lv_label_create(r_size);
-  lv_label_set_text(s_set_size_lbl, SV_SIZE_NAME[cfg::saver_size < 0 ? 0 : cfg::saver_size > 2 ? 2 : cfg::saver_size]);
-  lv_obj_set_style_text_font(s_set_size_lbl, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(s_set_size_lbl, lv_color_hex(0x9A9384), 0);
-
-  // ==========================================
-  // TAB 3: 📶 NETWORK & SYSTEM
-  // ==========================================
-  lv_obj_t* p3 = s_gu_tab_panels[3];
-
-  set_section(p3, "Network Diagnostics");
-  String ip = WiFi.localIP().toString();
-  String sd = s_sd_ok ? String((uint32_t)(SD.usedBytes()/(1024ULL*1024ULL))) + " MB used" : String("none");
-  lv_obj_t* diag = lv_label_create(p3);
-  lv_label_set_text_fmt(diag,
-    "IP Address: %s      Wi-Fi RSSI: %d dBm\n"
-    "SSID: %s            Core Host: %s\n"
-    "Player Target: %s (%s)\n"
-    "Cards in catalog: %d     SD cache: %s\n"
-    "Free Heap: %u KB         Version: %s (%s)",
-    ip.c_str(), (int)WiFi.RSSI(),
-    cfg::wifi_ssid.c_str(), cfg::core_url.length() ? cfg::core_url.c_str() : "None (Standalone)",
-    get_active_player_name().c_str(), cfg::device_id.length() ? cfg::device_id.c_str() : "None",
-    s_card_count, sd.c_str(),
-    (unsigned)(ESP.getFreeHeap()/1024), STORYDECK_VERSION, __DATE__);
-  lv_obj_set_style_text_font(diag, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(diag, lv_color_hex(0x23303A), 0);
-
-  set_section(p3, "Web Portals & OTA");
-  lv_obj_t* urls = lv_label_create(p3);
-  lv_label_set_text_fmt(urls,
-    "Web Settings Portal:  http://%s/settings\n"
-    "OTA Firmware Update:  http://%s/update",
-    ip.c_str(), ip.c_str());
-  lv_obj_set_style_text_font(urls, &lv_font_montserrat_18, 0);
-  lv_obj_set_style_text_color(urls, lv_color_hex(0x3A6B50), 0);
-
-  set_section(p3, "Hardware Maintenance");
-  lv_obj_t* r_maint = set_row(p3);
-  lv_obj_t* rb = pill_btn(r_maint, "Restart Device", 0, [](lv_event_t*){ ESP.restart(); });
-  lv_obj_set_size(rb, 160, 52);
-  lv_obj_set_style_text_color(rb, lv_color_hex(0xE5352B), 0);
-  lv_obj_set_style_text_color(lv_obj_get_child(rb, 0), lv_color_hex(0xE5352B), 0);
-
-  lv_obj_t* hs = pill_btn(r_maint, "Start Hotspot", 0, start_hotspot_cb);
-  lv_obj_set_size(hs, 160, 52);
-
-  // Set initial active tab visibility
-  gu_tab_switch(s_gu_active_tab);
-
-  s_scr_settings = scr;
-  lv_scr_load(scr);
-}
-
-// ---------------- OTA: wireless firmware updates ----------------
-// Two doors into the same flash-over-WiFi mechanism (both need WiFi up first; USB-C stays
-// the recovery path if a bad image ever wedges the app):
-//   1. ArduinoOTA — push from the Mac:  pio run -e waveshare-s3-43b-ota -t upload
-//   2. ElegantOTA — open http://yoto-controller.local/update (or http://<board-ip>/update)
-//      in any browser and drop in .pio/build/waveshare-s3-43b/firmware.bin
-// Updates land in the spare app slot and only swap over on success, and they DON'T touch NVS,
-// so the Yoto tokens survive. mDNS advertises the board as "yoto-controller.local".
-static WebServer s_ota_web(80);
-
-// "Loading new software" splash for firmware updates. The hard constraint: on the ESP32-S3 every
-// flash write/erase momentarily DISABLES the MMU cache, and the LCD framebuffer is read from PSRAM
-// THROUGH that cache, so the panel literally scans garbage for the whole transfer no matter what's
-// in the FB ("screen goes nuts"). We can't hold a live image during the write. So instead: paint
-// the message ONCE (this fires before the first flash write, while the cache is still on, so it
-// renders clean), hold it briefly so it's readable, then BLANK the backlight (EXIO_BL_DISP) so the
-// transfer runs on a clean dark screen instead of garbage. On success the board reboots and setup()
-// turns the backlight back on; on failure ota_restore_display() brings it back (see onError/onEnd).
-static lv_obj_t* s_scr_ota = nullptr;
-static void ota_splash_and_blank(){
-  if(!s_scr_ota){
-    s_scr_ota = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(s_scr_ota, lv_color_hex(0xE5352B), 0);   // red hero bg
-    lv_obj_clear_flag(s_scr_ota, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* t = lv_label_create(s_scr_ota);
-    lv_label_set_text(t, "Loading new software");
-    lv_obj_set_style_text_font(t, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(t, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(t, LV_ALIGN_CENTER, 0, -18);
-
-    lv_obj_t* sub = lv_label_create(s_scr_ota);
-    lv_label_set_text(sub, "Please wait...");
-    lv_obj_set_style_text_font(sub, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(sub, lv_color_hex(0xFFE3E0), 0);
-    lv_obj_align(sub, LV_ALIGN_CENTER, 0, 28);
-
-    lv_scr_load(s_scr_ota);
-  }
-  lv_refr_now(lv_disp_get_default());   // clean paint: runs before the first flash write
-  delay(1200);                          // hold long enough to read
-  ch422g_set(EXIO_BL_DISP, false);      // blank: dark beats garbage during the cache-disabling writes
-}
-// Recover the display if an OTA FAILS (no reboot happens, loop() resumes — and its 1 Hz backlight
-// self-heal would otherwise keep re-asserting the now-OFF shadow bit, leaving the screen dark).
-static void ota_restore_display(){
-  ch422g_set(EXIO_BL_DISP, true);
-  if(s_scr_home) lv_scr_load(s_scr_home);
-  lv_refr_now(lv_disp_get_default());
-}
-
-static void ota_begin(){
-  ArduinoOTA.setHostname("yoto-controller");
-  if(sizeof(OTA_PASSWORD) > 1) ArduinoOTA.setPassword(OTA_PASSWORD);   // empty string => no auth
-  ArduinoOTA.onStart([](){ Serial.println("[OTA] push start"); ota_splash_and_blank(); });
-  ArduinoOTA.onEnd([](){   Serial.println("[OTA] push done");  });   // success -> board reboots
-  ArduinoOTA.onError([](ota_error_t e){ Serial.printf("[OTA] error %u\n", e); ota_restore_display(); });
-  ArduinoOTA.begin();
-
-  s_ota_web.on("/", [](){ s_ota_web.send(200, "text/plain",
-      "Yoto Controller. Wireless firmware update at /update"); });
-  // Telemetry for tuning the draw buffer vs internal-RAM headroom. cards>0 confirms the
-  // library loaded; minFree is the boot-time low-water mark (worst dip during TLS handshakes).
-  s_ota_web.on("/heap", [](){
-    char b[240];
-    snprintf(b, sizeof(b),
-      "{\"drawLines\":%d,\"cards\":%d,\"freeInternal\":%u,\"largestInternal\":%u,\"minFreeInternal\":%u,\"tlsArena\":%u,\"pcCursor\":%d,\"pcDone\":%d}",
-      DRAW_LINES, s_card_count,
-      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-      (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-      (unsigned)tlsarena::s_size, s_pc_cursor, s_pc_done ? 1 : 0);
-    s_ota_web.send(200, "application/json", b);
-  });
-  // Display-flicker probe. GET /flick?stress=SECONDS injects heavy PSRAM bus load for that long
-  // (0..120) so we can SEE whether the left-edge static flicker is PSRAM-bandwidth contention.
-  // Watch the panel: edge worsens under load + recovers after = RGB-DMA underrun confirmed.
-  // No-arg GET just reports the live display config + remaining stress time + free RAM.
-  s_ota_web.on("/flick", [](){
-    if(!s_flick_task)
-      xTaskCreatePinnedToCore(flick_stress_task, "flick", 4096, nullptr, 1, &s_flick_task, 0);
-    if(s_ota_web.hasArg("stress")){
-      int sec = s_ota_web.arg("stress").toInt();
-      if(sec < 0) sec = 0; if(sec > 120) sec = 120;
-      s_flick_until = millis() + (uint32_t)sec*1000u;
-    }
-    int32_t left = (int32_t)(s_flick_until - millis()); if(left < 0) left = 0;
-    char b[256];
-    snprintf(b, sizeof(b),
-      "{\"bouncePx\":%d,\"pclkHz\":%d,\"fbInPsram\":1,\"numFbs\":1,\"drawLines\":%d,"
-      "\"stressMsLeft\":%d,\"freeSpiram\":%u,\"largestSpiram\":%u,\"freeInternal\":%u}",
-      LCD_H_RES*10, 16*1000*1000, DRAW_LINES, (int)left,
-      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
-      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    s_ota_web.send(200, "application/json", b);
-  });
-  // SD cache health: is the card mounted, and is the cover/chapter cache actually populating?
-  // Lists the first handful of files in /ythumbs with sizes so we can SEE whether detail
-  // opens are writing {id}.chap (chapters) and {id}_184.565 (detail cover) blobs.
-  s_ota_web.on("/sd", [](){
-    String out = "{\"mounted\":" + String(s_sd_ok ? 1 : 0);
-    if(s_sd_ok){
-      out += ",\"type\":" + String((int)SD.cardType());
-      out += ",\"sizeMB\":" + String((uint32_t)(SD.cardSize()/(1024ULL*1024ULL)));
-      out += ",\"usedMB\":" + String((uint32_t)(SD.usedBytes()/(1024ULL*1024ULL)));
-      int nchap=0, ncover=0, ntot=0;
-      String sample = "[";
-      File dir = SD.open(SD_DIR);
-      if(dir){
-        for(File f = dir.openNextFile(); f; f = dir.openNextFile()){
-          String nm = f.name();
-          if(nm.endsWith(".chap")) nchap++;
-          else if(nm.endsWith(".565")) ncover++;
-          if(ntot < 8){ if(ntot) sample += ","; sample += "\"" + nm + ":" + String((uint32_t)f.size()) + "\""; }
-          ntot++;
-          f.close();
-        }
-        dir.close();
-      }
-      sample += "]";
-      out += ",\"files\":" + String(ntot) + ",\"chap\":" + String(nchap) +
-             ",\"cover\":" + String(ncover) + ",\"sample\":" + sample;
-    }
-    out += "}";
-    s_ota_web.send(200, "application/json", out);
-  });
-  // Live MQTT state probe: connection health, parsed playback snapshot, and the LAST RAW
-  // event payload verbatim (the `event` field is the real wire JSON, embedded as-is) so the
-  // parser in yoto_mqtt.h can be confirmed/corrected against what the player actually sends.
-  // Play a card from the iOS app or the player's buttons, then curl this to see it land.
-  s_ota_web.on("/mqtt", [](){
-    if(s_ota_web.hasArg("kick")) ymqtt::kick();   // force reconnect+refresh to exercise stack peak
-    ymqtt::Live lv; ymqtt::snapshot(lv);
-    const char* raw = ymqtt::last_raw();
-    String out = "{";
-    out += "\"connected\":" + String(ymqtt::connected() ? 1 : 0);
-    out += ",\"supHWM\":" + String(ymqtt::sup_hwm());
-    out += ",\"events\":"   + String(ymqtt::events());
-    out += ",\"errors\":"   + String(ymqtt::errors());
-    out += ",\"seq\":"      + String(lv.seq);
-    out += ",\"online\":"   + String(lv.online ? 1 : 0);
-    out += ",\"cardId\":\"" + String(lv.cardId) + "\"";
-    out += ",\"chapterKey\":\"" + String(lv.chapterKey) + "\"";
-    out += ",\"status\":"   + String((int)lv.status);   // 0 unknown 1 stopped 2 paused 3 playing
-    out += ",\"pos\":"      + String(lv.position);
-    out += ",\"dur\":"      + String(lv.trackLength);
-    out += ",\"vol\":"      + String(lv.volume);
-    out += ",\"ageMs\":"    + String(lv.ts ? (millis() - lv.ts) : 0);
-    out += ",\"topic\":\""  + String(ymqtt::last_topic()) + "\"";
-    out += ",\"event\":";   out += (raw && raw[0]) ? raw : "null";
-    out += "}";
-    s_ota_web.send(200, "application/json", out);
-  });
-  // Screensaver-arming diagnostics: poll this hands-off and watch inactiveMs climb toward
-  // saverMin*60000. If it resets with nobody touching the panel, touchSamples/lastTouchMs
-  // will show whether the GT911 reported a phantom press (LVGL resets its inactivity clock
-  // on every PRESSED sample). Reads shared state from loop() context — same thread as
-  // lv_timer_handler, so no race.
-  s_ota_web.on("/saver", [](){
-    // resetReason (esp_reset_reason_t): 1 POWERON, 3 SW, 4 PANIC, 5 INT_WDT, 6 TASK_WDT,
-    // 7 other WDT, 9 BROWNOUT — the key forensic bit for the 2026-06-10 reboot loop
-    char b[360];
-    snprintf(b, sizeof(b),
-      "{\"uptimeMs\":%lu,\"inactiveMs\":%lu,\"saverMin\":%d,\"haveHome\":%d,\"saverShown\":%d,"
-      "\"touchSamples\":%lu,\"lastTouchMs\":%lu,\"tstate\":%d,\"resetReason\":%d,"
-      "\"blRecoveries\":%lu,\"freeInternal\":%u,\"minFreeInternal\":%u}",
-      (unsigned long)millis(), (unsigned long)lv_disp_get_inactive_time(NULL),
-      cfg::saver_min, s_scr_home ? 1 : 0, s_scr_saver ? 1 : 0,
-      (unsigned long)s_touch_samples, (unsigned long)s_tlast, (int)s_tstate,
-      (int)esp_reset_reason(),
-      (unsigned long)s_bl_recoveries,
-      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-      (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
-    s_ota_web.send(200, "application/json", b);
-  });
-  // Live probe of the detail-screen fetch paths (authed /card/{id} + CDN cover), since the
-  // failures only reproduce on-device. ?card=N picks a grid index; ?expire=1 corrupts the
-  // cached access token first so the 403-refresh-retry path runs NOW instead of in an hour.
-  // Blocks the UI for a few seconds while it runs — it's a diagnostic, not a feature.
-  s_ota_web.on("/diag", [](){
-    String out = "{\"freeInt\":" + String(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) +
-                 ",\"largest\":" + String(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)) +
-                 ",\"arena\":" + String(tlsarena::s_size);
-    size_t hole;
-    {
-      // what mbedTLS actually sees when the arena opens for a call (no String growth in
-      // here — an alloc landing inside the open hole would split it permanently)
-      tlsarena::Guard g;
-      hole = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-    }
-    out += ",\"holeLargest\":" + String(hole);
-    if(s_card_count == 0){
-      out += ",\"err\":\"no cards loaded\"}";
-      s_ota_web.send(200, "application/json", out);
-      return;
-    }
-    int i = s_ota_web.hasArg("card") ? s_ota_web.arg("card").toInt() : 0;
-    if(i < 0 || i >= s_card_count) i = 0;
-    Card& c = s_cards[i];
-    out += ",\"id\":\"" + c.id + "\"";
-    if(s_ota_web.arg("expire") == "1"){
-      yoto::s_access = "expired-on-purpose";   // NOT persisted; next refresh overwrites
-      out += ",\"forcedExpiry\":true";
-    }
-    int apiCode; size_t blen = 0; uint32_t apiMs;
-    {
-      tlsarena::Guard tg;
-      WiFiClientSecure cli; HTTPClient http;
-      uint32_t t0 = millis();
-      apiCode = yoto::get(cli, http, "/card/" + c.id);
-      if(apiCode == 200){ char* b = read_body_psram(http, blen); if(b) free(b); }
-      if(apiCode > 0) http.end();
-      apiMs = millis() - t0;
-    }
-    out += ",\"api\":" + String(apiCode) + ",\"apiBytes\":" + String((unsigned)blen) +
-           ",\"apiMs\":" + String(apiMs);
-    out += ",\"freeIntMid\":" + String(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) +
-           ",\"largestMid\":" + String(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-    {
-      // Plain-HTTP reachability (any code > 0 = DNS+TCP fine, isolating the failure to TLS)
-      WiFiClient pc; HTTPClient ph;
-      ph.begin(pc, "http://api.yotoplay.com/");
-      ph.setTimeout(8000);
-      out += ",\"plainHttp\":" + String(ph.GET());
-      ph.end();
-    }
-    bool tlsOk; char eb[120] = "";
-    {
-      // Raw TLS connect + the mbedtls error string ("memory allocation failed" vs DNS etc.)
-      tlsarena::Guard tg;
-      WiFiClientSecure tc; tc.setInsecure();
-      tlsOk = tc.connect("api.yotoplay.com", 443);
-      if(!tlsOk) tc.lastError(eb, sizeof(eb));
-      tc.stop();
-    }
-    out += ",\"tlsConnect\":" + String(tlsOk ? 1 : 0) + ",\"tlsErr\":\"" + String(eb) + "\"";
-    if(s_ota_web.hasArg("status")){
-      // Probe GET /device-v2/{id}/status with the board's CURRENT token — settles whether
-      // live device state needs any extra scope or works with what we already hold.
-      int stCode; String snip;
-      {
-        tlsarena::Guard tg;
-        WiFiClientSecure cli; HTTPClient http;
-        stCode = yoto::get(cli, http, "/device-v2/" + cfg::device_id + "/status");
-        size_t sl = 0; char* sb = nullptr;
-        if(stCode == 200){ sb = read_body_psram(http, sl); }
-        if(stCode > 0) http.end();
-        if(sb){ snip = String(sb).substring(0, 220); free(sb); }
-      }
-      snip.replace("\\", ""); snip.replace("\"", "'");   // keep the diag JSON parseable
-      out += ",\"status\":" + String(stCode) + ",\"statusBody\":\"" + snip + "\"";
-    }
-    if(s_ota_web.hasArg("daily")){
-      // Reproduce the exact Yoto Daily play path and surface what the firmware throws away:
-      // the resolved trackKey AND the card/start response code+body. Settles whether the
-      // failure is a bad/absent trackKey or the API rejecting a card/start for 3nC80.
-      out += ",\"dailyId\":\"" + String(YOTO_DAILY_ID) + "\"";
-      struct tm tmv;
-      if(!getLocalTime(&tmv, 500)){
-        out += ",\"dailyErr\":\"clock not synced\"";
-      } else {
-        char today[9]; strftime(today, sizeof today, "%Y%m%d", &tmv);
-        out += ",\"today\":\"" + String(today) + "\"";
-        String key, title; int dur = 0;
-        bool found = fetch_daily_track(String(today), key, title, dur);
-        out += ",\"dailyFound\":" + String(found ? 1 : 0) +
-               ",\"trackKey\":\"" + key + "\",\"trackDur\":" + String(dur);
-        if(found){
-          // identical payload to send_cmd("play", {...}) for the daily tile
-          String payload = String("{\"uri\":\"https://yoto.io/") + YOTO_DAILY_ID +
-                           "\",\"chapterKey\":\"daily\",\"trackKey\":\"" + key + "\"}";
-          String path = String("/device-v2/") + cfg::device_id + "/command/card/start";
-          String rb; int sc;
-          { tlsarena::Guard tg; sc = yoto::post(path, payload, rb); }
-          rb.replace("\\", ""); rb.replace("\"", "'");   // keep diag JSON parseable
-          out += ",\"startCode\":" + String(sc) + ",\"startBody\":\"" + rb.substring(0, 220) + "\"";
-        }
-      }
-    }
-    {
-      uint8_t* buf = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
-      bool ok = false;
-      s_thumb_diag = "";
-      uint32_t t0 = millis();
-      if(buf){ ok = fetch_cover(c.cover, DCOVER_W, DCOVER_H, buf); free(buf); }
-      else s_thumb_diag = "psram alloc fail";
-      out += ",\"cover\":" + String(ok ? 1 : 0) + ",\"coverDiag\":\"" + s_thumb_diag +
-             "\",\"coverMs\":" + String(millis() - t0);
-    }
-    out += "}";
-    s_ota_web.send(200, "application/json", out);
-  });
-  s_ota_web.on("/bl", [](){
-    // Manually re-assert the CH422G outputs (EXIO2 = backlight + DISP enable). If the screen is
-    // black and hitting this brings it back, the expander's output latch was cleared by a supply
-    // glitch (the ESP rides through the dip, so it never reboots) — not a dead backlight rail.
-    // Full re-init (WR_SET + settle + WR_IO) so it recovers even a complete chip reset; the WR_SET
-    // write momentarily blips EXIO1 (touch reset), acceptable for a manual one-shot diagnostic.
-    // (The periodic keepalive in loop() deliberately does WR_IO only — see the note there.)
-    ch422g_write(CH422G_WR_SET, 0x01);
-    delay(20);
-    ch422g_flush();
-    s_ota_web.send(200, "application/json",
-      String("{\"reasserted\":1,\"ioShadow\":") + String(s_io_shadow) + "}");
-  });
-  portal::begin(s_ota_web);   // /settings + /reboot ride the same server (see web_portal.h)
-  if(sizeof(OTA_PASSWORD) > 1) ElegantOTA.setAuth("admin", OTA_PASSWORD);
-  ElegantOTA.onStart([](){ Serial.println("[OTA] web upload start"); ota_splash_and_blank(); });
-  ElegantOTA.onEnd([](bool ok){ Serial.printf("[OTA] web upload %s\n", ok ? "ok" : "FAILED"); if(!ok) ota_restore_display(); });
-  ElegantOTA.begin(&s_ota_web);
-  s_ota_web.begin();
-}
-
-// Bring up time + tokens + library once WiFi is available. Runs at boot when WiFi connects
-// right away, and again from the retry timer if it only shows up later (router reboot,
-// hotspot reconfiguration, transient outage).
-static void net_init_and_fetch(){
+void net_init_and_fetch(){
   if(!s_net_ready){
     configTzTime(cfg::tz.c_str(), "pool.ntp.org", "time.nist.gov");   // screensaver clock
     if(cfg::op_mode != "core"){
