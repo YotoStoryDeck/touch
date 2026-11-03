@@ -54,6 +54,9 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
             IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+            if [ "$IS_PRERELEASE" != "true" ] && [[ "$TAG" == *-* ]]; then
+              IS_PRERELEASE="true"
+            fi
           else
             TAG="${GITHUB_REF_NAME}"
             if [[ "$TAG" == *-* ]]; then
@@ -62,7 +65,10 @@ jobs:
               IS_PRERELEASE="false"
             fi
           fi
-          [[ "$TAG" =~ ^v ]] || TAG="v${TAG}"
+
+          # Strip any leading 'v' or 'V' (preventing duplication like 'vv1.0.0') and trim whitespace
+          CLEAN_VER=$(echo "${TAG}" | sed -E 's/^[[:space:]]*[vV]+//' | sed -E 's/[[:space:]]*$//')
+          TAG="v${CLEAN_VER}"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
           echo "Resolved Tag: ${TAG} (Pre-release: ${IS_PRERELEASE})"
