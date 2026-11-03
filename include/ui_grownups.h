@@ -5,6 +5,7 @@
 #include "app_config.h"
 #include "core_api.h"
 #include "hal_display.h"
+#include "app_state.h"
 
 extern int         s_sleep_sec;
 extern int         s_vol;

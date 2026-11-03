@@ -7,6 +7,7 @@
 #include "app_config.h"
 #include "core_api.h"
 #include "hal_display.h"
+#include "app_state.h"
 #include "cover_decoder.h"
 
 extern lv_obj_t* s_scr_profile;

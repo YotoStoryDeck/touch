@@ -8,6 +8,7 @@
 #include "app_config.h"
 #include "core_api.h"
 #include "hal_display.h"
+#include "app_state.h"
 
 extern TaskHandle_t s_flick_task;
 extern void flick_stress_task(void*);
