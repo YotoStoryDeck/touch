@@ -637,6 +637,8 @@ static void add_core_card(const String& id, const String& title, const String& a
   s_cards[s_card_count].series   = series;
   s_cards[s_card_count].sequence = seq;
   s_cards[s_card_count].daily    = false;
+  s_cards[s_card_count].tile     = nullptr;
+  s_cards[s_card_count].dsc.data = nullptr;
   s_card_count++;
 }
 
@@ -1981,42 +1983,43 @@ void net_init_and_fetch(){
       }
     }
 
-  Serial.printf("[HEAP] after-config: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-    status("Fetching library...");
-    bool lib_fetched = false;
-    if(cfg::op_mode == "core"){
-      if(cfg::core_url.length() > 0){
-        lib_fetched = fetch_library_core();
-        if(!lib_fetched){
-          show_error("Core Catalog Failed",
-                     "Could not load media catalog from StoryDeck Core.",
-                     "Check Core server health and network link in Settings.");
+    Serial.printf("[HEAP] after-config: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+
+    // If Core mode has multiple child profiles, open the Profile Picker IMMEDIATELY!
+    // We load the specific child's catalog + covers only AFTER a profile is tapped.
+    if(cfg::op_mode == "core" && core::s_profile_count > 1){
+      build_grid();       // initialize empty s_scr_home backing screen
+      s_lib_ok = true;
+      open_profile_picker();
+    } else {
+      status("Fetching library...");
+      bool lib_fetched = false;
+      if(cfg::op_mode == "core"){
+        if(cfg::core_url.length() > 0){
+          lib_fetched = fetch_library_core();
+          if(!lib_fetched){
+            show_error("Core Catalog Failed",
+                       "Could not load media catalog from StoryDeck Core.",
+                       "Check Core server health and network link in Settings.");
+          }
+        } else {
+          show_error("Core URL Needed",
+                     "StoryDeck Core Managed mode is active, but Core URL is empty.",
+                     "Open Settings below or visit http://<ip>/settings to set Core URL.");
         }
       } else {
-        show_error("Core URL Needed",
-                   "StoryDeck Core Managed mode is active, but Core URL is empty.",
-                   "Open Settings below or visit http://<ip>/settings to set Core URL.");
+        lib_fetched = fetch_library();
       }
-    } else {
-      lib_fetched = fetch_library();
-    }
 
-    if(lib_fetched){
-  Serial.printf("[HEAP] after-catalog: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-      build_grid();
-      load_thumbs();
-      s_lib_ok = true;
-      if(cfg::op_mode == "core" && core::s_profile_count > 1){
-        open_profile_picker();
-      } else {
+      if(lib_fetched){
+        Serial.printf("[HEAP] after-catalog: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        build_grid();
         lv_scr_load(s_scr_home);
-      }
-    } else if(cfg::op_mode == "core" && core::s_profile_count > 0){
-      // Device might be quarantined or catalog empty; still allow profile selection / grown-ups screen
-      build_grid();
-      if(core::s_profile_count > 1){
-        open_profile_picker();
-      } else {
+        lv_refr_now(lv_disp_get_default());
+        load_thumbs();
+        s_lib_ok = true;
+      } else if(cfg::op_mode == "core" && core::s_profile_count > 0){
+        build_grid();
         lv_scr_load(s_scr_home);
       }
     }

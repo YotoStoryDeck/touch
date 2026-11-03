@@ -38,18 +38,24 @@ static void profile_card_cb(lv_event_t* e){
     if(!cfg::lock_player && core::s_profiles[idx].default_player_id.length() > 0){
       cfg::device_id = core::s_profiles[idx].default_player_id;
     }
-    // In Core mode, reload catalog for this child profile
+    // In Core mode, fetch catalog JSON and build grid tiles first
     if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
       fetch_library_core();
       build_grid();
-      if(s_card_count > 0) load_thumbs();
     }
-    // Transition from profile picker to card grid
+    // Transition immediately to the card grid so the user sees the screen & live cover progress!
     if(s_scr_profile){
       lv_obj_t* p = s_scr_profile;
       s_scr_profile = nullptr;
-      if(s_scr_home) lv_scr_load(s_scr_home);
+      if(s_scr_home){
+        lv_scr_load(s_scr_home);
+        lv_refr_now(lv_disp_get_default());
+      }
       lv_obj_del_async(p);
+    }
+    // Now stream/decode covers with visible tile-by-tile progress
+    if(cfg::op_mode == "core" && s_card_count > 0){
+      load_thumbs();
     }
   }
 }

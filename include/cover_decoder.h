@@ -50,10 +50,17 @@ static int jpg_draw(JPEGDRAW* d){
 // Fetch coverBase resized to width W and decode into buf (W*H*2 RGB565). Handles BOTH formats
 // Yoto serves: tall PNG book covers AND square JPEG podcast covers (sniffed by magic bytes).
 static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
-  String base = coverBase;
-  int q = base.indexOf('?'); if(q >= 0) base = base.substring(0, q);   // drop any existing query
-  if(base.length() == 0){ s_thumb_diag = "no cover url"; return false; }
-  String url = base + "?width=" + W + "&quality=70";
+  if(coverBase.length() == 0){ s_thumb_diag = "no cover url"; return false; }
+  String url = coverBase;
+  if(url.indexOf("yotoplay.com") >= 0){
+    int q = url.indexOf('?'); if(q >= 0) url = url.substring(0, q);
+    url = url + "?width=" + W + "&quality=70";
+  } else if(url.indexOf("/api/thumb") >= 0){
+    // StoryDeck Core /api/thumb preserves ?type=yoto&url=... or ?type=abs&id=...; append &size=W
+    if(url.indexOf("size=") < 0){
+      url += (url.indexOf('?') >= 0 ? "&size=" : "?size=") + String(W);
+    }
+  }
   uint8_t* img = nullptr;
   size_t got = 0;
   {
