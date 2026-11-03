@@ -72,6 +72,7 @@ inline bool register_device(const String& base_url, String& err_out){
   doc["mac"]              = get_mac();
   doc["mac_address"]      = get_mac();
   doc["friendly_name"]    = cfg::kiosk_name.length() > 0 ? cfg::kiosk_name : "StoryDeck Touch (ESP32-S3)";
+  doc["ip_address"]       = WiFi.localIP().toString();
   doc["firmware_version"] = STORYDECK_VERSION;
 
   String payload;

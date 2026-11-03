@@ -143,6 +143,10 @@ lv_obj_t* s_scr_settings=nullptr;
 lv_obj_t* s_scr_error=nullptr;
 lv_obj_t* s_scr_pin=nullptr;
 lv_obj_t* s_scr_profile=nullptr;
+lv_obj_t* s_scr_pairing=nullptr;
+static lv_timer_t* s_pairing_timer=nullptr;
+static void show_pairing_screen(const String& core_url, const String& status_msg);
+static void pairing_poll_cb(lv_timer_t* t);
 lv_obj_t* s_scr_prev=nullptr;      // tracks origin screen when opening PIN modal / settings
 static lv_obj_t* s_err_hs_client_lbl=nullptr;
 static bool      s_hotspot_wanted=false;
@@ -1337,6 +1341,8 @@ void go_home(){
   if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
   if(s_scr_pin){ lv_obj_del_async(s_scr_pin); s_scr_pin=nullptr; }
   if(s_scr_profile){ lv_obj_del_async(s_scr_profile); s_scr_profile=nullptr; }
+  if(s_pairing_timer){ lv_timer_del(s_pairing_timer); s_pairing_timer=nullptr; }
+  if(s_scr_pairing){ lv_obj_del_async(s_scr_pairing); s_scr_pairing=nullptr; }
 }
 
 // A one-second burst of soft confetti dots floating up the now-playing screen — the
@@ -1770,10 +1776,142 @@ static void show_error(const char* title, const char* message, const char* actio
 #include "ui_profile_picker.h"
 
 #include "ui_grownups.h"
-
 #include "ota_manager.h"
 
-#include "ota_manager.h"
+// ---------------- Pairing / Waiting for Admin Approval Screen ----------------
+static lv_obj_t* s_pairing_status_lbl = nullptr;
+
+static void show_pairing_screen(const String& core_url, const String& status_msg){
+  if(s_scr_pairing){
+    if(s_pairing_status_lbl) lv_label_set_text(s_pairing_status_lbl, status_msg.c_str());
+    return;
+  }
+  lv_obj_t* scr = lv_obj_create(NULL);
+  s_scr_pairing = scr;
+  lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
+  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Red accent header
+  lv_obj_t* t = lv_label_create(scr);
+  lv_label_set_text(t, "Pairing with StoryDeck Core");
+  lv_obj_set_style_text_font(t, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_color(t, lv_color_hex(0xE5352B), 0);
+  lv_obj_set_pos(t, 24, 20);
+
+  // Left Content Container
+  lv_obj_t* left_box = lv_obj_create(scr);
+  lv_obj_set_pos(left_box, 24, 64);
+  lv_obj_set_size(left_box, 500, 310);
+  lv_obj_set_style_bg_opa(left_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(left_box, 0, 0);
+  lv_obj_set_style_pad_all(left_box, 0, 0);
+  lv_obj_clear_flag(left_box, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Instructions
+  lv_obj_t* m = lv_label_create(left_box);
+  lv_label_set_text(m, "This bedside display has announced itself to StoryDeck Core and is awaiting approval in the Admin Portal.\n\nOnce approved, this controller will automatically pair, load child profiles, and unlock playback.");
+  lv_obj_set_style_text_font(m, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(m, lv_color_hex(0x23303A), 0);
+  lv_obj_set_width(m, 500);
+
+  // Status Badge / Card
+  lv_obj_t* stat_card = lv_obj_create(left_box);
+  lv_obj_set_width(stat_card, 500);
+  lv_obj_set_height(stat_card, 90);
+  lv_obj_set_style_bg_color(stat_card, lv_color_hex(0xFFF3E0), 0); // Amber notice
+  lv_obj_set_style_border_width(stat_card, 1, 0);
+  lv_obj_set_style_border_color(stat_card, lv_color_hex(0xFF9800), 0);
+  lv_obj_set_style_radius(stat_card, 12, 0);
+  lv_obj_set_style_pad_all(stat_card, 12, 0);
+  lv_obj_align(stat_card, LV_ALIGN_TOP_LEFT, 0, 100);
+
+  s_pairing_status_lbl = lv_label_create(stat_card);
+  lv_label_set_text(s_pairing_status_lbl, status_msg.c_str());
+  lv_obj_set_style_text_font(s_pairing_status_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(s_pairing_status_lbl, lv_color_hex(0xE65100), 0);
+  lv_obj_set_width(s_pairing_status_lbl, 470);
+
+  // Device Info Footprint
+  String dev_info = "Device MAC:  " + WiFi.macAddress() + "\n"
+                  + "Local IP:    " + WiFi.localIP().toString() + "\n"
+                  + "Core URL:    " + core_url;
+  lv_obj_t* info_lbl = lv_label_create(left_box);
+  lv_label_set_text(info_lbl, dev_info.c_str());
+  lv_obj_set_style_text_font(info_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(info_lbl, lv_color_hex(0x7A7060), 0);
+  lv_obj_set_width(info_lbl, 500);
+  lv_obj_align(info_lbl, LV_ALIGN_TOP_LEFT, 0, 205);
+
+  // Right QR Code Card (Links directly to Admin Portal Hardware Tab)
+  lv_obj_t* qr_card = lv_obj_create(scr);
+  lv_obj_set_pos(qr_card, 545, 64);
+  lv_obj_set_size(qr_card, 230, 290);
+  lv_obj_set_style_bg_color(qr_card, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_border_width(qr_card, 1, 0);
+  lv_obj_set_style_border_color(qr_card, lv_color_hex(0xE7E0D2), 0);
+  lv_obj_set_style_radius(qr_card, 16, 0);
+  lv_obj_set_style_pad_all(qr_card, 10, 0);
+  lv_obj_clear_flag(qr_card, LV_OBJ_FLAG_SCROLLABLE);
+
+  String admin_url = core_url + "/admin#tab-hardware";
+  lv_obj_t* qr = lv_qrcode_create(qr_card, 160, lv_color_hex(0x23303A), lv_color_hex(0xFFFFFF));
+  lv_qrcode_update(qr, admin_url.c_str(), admin_url.length());
+  lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 8);
+
+  lv_obj_t* qr_lbl = lv_label_create(qr_card);
+  lv_label_set_text(qr_lbl, "Scan to open\nAdmin Portal to approve");
+  lv_obj_set_style_text_font(qr_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(qr_lbl, lv_color_hex(0x7A7060), 0);
+  lv_obj_set_style_text_align(qr_lbl, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(qr_lbl, LV_ALIGN_BOTTOM_MID, 0, -4);
+
+  // Bottom action buttons
+  lv_obj_t* bcont = set_row(scr);
+  lv_obj_set_pos(bcont, 24, 395);
+  lv_obj_set_style_pad_column(bcont, 16, 0);
+
+  lv_obj_t* b_set = pill_btn(bcont, "Open Settings", 0, [](lv_event_t*){
+    if(s_pairing_timer){ lv_timer_del(s_pairing_timer); s_pairing_timer=nullptr; }
+    open_settings();
+  });
+  lv_obj_set_size(b_set, 210, 56);
+  lv_obj_set_style_bg_color(b_set, lv_color_hex(0xE5352B), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(b_set, 0), lv_color_hex(0xFFFFFF), 0);
+
+  lv_obj_t* b_try = pill_btn(bcont, "Check Now", 0, [](lv_event_t*){
+    if(s_pairing_timer){ lv_timer_del(s_pairing_timer); s_pairing_timer=nullptr; }
+    net_init_and_fetch();
+  });
+  lv_obj_set_size(b_try, 160, 56);
+
+  lv_scr_load(scr);
+  lv_refr_now(lv_disp_get_default());
+}
+
+static void pairing_poll_cb(lv_timer_t* t){
+  if(core::s_is_approved && s_lib_ok){
+    lv_timer_del(t);
+    s_pairing_timer = nullptr;
+    return;
+  }
+  if(WiFi.status() == WL_CONNECTED && cfg::op_mode == "core" && cfg::core_url.length() > 0){
+    String err;
+    if(core::register_device(cfg::core_url, err)){
+      // Approved! Kill pairing timer and fetch library
+      lv_timer_del(t);
+      s_pairing_timer = nullptr;
+      if(s_scr_pairing){
+        lv_obj_del_async(s_scr_pairing);
+        s_scr_pairing = nullptr;
+      }
+      net_init_and_fetch();
+    } else {
+      if(s_pairing_status_lbl){
+        lv_label_set_text(s_pairing_status_lbl, err.c_str());
+      }
+    }
+  }
+}
 
 void net_init_and_fetch(){
   if(!s_net_ready){
@@ -1784,19 +1922,32 @@ void net_init_and_fetch(){
     s_net_ready = true;
   }
 
-  // Core mode registration handshake
-  if(cfg::op_mode == "core" && cfg::core_url.length() > 0 && !core::s_is_registered){
-    status("Registering with StoryDeck Core...");
-    String err;
-    if(!core::register_device(cfg::core_url, err)){
-      Serial.printf("Registration note: %s (is_reg=%d is_appr=%d)\n", err.c_str(), (int)core::s_is_registered, (int)core::s_is_approved);
-      if(!core::s_is_registered){
-        show_error("Core Kiosk Registration",
-                   err.c_str(),
-                   "Verify the StoryDeck Core URL or network link in Settings.");
-        return;
+  // Core mode registration & approval gate
+  if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+    if(!core::s_is_approved){
+      status("Checking StoryDeck Core registration...");
+      String err;
+      bool reg_ok = core::register_device(cfg::core_url, err);
+      if(!reg_ok){
+        Serial.printf("[CORE] Registration status: %s (registered=%d approved=%d)\n", err.c_str(), (int)core::s_is_registered, (int)core::s_is_approved);
+        // Show dedicated Pairing Screen and start 10s poll timer
+        show_pairing_screen(cfg::core_url, err);
+        if(!s_pairing_timer){
+          s_pairing_timer = lv_timer_create(pairing_poll_cb, 10000, NULL);
+        }
+        return; // STOP loop right here! Do not proceed to catalog fetch or error screen
       }
     }
+  }
+
+  // If approved and pairing screen is visible, dismiss it
+  if(s_scr_pairing){
+    lv_obj_del_async(s_scr_pairing);
+    s_scr_pairing = nullptr;
+  }
+  if(s_pairing_timer){
+    lv_timer_del(s_pairing_timer);
+    s_pairing_timer = nullptr;
   }
 
   if(!s_lib_ok){
