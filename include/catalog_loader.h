@@ -215,11 +215,14 @@ void load_thumbs(){
   s_thumb_first_err = "";
   s_thumb_cursor = 0;
 
-  // Fast pass: load covers that already exist on MicroSD without any network block
+  // Immediate first-paint pass: load up to the first 8 visible tiles from MicroSD (~80ms)
+  // so the initial viewport is populated immediately without triggering the ESP32 Watchdog Timer.
   if(s_sd_ok){
-    for(int i = 0; i < s_card_count; i++){
+    int preload_limit = (s_card_count < 8) ? s_card_count : 8;
+    for(int i = 0; i < preload_limit; i++){
       if(sd_cache_exists(s_cards[i].id, THUMB_W, s_cards[i].cover)){
         if(load_thumb(i)) s_thumb_ok++;
+        delay(1);
       }
     }
     lv_refr_now(lv_disp_get_default());
@@ -236,27 +239,35 @@ void load_thumbs(){
 
 inline void thumb_load_step(){
   if(!s_thumbs_loading) return;
-  while(s_thumb_cursor < s_card_count && s_cards[s_thumb_cursor].dsc.data != nullptr){
-    s_thumb_cursor++;
-  }
-  if(s_thumb_cursor >= s_card_count){
-    s_thumbs_loading = false;
-    if(s_barlabel){
-      if(s_thumb_ok < s_card_count && s_thumb_first_err.length() > 0)
-        lv_label_set_text_fmt(s_barlabel, "covers %d/%d  -  %s", s_thumb_ok, s_card_count, s_thumb_first_err.c_str());
-      else
-        lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+  // Load up to 4 SD-cached covers per loop() tick, or 1 network cover per tick, yielding to FreeRTOS/WDT
+  int steps = 0;
+  while(steps < 4){
+    while(s_thumb_cursor < s_card_count && s_cards[s_thumb_cursor].dsc.data != nullptr){
+      s_thumb_cursor++;
     }
-    return;
+    if(s_thumb_cursor >= s_card_count){
+      s_thumbs_loading = false;
+      if(s_barlabel){
+        if(s_thumb_ok < s_card_count && s_thumb_first_err.length() > 0)
+          lv_label_set_text_fmt(s_barlabel, "covers %d/%d  -  %s", s_thumb_ok, s_card_count, s_thumb_first_err.c_str());
+        else
+          lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+      }
+      return;
+    }
+    int i = s_thumb_cursor++;
+    bool is_cached = s_sd_ok && sd_cache_exists(s_cards[i].id, THUMB_W, s_cards[i].cover);
+    if(load_thumb(i)){
+      s_thumb_ok++;
+    } else if(s_thumb_first_err.length() == 0){
+      s_thumb_first_err = s_thumb_diag;
+    }
+    steps++;
+    if(!is_cached) break; // Only do 1 network fetch per loop() pass
+    delay(1);
   }
-  int i = s_thumb_cursor++;
-  if(load_thumb(i)){
-    s_thumb_ok++;
-  } else if(s_thumb_first_err.length() == 0){
-    s_thumb_first_err = s_thumb_diag;
-  }
-  if(s_barlabel){
-    lv_label_set_text_fmt(s_barlabel, "loading covers  %d/%d", i + 1, s_card_count);
+  if(s_barlabel && s_thumbs_loading){
+    lv_label_set_text_fmt(s_barlabel, "loading covers  %d/%d", s_thumb_cursor, s_card_count);
   }
 }
 

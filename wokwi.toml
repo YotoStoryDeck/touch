@@ -3,11 +3,10 @@ version = 1
 firmware = ".pio/build/wokwi/firmware.factory.bin"
 elf = ".pio/build/wokwi/firmware.elf"
 
-# Configure the virtual MicroSD card (sdcard/ythumbs/ holds ~136 MB of pre-cached RGB565 covers & avatars).
-# Note: Wokwi's simulator enforces a hard maximum of 256M (maxSDCardSize = 256 MB) for [[sdcard]] size.
+# Configure the virtual MicroSD card (sdcard/ythumbs/ holds ~7 MB of pre-cached RGB565 covers & avatars).
 [[sdcard]]
 folder = "sdcard"
-size = "256M"
+size = "32M"
 writeback = true
 
 # Forward localhost:8180 on your PC to port 80 on the simulated ESP32-S3:

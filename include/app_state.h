@@ -25,7 +25,7 @@ struct PsramAllocator : ArduinoJson::Allocator {
 enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_ABS=2, TAB_YOTO=3 };
 static TabFilter s_active_tab = TAB_ALL;
 
-#define MAX_CARDS 96
+#define MAX_CARDS 64
 
 struct Card {
   String id; String title;

@@ -184,6 +184,10 @@ inline bool sd_chap_read(const String& id){
 // Prune stale or superseded avatar cache files (av_*.565) from /ythumbs that do not match
 // any active profile's current avatar_cache_key.
 inline int sd_prune_stale_avatars(const String* valid_keys, int key_count){
+#ifdef WOKWI_SIMULATION
+  (void)valid_keys; (void)key_count;
+  return 0; // In Wokwi simulation, host script prunes sdcard/ythumbs; avoid slow emulated SPI FAT scan
+#else
   if(!s_sd_ok || key_count <= 0) return 0;
   File dir = SD.open(SD_DIR);
   if(!dir || !dir.isDirectory()) return 0;
@@ -216,12 +220,13 @@ inline int sd_prune_stale_avatars(const String* valid_keys, int key_count){
     if(SD.remove(stale_paths[i])) removed++;
   }
   return removed;
+#endif
 }
 
-// Prune stale book cover (.565) and chapter (.chap) files from /ythumbs when the loaded
-// catalog represents the complete set of valid cards for this device (e.g. single-profile
-// or Standalone mode), or clear all cached covers/chapters when clear_all is true.
 inline int sd_prune_stale_covers(bool clear_all = false){
+#ifdef WOKWI_SIMULATION
+  if(!clear_all) return 0; // Host script prunes sdcard/ythumbs in Wokwi
+#endif
   if(!s_sd_ok) return 0;
   if(!clear_all && s_card_count <= 0) return 0;
   File dir = SD.open(SD_DIR);
