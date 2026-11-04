@@ -171,19 +171,26 @@ void open_profile_picker(){
     lv_obj_align(av_box, LV_ALIGN_TOP_MID, 0, 16);
     lv_obj_clear_flag(av_box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    // Always load & render the pre-generated/cached avatar image (whether custom photo or custom colored bubble image)
-    // so the ESP32 displays the exact same avatar image and color as the Admin Portal and Web Kiosk!
+    // Fast, non-blocking avatar loading:
+    // Read from SD cache if present, or if already in PSRAM.
+    // If not on SD, do NOT block the UI thread with synchronous HTTP fetches during screen load!
+    // Instead, immediately display the vector monogram fallback with the profile's custom color.
     bool av_loaded = false;
     if(pr.avatar_url.length() > 0){
       const size_t AV_SZ = 130 * 130 * 2;
       if(!pr.avatar_buf){
-        pr.avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
-        if(pr.avatar_buf){
-          String ckey = pr.avatar_cache_key.length() > 0 ? pr.avatar_cache_key : (String("av_") + pr.id + "_1");
-          av_loaded = load_cover_cached(ckey, pr.avatar_url, 130, 130, AV_SZ, pr.avatar_buf);
-          if(!av_loaded){
-            free(pr.avatar_buf);
-            pr.avatar_buf = nullptr;
+        String ckey = pr.avatar_cache_key.length() > 0 ? pr.avatar_cache_key : (String("av_") + pr.id + "_1");
+        // Check if cached on SD first (zero network lag)
+        if(sd_cache_exists(ckey, 130, pr.avatar_url) || sd_cache_exists(String("av_") + pr.id + "_1", 130, pr.avatar_url)){
+          pr.avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
+          if(pr.avatar_buf){
+            if(sd_cache_read(ckey, 130, pr.avatar_buf, AV_SZ, pr.avatar_url) ||
+               sd_cache_read(String("av_") + pr.id + "_1", 130, pr.avatar_buf, AV_SZ, pr.avatar_url)){
+              av_loaded = true;
+            } else {
+              free(pr.avatar_buf);
+              pr.avatar_buf = nullptr;
+            }
           }
         }
       } else {
