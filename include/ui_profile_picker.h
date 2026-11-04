@@ -171,19 +171,15 @@ void open_profile_picker(){
     lv_obj_align(av_box, LV_ALIGN_TOP_MID, 0, 16);
     lv_obj_clear_flag(av_box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    // Only fetch/decode raster avatar if a custom uploaded photo URL is present (e.g. ?t=... or external http image).
-    // For default generated initial avatars (/api/avatar/<id> without ?t=), crisp native LVGL vector font looks
-    // sharper than a scaled 160->130 JPEG!
-    bool has_custom_photo = pr.has_custom_avatar ||
-                            (pr.avatar_url.indexOf("?t=") >= 0) ||
-                            (pr.avatar_url.length() > 0 && pr.avatar_url.indexOf("/api/avatar/") < 0);
+    // Always load & render the pre-generated/cached avatar image (whether custom photo or custom colored bubble image)
+    // so the ESP32 displays the exact same avatar image and color as the Admin Portal and Web Kiosk!
     bool av_loaded = false;
-    if(has_custom_photo){
+    if(pr.avatar_url.length() > 0){
       const size_t AV_SZ = 130 * 130 * 2;
       if(!pr.avatar_buf){
         pr.avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
         if(pr.avatar_buf){
-          String ckey = pr.avatar_cache_key.length() > 0 ? pr.avatar_cache_key : (String("av_") + pr.id);
+          String ckey = pr.avatar_cache_key.length() > 0 ? pr.avatar_cache_key : (String("av_") + pr.id + "_1");
           av_loaded = load_cover_cached(ckey, pr.avatar_url, 130, 130, AV_SZ, pr.avatar_buf);
           if(!av_loaded){
             free(pr.avatar_buf);
@@ -196,13 +192,22 @@ void open_profile_picker(){
     }
 
     if(av_loaded && pr.avatar_buf){
+      // Sample the avatar's background color at (12, 12) so the circular container and top-nav profile badge match 100%
+      const uint16_t* px16 = (const uint16_t*)pr.avatar_buf;
+      uint16_t sample565 = px16[12 * 130 + 12];
+      uint32_t r8 = ((sample565 >> 11) & 0x1F) * 255 / 31;
+      uint32_t g8 = ((sample565 >> 5)  & 0x3F) * 255 / 63;
+      uint32_t b8 = ( sample565        & 0x1F) * 255 / 31;
+      pr.avatar_color = (r8 << 16) | (g8 << 8) | b8;
+      lv_obj_set_style_bg_color(av_box, lv_color_hex(pr.avatar_color), 0);
+
       lv_obj_t* av_img = lv_img_create(av_box);
       lv_obj_set_size(av_img, 130, 130);
       set_img(pr.avatar_dsc, av_img, pr.avatar_buf, 130, 130, 130*130*2);
       lv_obj_clear_flag(av_img, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_center(av_img);
     } else {
-      // Crisp vector monogram using Core's household disambiguated initial (e.g. "J", "W", "Ja", "Jm")
+      // Fallback vector monogram if offline and not yet cached on SD
       lv_obj_t* av_txt = lv_label_create(av_box);
       String mono = pr.avatar_initial.length() > 0 ? pr.avatar_initial : (pr.display_name.length() > 0 ? pr.display_name.substring(0, 1) : String("C"));
       lv_label_set_text(av_txt, mono.c_str());

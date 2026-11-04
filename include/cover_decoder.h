@@ -118,16 +118,48 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
     if(pngle_feed(p, img, got) < 0) s_thumb_diag = String("png: ") + pngle_error(p);
     ok = s_png_done;
     pngle_destroy(p);
-  } else if(img[0]==0xFF && img[1]==0xD8){    // ---- JPEG (square podcast covers) ----
+  } else if(img[0]==0xFF && img[1]==0xD8){    // ---- JPEG (covers & 160x160 profile avatars) ----
     static JPEGDEC jpg;
     if(jpg.openRAM(img, got, jpg_draw)){
       jpg.setPixelType(RGB565_LITTLE_ENDIAN);
       int iw = jpg.getWidth(), ih = jpg.getHeight();
-      ctx.xoff = (W - iw) / 2; if(ctx.xoff < 0) ctx.xoff = 0;
-      ctx.yoff = (H - ih) / 2; if(ctx.yoff < 0) ctx.yoff = 0;
-      jpg.setUserPointer(&ctx);
-      ok = (jpg.decode(0, 0, 0) == 1);
-      jpg.close();
+      if((iw > W || ih > H) && iw <= 512 && ih <= 512){
+        // Decode full iw x ih image into temporary PSRAM buffer and bilinear/nearest scale into W x H buf!
+        // This guarantees 160x160 /api/avatar/<id> JPEGs scale cleanly into 130x130 circular bubbles without clipping!
+        uint8_t* tmp_fb = (uint8_t*)heap_caps_malloc((size_t)iw * ih * 2, MALLOC_CAP_SPIRAM);
+        if(tmp_fb){
+          DecCtx full_ctx{ tmp_fb, iw, ih, 0, 0 };
+          jpg.setUserPointer(&full_ctx);
+          ok = (jpg.decode(0, 0, 0) == 1);
+          jpg.close();
+          if(ok){
+            uint16_t* src16 = (uint16_t*)tmp_fb;
+            uint16_t* dst16 = (uint16_t*)buf;
+            for(int dy = 0; dy < H; dy++){
+              int sy = (dy * ih + ih / 2) / H;
+              if(sy >= ih) sy = ih - 1;
+              for(int dx = 0; dx < W; dx++){
+                int sx = (dx * iw + iw / 2) / W;
+                if(sx >= iw) sx = iw - 1;
+                dst16[dy * W + dx] = src16[sy * iw + sx];
+              }
+            }
+          }
+          free(tmp_fb);
+        } else {
+          ctx.xoff = (W - iw) / 2;
+          ctx.yoff = (H - ih) / 2;
+          jpg.setUserPointer(&ctx);
+          ok = (jpg.decode(0, 0, 0) == 1);
+          jpg.close();
+        }
+      } else {
+        ctx.xoff = (W - iw) / 2; if(ctx.xoff < 0) ctx.xoff = 0;
+        ctx.yoff = (H - ih) / 2; if(ctx.yoff < 0) ctx.yoff = 0;
+        jpg.setUserPointer(&ctx);
+        ok = (jpg.decode(0, 0, 0) == 1);
+        jpg.close();
+      }
       if(!ok) s_thumb_diag = "jpg decode fail";
     } else s_thumb_diag = "jpg open fail";
   } else {

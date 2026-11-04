@@ -9,6 +9,8 @@
 #include <ArduinoJson.h>
 #include "app_config.h"
 
+inline int sd_prune_stale_avatars(const String* valid_keys, int key_count);
+
 namespace core {
 
 struct PlayerInfo {
@@ -331,6 +333,13 @@ inline bool fetch_config_and_profiles(const String& base_url){
       pr.default_player_name = pr.players[0].name;
     }
     s_profile_count++;
+  }
+
+  // Prune any superseded or deleted profile avatar .565 files from MicroSD
+  if(s_profile_count > 0){
+    String valid_av_keys[MAX_PROFILES];
+    for(int i = 0; i < s_profile_count; i++) valid_av_keys[i] = s_profiles[i].avatar_cache_key;
+    sd_prune_stale_avatars(valid_av_keys, s_profile_count);
   }
 
   // If Core assigned a specific profile to this hardware controller, select it

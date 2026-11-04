@@ -134,3 +134,88 @@ inline bool sd_chap_read(const String& id){
   f.close();
   return ok;
 }
+
+// Prune stale or superseded avatar cache files (av_*.565) from /ythumbs that do not match
+// any active profile's current avatar_cache_key.
+inline int sd_prune_stale_avatars(const String* valid_keys, int key_count){
+  if(!s_sd_ok || key_count <= 0) return 0;
+  File dir = SD.open(SD_DIR);
+  if(!dir || !dir.isDirectory()) return 0;
+  int removed = 0;
+  char stale_paths[16][64];
+  int stale_cnt = 0;
+  while(File f = dir.openNextFile()){
+    String name = f.name();
+    int slash = name.lastIndexOf('/');
+    if(slash >= 0) name = name.substring(slash + 1);
+    f.close();
+    if(name.startsWith("av_") && name.endsWith(".565")){
+      bool keep = false;
+      for(int i = 0; i < key_count; i++){
+        if(valid_keys[i].length() > 0 && name == (valid_keys[i] + "_130.565")){
+          keep = true;
+          break;
+        }
+      }
+      if(!keep && stale_cnt < 16){
+        String full = String(SD_DIR) + "/" + name;
+        strncpy(stale_paths[stale_cnt], full.c_str(), 63);
+        stale_paths[stale_cnt][63] = '\0';
+        stale_cnt++;
+      }
+    }
+  }
+  dir.close();
+  for(int i = 0; i < stale_cnt; i++){
+    if(SD.remove(stale_paths[i])) removed++;
+  }
+  return removed;
+}
+
+// Prune stale book cover (.565) and chapter (.chap) files from /ythumbs when the loaded
+// catalog represents the complete set of valid cards for this device (e.g. single-profile
+// or Standalone mode), or clear all cached covers/chapters when clear_all is true.
+inline int sd_prune_stale_covers(bool clear_all = false){
+  if(!s_sd_ok) return 0;
+  if(!clear_all && s_card_count <= 0) return 0;
+  File dir = SD.open(SD_DIR);
+  if(!dir || !dir.isDirectory()) return 0;
+  int removed = 0;
+  char batch[24][64];
+  int batch_cnt = 0;
+  while(File f = dir.openNextFile()){
+    String name = f.name();
+    int slash = name.lastIndexOf('/');
+    if(slash >= 0) name = name.substring(slash + 1);
+    f.close();
+    if(name.startsWith(".")) continue;
+    if(!clear_all && name.startsWith("av_")) continue;
+
+    bool keep = false;
+    if(!clear_all){
+      String item_id = "";
+      if(name.endsWith(".chap")){
+        item_id = name.substring(0, name.length() - 5);
+      } else if(name.endsWith("_160.565") || name.endsWith("_210.565") || name.endsWith("_170.565")){
+        int us = name.lastIndexOf('_');
+        if(us > 0) item_id = name.substring(0, us);
+      }
+      if(item_id.length() > 0){
+        for(int i = 0; i < s_card_count; i++){
+          if(s_cards[i].id == item_id){ keep = true; break; }
+        }
+      }
+    }
+    if(!keep && batch_cnt < 24){
+      String full = String(SD_DIR) + "/" + name;
+      strncpy(batch[batch_cnt], full.c_str(), 63);
+      batch[batch_cnt][63] = '\0';
+      batch_cnt++;
+    }
+  }
+  dir.close();
+  for(int i = 0; i < batch_cnt; i++){
+    if(SD.remove(batch[i])) removed++;
+  }
+  return removed;
+}

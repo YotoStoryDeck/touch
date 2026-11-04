@@ -119,6 +119,9 @@ bool fetch_library_core(){
     core::fetch_catalog(cfg::core_url, "default", add_core_card);
   }
   sort_catalog_kiosk_order();
+  if(s_card_count > 0 && (!core::s_allow_profile_switch || core::s_profile_count <= 1)){
+    sd_prune_stale_covers(false);
+  }
   sync_active_player_playback();
   return (s_card_count > 0);
 }
@@ -178,6 +181,7 @@ static bool fetch_library(){
     s_cards[0].cover = YOTO_DAILY_COVER; s_cards[0].daily = true;
     s_card_count++;
   }
+  if(s_card_count > 0) sd_prune_stale_covers(false);
   return s_card_count > 0;
 }
 

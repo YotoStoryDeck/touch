@@ -888,6 +888,20 @@ void open_settings(){
     lv_obj_set_size(rp, 160, 50);
   }
 
+  if(s_sd_ok){
+    lv_obj_t* clr = pill_btn(r_maint, "Purge SD Cache", 0, [](lv_event_t*){
+      while(sd_prune_stale_covers(true) > 0) {}
+      for(int i = 0; i < core::s_profile_count; i++){
+        if(core::s_profiles[i].avatar_buf){
+          free(core::s_profiles[i].avatar_buf);
+          core::s_profiles[i].avatar_buf = nullptr;
+        }
+      }
+      open_settings();
+    });
+    lv_obj_set_size(clr, 165, 50);
+  }
+
   // Set initial active tab visibility
   gu_tab_switch(s_gu_active_tab);
 
