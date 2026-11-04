@@ -218,7 +218,7 @@ void load_thumbs(){
   // Fast pass: load covers that already exist on MicroSD without any network block
   if(s_sd_ok){
     for(int i = 0; i < s_card_count; i++){
-      if(SD.exists(sd_cache_path(s_cards[i].id, THUMB_W))){
+      if(sd_cache_exists(s_cards[i].id, THUMB_W, s_cards[i].cover)){
         if(load_thumb(i)) s_thumb_ok++;
       }
     }
@@ -391,14 +391,14 @@ static void precache_step(){
       return;
     }
     // 2) detail-size cover -> {id}_210.565
-    if(!SD.exists(sd_cache_path(c.id, DCOVER_W))){
+    if(!sd_cache_exists(c.id, DCOVER_W, c.cover)){
       if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
       bool ok = s_dcover && load_cover_cached(c.id, c.cover, DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover);
       if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }
       return;
     }
     // 3) now-playing cover -> {id}_170.565
-    if(!SD.exists(sd_cache_path(c.id, NCOVER_W))){
+    if(!sd_cache_exists(c.id, NCOVER_W, c.cover)){
       if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
       bool ok = s_dcover && load_cover_cached(c.id, c.cover, NCOVER_W, NCOVER_H, NCOVER_SZ, s_dcover);
       if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }

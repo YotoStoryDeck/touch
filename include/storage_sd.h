@@ -41,24 +41,70 @@ inline bool sd_begin(){
   return true;
 }
 
+// FNV-1a 32-bit hash of a cover URL (including ?v= / ?t= version tags) so SD cache detects changed covers
+inline uint32_t sd_cover_url_hash(const String& url){
+  if(url.length() == 0) return 0;
+  uint32_t h = 2166136261u;
+  for(size_t i = 0; i < url.length(); i++){
+    h ^= (uint8_t)url[i];
+    h *= 16777619u;
+  }
+  return h ? h : 1u;
+}
+
 inline String sd_cache_path(const String& id, int W){
   return String(SD_DIR) + "/" + id + "_" + W + ".565";
 }
 
-inline bool sd_cache_read(const String& id, int W, uint8_t* buf, size_t want){
+inline bool sd_cache_exists(const String& id, int W, const String& coverUrl = ""){
   if(!s_sd_ok) return false;
   File f = SD.open(sd_cache_path(id, W), FILE_READ);
   if(!f) return false;
-  bool ok = (((size_t)f.size() == want) && (f.read(buf, want) == (int)want));
+  size_t fsz = (size_t)f.size();
+  if(coverUrl.length() > 0 && fsz >= 4 && (fsz & 3) == 4){
+    // File has a 4-byte trailing URL hash footer: verify it matches current coverUrl
+    uint32_t stored_h = 0;
+    f.seek(fsz - 4);
+    bool r_ok = (f.read((uint8_t*)&stored_h, 4) == 4);
+    f.close();
+    return r_ok && (stored_h == sd_cover_url_hash(coverUrl));
+  }
+  f.close();
+  return fsz > 0;
+}
+
+inline bool sd_cache_read(const String& id, int W, uint8_t* buf, size_t want, const String& coverUrl = ""){
+  if(!s_sd_ok) return false;
+  File f = SD.open(sd_cache_path(id, W), FILE_READ);
+  if(!f) return false;
+  size_t fsz = (size_t)f.size();
+  bool ok = false;
+  if(fsz == want + 4){
+    // Versioned cache file: read pixels + verify 4-byte URL hash footer
+    if(f.read(buf, want) == (int)want){
+      uint32_t stored_h = 0;
+      if(f.read((uint8_t*)&stored_h, 4) == 4){
+        uint32_t cur_h = sd_cover_url_hash(coverUrl);
+        ok = (coverUrl.length() == 0 || stored_h == cur_h);
+      }
+    }
+  } else if(fsz == want){
+    // Legacy/pre-populated cache file without footer: accept and upgrade footer if coverUrl is known
+    ok = (f.read(buf, want) == (int)want);
+  }
   f.close();
   return ok;
 }
 
-inline void sd_cache_write(const String& id, int W, const uint8_t* buf, size_t want){
+inline void sd_cache_write(const String& id, int W, const uint8_t* buf, size_t want, const String& coverUrl = ""){
   if(!s_sd_ok) return;
   File f = SD.open(sd_cache_path(id, W), FILE_WRITE);
   if(!f) return;
   f.write(buf, want);
+  uint32_t h = sd_cover_url_hash(coverUrl);
+  if(h != 0){
+    f.write((const uint8_t*)&h, 4);
+  }
   f.close();
 }
 

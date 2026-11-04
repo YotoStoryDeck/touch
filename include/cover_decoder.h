@@ -174,7 +174,7 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
 // is exactly the plain fetch path. Keyed by (cardId,width) so grid/detail/now-playing each
 // get their own cached size.
 static bool load_cover_cached(const String& id, const String& coverUrl, int W, int H, size_t sz, uint8_t* buf){
-  if(sd_cache_read(id, W, buf, sz)) return true;
+  if(sd_cache_read(id, W, buf, sz, coverUrl)) return true;
   // Retry the CDN fetch a few times — like the API GET, the TLS handshake is flaky under the
   // memory pressure of the concurrent MQTT session, and one success caches the cover for good.
   bool ok = false;
@@ -182,7 +182,7 @@ static bool load_cover_cached(const String& id, const String& coverUrl, int W, i
     ok = fetch_cover(coverUrl, W, H, buf);
     if(!ok) delay(350);
   }
-  if(ok) sd_cache_write(id, W, buf, sz);
+  if(ok) sd_cache_write(id, W, buf, sz, coverUrl);
   return ok;
 }
 
