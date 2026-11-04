@@ -194,7 +194,10 @@ static void net_retry_cb(lv_timer_t* t){
 }
 
 void setup(){
-  Serial.begin(115200); Serial.setTxTimeoutMs(0);
+  Serial.begin(115200);
+#if ARDUINO_USB_CDC_ON_BOOT
+  Serial.setTxTimeoutMs(0);
+#endif
   crash_guard_init();
   // Route mbedTLS's big allocations (the two ~17KB SSL buffers per connection) to PSRAM.
   // Internal RAM fragments once the UI is up and can no longer host them — every runtime
@@ -266,6 +269,19 @@ void setup(){
   }
   lv_timer_create(tick_cb, 1000, NULL);     // 1 Hz heartbeat: progress/sleep timer/screensaver
 
+#ifdef WOKWI_SIMULATION
+  // In Wokwi simulation, start the web server BEFORE net_init_and_fetch() so http://localhost:8180/screen
+  // and /settings are immediately live while connecting to StoryDeck Core.
+  ota_begin();
+  if(WiFi.status() == WL_CONNECTED && cfg::op_mode == "core"){
+    if(!core::ping(cfg::core_url)){
+      if(core::ping("http://192.168.1.11:5065")) cfg::core_url = "http://192.168.1.11:5065";
+      else if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
+      else if(core::ping("http://host.wokwi.internal:5065")) cfg::core_url = "http://host.wokwi.internal:5065";
+    }
+  }
+#endif
+
   if(s_safe_mode){
     start_hotspot();
     show_error("Safe Mode",
@@ -284,11 +300,13 @@ void setup(){
   }
   lv_timer_create(net_retry_cb, 30000, NULL);   // self-deletes once the library is in
 
-  // Start OTA LAST: the TLS handshakes to Yoto (refresh/library/covers above) are
+#ifndef WOKWI_SIMULATION
+  // Start OTA LAST on physical hardware: the TLS handshakes to Yoto (refresh/library/covers above) are
   // internal-RAM hungry, and mDNS + the web server compete for that same RAM. Bringing
   // them up after the heavy boot fetch keeps the handshake headroom intact. OTA still
   // starts here even if the library failed, so a bad build is always recoverable wirelessly.
   ota_begin();
+#endif
 }
 
 void loop(){

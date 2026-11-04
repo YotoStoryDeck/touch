@@ -227,9 +227,15 @@ static void wokwi_tft_blit_region(int x1, int y1, int x2, int y2){
 static int rgb_panel_init(){
 #ifdef WOKWI_SIMULATION
   if(!s_sim_fb){
-    s_sim_fb = (uint16_t*)heap_caps_calloc(LCD_H_RES * LCD_V_RES, sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    s_sim_fb = (uint16_t*)heap_caps_malloc(LCD_H_RES * LCD_V_RES * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if(!s_sim_fb) s_sim_fb = (uint16_t*)malloc(LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+    if(s_sim_fb){
+      // Fill initial framebuffer with warm cream (0xFBF7F0 -> RGB565 0xFFBE) so Wokwi screen lights up immediately
+      for(int i = 0; i < LCD_H_RES * LCD_V_RES; ++i) s_sim_fb[i] = 0xFFBE;
+    }
   }
   wokwi_tft_init();
+  if(s_sim_fb) wokwi_tft_blit_region(0, 0, LCD_H_RES - 1, LCD_V_RES - 1);
   return 0;
 #else
   esp_lcd_rgb_panel_config_t cfg={};

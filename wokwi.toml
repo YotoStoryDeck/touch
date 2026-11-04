@@ -1,6 +1,6 @@
 [wokwi]
 version = 1
-firmware = ".pio/build/wokwi/firmware.bin"
+firmware = ".pio/build/wokwi/firmware.factory.bin"
 elf = ".pio/build/wokwi/firmware.elf"
 
 # Forward localhost:8180 on your PC to port 80 on the simulated ESP32-S3:
