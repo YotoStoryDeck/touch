@@ -319,6 +319,128 @@ static void ota_begin(){
     s_ota_web.send(200, "application/json",
       String("{\"reasserted\":1,\"ioShadow\":") + String(s_io_shadow) + "}");
   });
+  // Live 1:1 800x480 RGB565 Framebuffer Viewer & Touch Injector (/screen, /screen.raw, /touch)
+  s_ota_web.on("/screen.raw", HTTP_GET, [](){
+    const uint16_t* fb = hal_get_framebuffer();
+    if(!fb){
+      s_ota_web.send(503, "text/plain", "Framebuffer unavailable");
+      return;
+    }
+    WiFiClient client = s_ota_web.client();
+    size_t total_bytes = (size_t)LCD_H_RES * (size_t)LCD_V_RES * 2;
+    String hdr = "HTTP/1.1 200 OK\r\n"
+                 "Content-Type: application/octet-stream\r\n"
+                 "Access-Control-Allow-Origin: *\r\n"
+                 "Cache-Control: no-store\r\n"
+                 "Content-Length: " + String((unsigned)total_bytes) + "\r\n"
+                 "Connection: close\r\n\r\n";
+    client.print(hdr);
+    const uint8_t* ptr = (const uint8_t*)fb;
+    size_t rem = total_bytes;
+    while(rem > 0 && client.connected()){
+      size_t chunk = (rem > 16384) ? 16384 : rem;
+      size_t written = client.write(ptr, chunk);
+      if(written == 0) break;
+      ptr += written;
+      rem -= written;
+    }
+  });
+
+  s_ota_web.on("/touch", [](){
+    int x = s_ota_web.hasArg("x") ? s_ota_web.arg("x").toInt() : 0;
+    int y = s_ota_web.hasArg("y") ? s_ota_web.arg("y").toInt() : 0;
+    bool down = s_ota_web.hasArg("down") ? (s_ota_web.arg("down").toInt() != 0) : false;
+    hal_inject_web_touch(x, y, down);
+    s_ota_web.sendHeader("Access-Control-Allow-Origin", "*");
+    s_ota_web.send(200, "application/json", "{\"ok\":true}");
+  });
+
+  s_ota_web.on("/screen", HTTP_GET, [](){
+    static const char html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StoryDeck Touch — 800×480 Live LVGL Mirror</title>
+<style>
+  body { margin:0; background:#141010; color:#FBF7F0; font-family:system-ui,-apple-system,sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; user-select:none; }
+  .bar { display:flex; gap:14px; align-items:center; margin-bottom:10px; font-size:13px; color:#A89F94; }
+  .badge { background:#E5352B; color:#fff; font-weight:700; padding:3px 10px; border-radius:99px; font-size:12px; }
+  .frame { position:relative; border:4px solid #2D2624; border-radius:16px; overflow:hidden; box-shadow:0 16px 48px rgba(0,0,0,0.6); background:#000; width:800px; height:480px; }
+  canvas { display:block; width:800px; height:480px; cursor:pointer; touch-action:none; }
+  a { color:#FF8A65; text-decoration:none; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span class="badge">LIVE LVGL 800×480</span>
+    <span id="st">Connecting...</span>
+    <span>• Click / Drag to interact</span>
+    <span>• <a href="/settings" target="_blank">Web Settings</a></span>
+  </div>
+  <div class="frame">
+    <canvas id="cv" width="800" height="480"></canvas>
+  </div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const st = document.getElementById('st');
+const img = ctx.createImageData(800, 480);
+const rgba = img.data;
+let busy = false, isDown = false;
+
+async function pullFrame(){
+  if(busy) return;
+  busy = true;
+  const t0 = performance.now();
+  try {
+    const r = await fetch('/screen.raw?t=' + Date.now(), {cache:'no-store'});
+    if(r.ok){
+      const buf = await r.arrayBuffer();
+      const u16 = new Uint16Array(buf);
+      for(let i=0, j=0; i<u16.length; i++, j+=4){
+        const p = u16[i];
+        const r5 = (p >> 11) & 0x1F;
+        const g6 = (p >> 5)  & 0x3F;
+        const b5 =  p        & 0x1F;
+        rgba[j]   = (r5 << 3) | (r5 >> 2);
+        rgba[j+1] = (g6 << 2) | (g6 >> 4);
+        rgba[j+2] = (b5 << 3) | (b5 >> 2);
+        rgba[j+3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      st.textContent = Math.round(performance.now() - t0) + ' ms';
+    }
+  } catch(e){
+    st.textContent = 'Retrying...';
+  }
+  busy = false;
+}
+setInterval(pullFrame, 220);
+pullFrame();
+
+function coords(e){
+  const rect = cv.getBoundingClientRect();
+  const cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+  const cy = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+  return {
+    x: Math.max(0, Math.min(799, Math.round((cx - rect.left) * 800 / rect.width))),
+    y: Math.max(0, Math.min(479, Math.round((cy - rect.top)  * 480 / rect.height)))
+  };
+}
+function sendTouch(x, y, down){
+  fetch(`/touch?x=${x}&y=${y}&down=${down?1:0}`, {cache:'no-store'}).then(()=>{ setTimeout(pullFrame, 60); }).catch(()=>{});
+}
+cv.addEventListener('pointerdown', e => { isDown = true; cv.setPointerCapture(e.pointerId); const p = coords(e); sendTouch(p.x, p.y, true); });
+cv.addEventListener('pointermove', e => { if(!isDown) return; const p = coords(e); sendTouch(p.x, p.y, true); });
+cv.addEventListener('pointerup',   e => { if(!isDown) return; isDown = false; const p = coords(e); sendTouch(p.x, p.y, false); });
+cv.addEventListener('pointercancel', e => { isDown = false; sendTouch(0, 0, false); });
+</script>
+</body>
+</html>)rawliteral";
+    s_ota_web.send_P(200, "text/html", html);
+  });
+
   portal::begin(s_ota_web);   // /settings + /reboot ride the same server (see web_portal.h)
   if(sizeof(OTA_PASSWORD) > 1) ElegantOTA.setAuth("admin", OTA_PASSWORD);
   ElegantOTA.onStart([](){ Serial.println("[OTA] web upload start"); ota_splash_and_blank(); });

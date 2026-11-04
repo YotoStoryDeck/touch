@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "author": "StoryDeck Touch",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-s3-devkitc-1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {
+        "flashSize": "16",
+        "psramSize": "8",
+        "psramType": "opi"
+      }
+    },
+    {
+      "type": "board-ili9341-cap-touch",
+      "id": "lcd1",
+      "top": -40,
+      "left": 150,
+      "rotate": 90,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [ "esp:GND.1", "lcd1:GND", "black", [ "h0" ] ],
+    [ "esp:3V3.1", "lcd1:VCC", "red", [ "h0" ] ],
+    [ "esp:15", "lcd1:CS", "orange", [ "h0" ] ],
+    [ "esp:4", "lcd1:RST", "blue", [ "h0" ] ],
+    [ "esp:2", "lcd1:D/C", "purple", [ "h0" ] ],
+    [ "esp:11", "lcd1:MOSI", "green", [ "h0" ] ],
+    [ "esp:12", "lcd1:SCK", "yellow", [ "h0" ] ],
+    [ "esp:13", "lcd1:MISO", "cyan", [ "h0" ] ],
+    [ "esp:3V3.1", "lcd1:LED", "red", [ "h0" ] ],
+    [ "esp:8", "lcd1:SDA", "magenta", [ "h0" ] ],
+    [ "esp:9", "lcd1:SCL", "white", [ "h0" ] ]
+  ],
+  "dependencies": {}
+}

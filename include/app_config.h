@@ -39,6 +39,18 @@ static String parent_pin;           // 4-digit Grown-ups security PIN (default "
 static void load(){
   s_prefs.begin("appcfg", false);
   kiosk_name    = s_prefs.getString("kname", "StoryDeck Touch");
+#ifdef WOKWI_SIMULATION
+  wifi_ssid     = s_prefs.getString("ssid",  "Wokwi-GUEST");
+  wifi_pass     = s_prefs.getString("pass",  "");
+  client_id     = s_prefs.getString("cid",   YOTO_CLIENT_ID);
+  client_secret = s_prefs.getString("csec",  YOTO_CLIENT_SECRET);
+  device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
+  op_mode       = s_prefs.getString("mode",  "core");
+  #ifndef WOKWI_CORE_URL
+  #define WOKWI_CORE_URL "http://host.wokwi.internal:5055"
+  #endif
+  core_url      = s_prefs.getString("curl",  WOKWI_CORE_URL);
+#else
   wifi_ssid     = s_prefs.getString("ssid",  WIFI_SSID);
   wifi_pass     = s_prefs.getString("pass",  WIFI_PASSWORD);
   client_id     = s_prefs.getString("cid",   YOTO_CLIENT_ID);
@@ -46,6 +58,7 @@ static void load(){
   device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
   op_mode       = s_prefs.getString("mode",  "standalone");
   core_url      = s_prefs.getString("curl",   "");
+#endif
   lock_player   = s_prefs.getBool("lockp",   false);
   locked_dev_id = s_prefs.getString("lockid", "");
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");

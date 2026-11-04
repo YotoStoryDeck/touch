@@ -23,6 +23,10 @@ inline bool& get_sd_ok() {
 static SPIClass s_sdspi(HSPI);
 
 inline bool sd_begin(){
+#ifdef WOKWI_SIMULATION
+  s_sd_ok = false;
+  return false;
+#endif
   ch422g_set(EXIO_SD_CS, false);
   s_sdspi.begin(SD_PIN_SCK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS_DUMMY);
   if(!SD.begin(SD_PIN_CS_DUMMY, s_sdspi, 20000000)) return false;
