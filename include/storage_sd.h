@@ -10,10 +10,11 @@
 
 #ifdef WOKWI_SIMULATION
 // In Wokwi simulation, FSPI (11/12/13) drives the ILI9341 LCD, so the virtual wokwi-microsd-card
-// uses HSPI on dedicated pins (SCK=18, MISO=19, MOSI=23, CS=6) for zero SPI bus contention.
+// uses HSPI on valid ESP32-S3 GPIOs (SCK=18, MISO=17, MOSI=16, CS=6) for zero SPI bus contention.
+// Note: GPIO 23 does not exist on ESP32-S3 and causes a StoreProhibited panic in s_sdspi.begin()!
 #define SD_PIN_SCK      18
-#define SD_PIN_MISO     19
-#define SD_PIN_MOSI     23
+#define SD_PIN_MISO     17
+#define SD_PIN_MOSI     16
 #define SD_PIN_CS_DUMMY 6
 #else
 #define SD_PIN_SCK      12

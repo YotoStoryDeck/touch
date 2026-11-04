@@ -45,8 +45,8 @@
     [ "sd1:GND", "esp:GND.2", "black", [ "h0" ] ],
     [ "sd1:VCC", "esp:3V3.1", "red", [ "h0" ] ],
     [ "sd1:CS", "esp:6", "purple", [ "h0" ] ],
-    [ "sd1:DI", "esp:23", "green", [ "h0" ] ],
-    [ "sd1:DO", "esp:19", "cyan", [ "h0" ] ],
+    [ "sd1:DI", "esp:16", "green", [ "h0" ] ],
+    [ "sd1:DO", "esp:17", "cyan", [ "h0" ] ],
     [ "sd1:SCK", "esp:18", "yellow", [ "h0" ] ]
   ],
   "dependencies": {}

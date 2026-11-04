@@ -136,7 +136,11 @@ static void crash_guard_init(){
   bool crashed = (r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT ||
                   r == ESP_RST_WDT || r == ESP_RST_BROWNOUT);
   if(crashed) s_crash_count++; else s_crash_count = 0;
+#ifdef WOKWI_SIMULATION
+  s_safe_mode = false;
+#else
   s_safe_mode = (s_crash_count >= BOOT_CRASH_LIMIT);
+#endif
   Serial.printf("[BOOT] reset reason=%d crashes=%u safe_mode=%d\n", (int)r, (unsigned)s_crash_count, (int)s_safe_mode);
 }
 

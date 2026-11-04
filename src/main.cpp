@@ -247,11 +247,16 @@ void setup(){
   if(sd_begin()){
     uint32_t mb = (uint32_t)(SD.cardSize() / (1024ULL * 1024ULL));
     const char* type = SD.cardType()==CARD_SDHC ? "SDHC" : SD.cardType()==CARD_SD ? "SD" : SD.cardType()==CARD_MMC ? "MMC" : "?";
+#ifdef WOKWI_SIMULATION
+    bool rw = true;
+    Serial.printf("SD: mounted %s %u MB (Wokwi virtual SD ready)\n", type, mb);
+#else
     bool rw = false;                                   // round-trip a marker file
     File f = SD.open(SD_DIR "/.selftest", FILE_WRITE);
     if(f){ rw = (f.print("ok") == 2); f.close(); SD.remove(SD_DIR "/.selftest"); }
     Serial.printf("SD: mounted %s %u MB, used %llu MB, RW=%s\n",
                   type, mb, SD.usedBytes()/(1024ULL*1024ULL), rw ? "yes" : "NO");
+#endif
     status((String("SD ") + type + "  " + mb + " MB  " + (rw ? "(cache ready)" : "(read-only?)")).c_str());
   } else {
     Serial.println("SD: not mounted — covers will fetch live each boot");
@@ -354,6 +359,7 @@ void loop(){
   // fetch every ~2.5s so internal RAM (shared with the concurrent MQTT TLS session) recovers
   // between handshakes instead of being held at the knife's edge by back-to-back fetches.
   static uint32_t s_pc_t = 0;
+#ifndef WOKWI_SIMULATION
   if(s_lib_ok && s_sd_ok && !s_pc_done && millis() - s_pc_t > 2500){
     lv_obj_t* act = lv_scr_act();
     // Safety valve: only start a warming fetch with comfortable internal-RAM headroom. A TLS
@@ -367,6 +373,7 @@ void loop(){
       s_pc_t = millis();
     }
   }
+#endif
   // Backlight/DISP self-heal. A dip from the 12V supply can disturb the CH422G I2C expander —
   // EXIO2 (EXIO_BL_DISP) drives the backlight + panel DISP enable, EXIO1 (EXIO_TP_RST) the GT911
   // reset — while the higher-headroom ESP rides through and never reboots, so the screen goes
