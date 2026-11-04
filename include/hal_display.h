@@ -277,6 +277,9 @@ inline const uint16_t* hal_get_framebuffer(){
 #define DRAW_LINES 16
 static lv_disp_draw_buf_t s_draw_buf;
 static lv_color_t* s_buf1=nullptr;
+#ifdef WOKWI_SIMULATION
+static int  s_dirty_x1 = LCD_H_RES, s_dirty_y1 = LCD_V_RES, s_dirty_x2 = -1, s_dirty_y2 = -1;
+#endif
 static void flush_cb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px){
 #ifdef WOKWI_SIMULATION
   if(s_sim_fb){
@@ -288,7 +291,14 @@ static void flush_cb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px){
       }
       src += w;
     }
-    wokwi_tft_blit_region(area->x1, area->y1, area->x2, area->y2);
+    if(area->x1 < s_dirty_x1) s_dirty_x1 = area->x1;
+    if(area->y1 < s_dirty_y1) s_dirty_y1 = area->y1;
+    if(area->x2 > s_dirty_x2) s_dirty_x2 = area->x2;
+    if(area->y2 > s_dirty_y2) s_dirty_y2 = area->y2;
+    if(lv_disp_flush_is_last(drv) && s_dirty_x2 >= s_dirty_x1){
+      wokwi_tft_blit_region(s_dirty_x1, s_dirty_y1, s_dirty_x2, s_dirty_y2);
+      s_dirty_x1 = LCD_H_RES; s_dirty_y1 = LCD_V_RES; s_dirty_x2 = -1; s_dirty_y2 = -1;
+    }
   }
 #else
   esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1, area->x2+1, area->y2+1, px);

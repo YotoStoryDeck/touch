@@ -25,6 +25,9 @@
 #include <JPEGDEC.h>
 #include <mbedtls/platform.h>
 
+// Give Arduino loopTask 16KB stack (default 8KB is tight for LVGL + HTTPClient + JSON)
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
 // mbedTLS allocator: route blocks >= 512B to 8MB PSRAM so internal SRAM stays free for WiFi/DMA
 static void* tls_psram_calloc(size_t n, size_t size){
   size_t total = n * size;

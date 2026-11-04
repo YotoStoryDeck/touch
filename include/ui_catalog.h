@@ -277,11 +277,14 @@ static void populate_grid(){
     // Kiosk CatalogScreen.renderSeriesView() parity:
     // Group books by series name, optionally exclude 1-card series, sort series headers alphabetically
     // ignoring 'The', 'A', 'An' (with 'Standalone & Singles' last), and sort books within each series by sequence ascending!
+    // IMPORTANT: Keep group_names/elig_idx/m_idx in static/heap storage so populate_grid() uses near-zero stack inside LVGL callbacks!
     lv_obj_set_flex_flow(s_grid, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(s_grid, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-    String group_names[64];
-    int group_counts[64];
+    static String group_names[64];
+    static int group_counts[64];
+    static int elig_idx[64];
+    static int m_idx[MAX_CARDS];
     int gcnt = 0;
 
     auto add_to_group = [&](const String& raw_name){
@@ -312,7 +315,6 @@ static void populate_grid(){
 
     // Kiosk CatalogScreen.renderSeriesView() parity:
     // Filter out groups that have only 1 item when exclude_single_card_series is enabled
-    int elig_idx[64];
     int elig_cnt = 0;
     for(int g = 0; g < gcnt; g++){
       if(core::s_exclude_single_series && group_counts[g] <= 1) continue;
@@ -346,7 +348,6 @@ static void populate_grid(){
 
     for(int e = 0; e < elig_cnt; e++){
       const String& gname = group_names[elig_idx[e]];
-      int m_idx[MAX_CARDS];
       int m_cnt = 0;
       auto parse_disp_seq = [](const String& sd) -> float {
         for(size_t i = 0; i < sd.length(); i++){

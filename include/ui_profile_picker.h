@@ -46,38 +46,47 @@ static void sync_active_device_playback(){
   }
 }
 
+static int s_pending_profile_idx = -1;
+
+static void profile_select_deferred_cb(lv_timer_t* t){
+  lv_timer_del(t);
+  int idx = s_pending_profile_idx;
+  s_pending_profile_idx = -1;
+  if(idx < 0 || idx >= core::s_profile_count) return;
+
+  core::s_active_profile_idx = idx;
+  cfg::device_id = core::resolve_active_device_id(idx);
+  cfg::save();
+
+  // Dismiss s_scr_profile cleanly now that we are outside the button's LV_EVENT_CLICKED stack
+  if(s_scr_profile){
+    lv_obj_t* p = s_scr_profile;
+    s_scr_profile = nullptr;
+    if(s_scr_home) lv_scr_load(s_scr_home);
+    lv_obj_del(p);
+  }
+
+  // Fetch catalog JSON and build grid tiles from shallow timer stack
+  if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+    fetch_library_core();
+    build_grid();
+  }
+  if(s_scr_home){
+    lv_scr_load(s_scr_home);
+    lv_refr_now(lv_disp_get_default());
+  }
+  // Stream/decode covers in the background
+  if(cfg::op_mode == "core" && s_card_count > 0){
+    load_thumbs();
+  }
+}
+
 static void profile_card_cb(lv_event_t* e){
   int idx = (int)(intptr_t)lv_event_get_user_data(e);
-  if(idx >= 0 && idx < core::s_profile_count){
-    core::s_active_profile_idx = idx;
-    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-      core::fetch_config_and_profiles(cfg::core_url);
-      core::s_active_profile_idx = idx;
-    }
-    cfg::device_id = core::resolve_active_device_id(idx);
-    cfg::save();
-    sync_active_player_playback();
-
-    // Load s_scr_home and schedule s_scr_profile deletion before rebuilding the catalog grid
-    if(s_scr_profile){
-      lv_obj_t* p = s_scr_profile;
-      s_scr_profile = nullptr;
-      if(s_scr_home) lv_scr_load(s_scr_home);
-      lv_obj_del_async(p);
-    }
-    // Fetch catalog JSON and build grid tiles
-    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-      fetch_library_core();
-      build_grid();
-    }
-    if(s_scr_home){
-      lv_scr_load(s_scr_home);
-      lv_refr_now(lv_disp_get_default());
-    }
-    // Now stream/decode covers with visible tile-by-tile progress
-    if(cfg::op_mode == "core" && s_card_count > 0){
-      load_thumbs();
-    }
+  if(idx >= 0 && idx < core::s_profile_count && s_pending_profile_idx < 0){
+    s_pending_profile_idx = idx;
+    lv_timer_t* t = lv_timer_create(profile_select_deferred_cb, 10, NULL);
+    lv_timer_set_repeat_count(t, 1);
   }
 }
 

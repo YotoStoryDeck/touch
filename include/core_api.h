@@ -575,8 +575,26 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
     size_t blen = 0; char* body = read_body(http, blen);
     http.end();
     if(!body) return;
+    JsonDocument filter;
+    JsonObject f0 = filter.add<JsonObject>();
+    f0["id"] = true;
+    f0["card_id"] = true;
+    f0["title"] = true;
+    f0["author"] = true;
+    f0["cover"] = true;
+    f0["thumb"] = true;
+    f0["cover_url"] = true;
+    f0["source"] = true;
+    f0["type"] = true;
+    f0["series"] = true;
+    f0["sequence"] = true;
+    f0["sequence_display"] = true;
+    f0["is_highlight"] = true;
+    f0["series_list"][0]["name"] = true;
+    f0["series_list"][0]["sequence"] = true;
+    f0["series_list"][0]["sequence_display"] = true;
     PsramAlloc palloc; JsonDocument doc(&palloc);
-    DeserializationError jerr = deserializeJson(doc, (const char*)body, blen);
+    DeserializationError jerr = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
     free(body);
     if(jerr) return;
     for(JsonObject item : doc.as<JsonArray>()){

@@ -104,6 +104,11 @@ static void sort_catalog_kiosk_order(){
 }
 
 bool fetch_library_core(){
+  s_thumbs_loading = false;
+  for(int i = 0; i < MAX_CARDS; i++){
+    s_cards[i].tile = nullptr;
+    s_cards[i].dsc.data = nullptr;
+  }
   s_card_count = 0;
   String prof_id = "default";
   if(core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
@@ -205,6 +210,13 @@ void load_thumbs(){
   s_thumb_ok = 0;
   s_thumb_first_err = "";
   s_thumb_cursor = 0;
+#ifdef WOKWI_SIMULATION
+  // In Wokwi simulation (no MicroSD cache), skip bulk decoding 96 grid thumbnails over virtual WiFi
+  // so UI navigation, scrolling, and /screen streaming stay instant! Detail & Now Playing covers still decode live.
+  s_thumbs_loading = false;
+  if(s_barlabel) lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
+  return;
+#endif
 
   // Fast pass: load covers that already exist on MicroSD without any network block
   if(s_sd_ok){
