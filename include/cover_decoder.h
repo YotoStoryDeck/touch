@@ -59,7 +59,10 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
       url += (url.indexOf('?') >= 0 ? "&size=" : "?size=") + String(W);
     }
   } else if(url.indexOf("/api/avatar") >= 0){
-    // StoryDeck Core /api/avatar/<id> serves pre-sized JPEG; keep URL intact
+    // StoryDeck Core /api/avatar/<id> supports ?size=W for exact 130x130 baseline JPEG decoding
+    if(url.indexOf("size=") < 0){
+      url += (url.indexOf('?') >= 0 ? "&size=" : "?size=") + String(W);
+    }
   } else if(url.indexOf("yotoplay.com") >= 0){
     int q = url.indexOf('?'); if(q >= 0) url = url.substring(0, q);
     url = url + "?width=" + W + "&quality=70";

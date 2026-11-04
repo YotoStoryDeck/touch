@@ -129,8 +129,15 @@ static void toggle_device_picker_popup(){
       const core::PlayerInfo* pl = nullptr; int cnt = 0;
       get_selectable_players(pl, cnt);
       if(pl && idx >= 0 && idx < cnt){
-        cfg::device_id = pl[idx].id;
+        String chosen_id = pl[idx].id;
+        cfg::device_id = chosen_id;
         cfg::save();
+        if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+          int saved_prof = core::s_active_profile_idx;
+          core::fetch_config_and_profiles(cfg::core_url);
+          core::s_active_profile_idx = saved_prof;
+          cfg::device_id = chosen_id;
+        }
         sync_active_player_playback();
         if(s_top_dev_lbl){
           String dtxt = cfg::lock_player ? (String("Locked: ") + get_active_player_name()) : get_active_player_name();
@@ -198,11 +205,16 @@ static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
     lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 6, 6);
   }
 
-  // 2. Sequence Badge in Series view (top-right, single styled lv_label pill e.g. #1, #2)
-  if(show_seq && (c.seq_display.length() > 0 || c.sequence > 0)){
-    String s_txt = c.seq_display.length() > 0
-                   ? (c.seq_display.startsWith("#") ? c.seq_display : (String("#") + c.seq_display))
-                   : (String("#") + String(c.sequence));
+  // 2. Sequence Badge in Series view (top-right, single styled lv_label pill e.g. #0-3, #1, #2)
+  if(show_seq && (c.seq_display.length() > 0 || c.sequence >= 0.0f)){
+    String s_txt;
+    if(c.seq_display.length() > 0){
+      s_txt = c.seq_display.startsWith("#") ? c.seq_display : (String("#") + c.seq_display);
+    } else {
+      int iv = (int)c.sequence;
+      if(fabsf(c.sequence - (float)iv) < 0.01f) s_txt = String("#") + String(iv);
+      else s_txt = String("#") + String(c.sequence, 1);
+    }
     lv_obj_t* ql = lv_label_create(tile);
     lv_label_set_text(ql, s_txt.c_str());
     lv_obj_set_style_text_font(ql, &lv_font_montserrat_14, 0);
@@ -334,14 +346,28 @@ static void populate_grid(){
 
     for(int e = 0; e < elig_cnt; e++){
       const String& gname = group_names[elig_idx[e]];
-      int m_idx[64];
+      int m_idx[MAX_CARDS];
       int m_cnt = 0;
+      auto parse_disp_seq = [](const String& sd) -> float {
+        for(size_t i = 0; i < sd.length(); i++){
+          if(sd[i] >= '0' && sd[i] <= '9') return sd.substring(i).toFloat();
+        }
+        return -1.0f;
+      };
       auto card_seq_in_group = [&](const Card& c, const String& grp) -> float {
         String cs = c.series; cs.trim();
         if(cs.length() == 0) cs = "Standalone & Singles";
-        if(cs.equalsIgnoreCase(grp)) return c.sequence > 0.0f ? c.sequence : 999999.0f;
+        if(cs.equalsIgnoreCase(grp)){
+          if(c.sequence >= 0.0f) return c.sequence;
+          float p = parse_disp_seq(c.seq_display);
+          return p >= 0.0f ? p : 999999.0f;
+        }
         for(int ex = 0; ex < c.extra_series_cnt; ex++){
-          if(c.extra_series[ex].equalsIgnoreCase(grp)) return c.extra_seq[ex] > 0.0f ? c.extra_seq[ex] : 999999.0f;
+          if(c.extra_series[ex].equalsIgnoreCase(grp)){
+            if(c.extra_seq[ex] >= 0.0f) return c.extra_seq[ex];
+            float p = parse_disp_seq(c.extra_seq_disp[ex]);
+            return p >= 0.0f ? p : 999999.0f;
+          }
         }
         return 999999.0f;
       };
@@ -668,14 +694,13 @@ static void minibar_open_cb(lv_event_t*){
 static void minibar_toggle_cb(lv_event_t*){ np_toggle(); }
 
 
-// Rebuild the home bottom bar (100% kiosk PlayerScreen.renderNowbar parity; NO duplicate gear button)
-static void update_home_bar(){
-  if(!s_bar) return;
-  lv_obj_clean(s_bar);
-  if(s_top_dev_dot) lv_obj_set_style_bg_color(s_top_dev_dot, get_player_dot_color(cfg::device_id), 0);
+// Reusable Nowbar builder (100% kiosk PlayerScreen.renderNowbar parity; shared by Catalog & Detail screens)
+static void populate_nowbar_obj(lv_obj_t* bar, bool is_home_bar){
+  if(!bar) return;
+  lv_obj_clean(bar);
 
   // Left: live status dot + active player name
-  lv_obj_t* dot=lv_obj_create(s_bar);
+  lv_obj_t* dot=lv_obj_create(bar);
   lv_obj_set_size(dot, 12, 12);
   lv_obj_set_style_radius(dot, 6, 0);
   lv_obj_set_style_bg_color(dot, get_player_dot_color(cfg::device_id), 0);
@@ -683,7 +708,7 @@ static void update_home_bar(){
   lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_align(dot, LV_ALIGN_LEFT_MID, 18, 0);
 
-  lv_obj_t* name=lv_label_create(s_bar);
+  lv_obj_t* name=lv_label_create(bar);
   const core::PlayerInfo* bar_pi = core::find_player_info(cfg::device_id);
   String bar_dname = get_active_player_name();
   if(bar_pi && bar_pi->online && !bar_pi->is_home) bar_dname += " (AWAY)";
@@ -696,7 +721,7 @@ static void update_home_bar(){
 
   if(s_play_card < 0){
     // Idle state mirroring kiosk: musical note icon badge + "Nothing playing — tap a book to listen"
-    lv_obj_t* mb = lv_obj_create(s_bar);
+    lv_obj_t* mb = lv_obj_create(bar);
     lv_obj_set_size(mb, 38, 38);
     lv_obj_set_style_radius(mb, 10, 0);
     lv_obj_set_style_bg_color(mb, lv_color_hex(0xF3ECE0), 0);
@@ -709,17 +734,18 @@ static void update_home_bar(){
     lv_obj_set_style_text_color(mbi, lv_color_hex(0x8A8276), 0);
     lv_obj_center(mbi);
 
-    s_barlabel=lv_label_create(s_bar);
-    lv_obj_set_style_text_font(s_barlabel, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(s_barlabel, lv_color_hex(0x9A9384), 0);
-    lv_label_set_text(s_barlabel, "Nothing playing  -  tap a book to listen");
-    lv_obj_align(s_barlabel, LV_ALIGN_LEFT_MID, 262, 0);
+    lv_obj_t* lbl = lv_label_create(bar);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0x9A9384), 0);
+    lv_label_set_text(lbl, is_home_bar ? "Nothing playing  -  tap a book to listen" : "Nothing playing  -  tap a chapter to listen");
+    lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 262, 0);
+    if(is_home_bar) s_barlabel = lbl;
     return;
   }
-  s_barlabel=nullptr;   // mini-player owns the center/right while something is playing
+  if(is_home_bar) s_barlabel = nullptr;
 
   // Far right: circular red Play/Pause button
-  lv_obj_t* pp=lv_btn_create(s_bar);
+  lv_obj_t* pp=lv_btn_create(bar);
   lv_obj_set_size(pp, 54, 54);
   lv_obj_align(pp, LV_ALIGN_RIGHT_MID, -16, 0);
   lv_obj_set_style_radius(pp, 27, 0);
@@ -733,7 +759,7 @@ static void update_home_bar(){
   lv_obj_center(ppi);
 
   // Tappable title/chapter block -> opens full Now Playing screen
-  lv_obj_t* tap=lv_obj_create(s_bar);
+  lv_obj_t* tap=lv_obj_create(bar);
   lv_obj_set_size(tap, 500, 64);
   lv_obj_align(tap, LV_ALIGN_LEFT_MID, 212, 0);
   lv_obj_set_style_bg_opa(tap, LV_OPA_TRANSP, 0);
@@ -762,4 +788,11 @@ static void update_home_bar(){
   lv_obj_set_style_text_font(tc, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(tc, lv_color_hex(0x9A9384), 0);
   lv_obj_align(tc, LV_ALIGN_LEFT_MID, 28, 14);
+}
+
+// Rebuild the home bottom bar (and Detail screen bottom bar if visible)
+static void update_home_bar(){
+  if(s_top_dev_dot) lv_obj_set_style_bg_color(s_top_dev_dot, get_player_dot_color(cfg::device_id), 0);
+  if(s_bar) populate_nowbar_obj(s_bar, true);
+  if(s_detail_bar && s_scr_detail) populate_nowbar_obj(s_detail_bar, false);
 }

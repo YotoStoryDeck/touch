@@ -207,7 +207,7 @@ export const BrokerApi = {
    * @param {Object} card - The media card object (ABS book or Yoto card).
    * @param {number} chapterIndex - 0-based chapter index from UI (converted to 1-based for broker).
    */
-  async playMedia(card, chapterIndex = 0) {
+  async playMedia(card, chapterIndex = null) {
     if (!card) return { ok: false, error: 'No media selected' };
     const headers = {
       'Content-Type': 'application/json'
@@ -219,9 +219,14 @@ export const BrokerApi = {
       child: state.activeProfile?.id || 'jackson',
       type: card.source || card.type || 'abs',
       id: card.id || card.cardId,
-      device_id: state.activeDevice?.id || state.activeProfile?.default_player_id || '',
-      chapter: (chapterIndex != null ? chapterIndex : 0) + 1
+      device_id: state.activeDevice?.id || state.activeProfile?.default_player_id || ''
     };
+    if (chapterIndex != null && chapterIndex >= 0) {
+      const chObj = (card.chapters || [])[chapterIndex] || {};
+      payload.chapter = chapterIndex + 1;
+      if (chObj.key) payload.chapter_key = chObj.key;
+      if (chObj.track_key) payload.track_key = chObj.track_key;
+    }
     try {
       const res = await fetch(`${CONFIG.BROKER_BASE}/api/play`, {
         method: 'POST',

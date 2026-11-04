@@ -31,7 +31,7 @@ static int send_cmd(const char* name, const String& body){
       const char* cid = in["id"];
       const char* ck  = in["chapterKey"];
       const char* tk  = in["trackKey"];
-      int chIdx = 0;
+      int chIdx = -1;
       if(!in["chapterIdx"].isNull()){
         chIdx = (int)in["chapterIdx"];
       } else if(ck && *ck && atoi(ck) > 0){
@@ -229,7 +229,8 @@ static void np_goto_chapter(int k){
   s_play_chapter=s_ch[k].title; s_play_dur=s_ch[k].dur;
   np_set_chapter_label(); np_set_playicon(); np_update_progress(); update_home_bar();
   lv_refr_now(lv_disp_get_default());
-  send_cmd("play", String("{\"id\":\"")+s_cards[s_cur_card].id+"\",\"chapterIdx\":"+k+",\"chapterKey\":\""+s_ch[k].key+"\"}");
+  String tk = s_ch[k].track_key.length() ? s_ch[k].track_key : s_ch[k].key;
+  send_cmd("play", String("{\"id\":\"")+s_cards[s_cur_card].id+"\",\"chapterIdx\":"+k+",\"chapterKey\":\""+s_ch[k].key+"\",\"trackKey\":\""+tk+"\"}");
 }
 static void np_toggle(){
   s_playing = !s_playing;
@@ -241,25 +242,114 @@ void np_next(){ if(s_cur_ch < s_ch_count-1) np_goto_chapter(s_cur_ch+1); }
 void np_prev(){ if(s_cur_ch > 0)           np_goto_chapter(s_cur_ch-1); }
 void np_volume(int v){ s_vol=v; send_cmd("volume", String("{\"volume\":")+v+"}"); }
 
+static lv_obj_t* s_away_modal = nullptr;
+static int s_pending_away_ch = 0;
+static void play_from_confirmed(int chapterIdx);
+
+static void show_away_confirm_modal(const String& player_name, int chapterIdx){
+  if(s_away_modal){ lv_obj_del(s_away_modal); s_away_modal = nullptr; }
+  s_pending_away_ch = chapterIdx;
+  lv_obj_t* act = lv_scr_act();
+  s_away_modal = lv_obj_create(act);
+  lv_obj_set_size(s_away_modal, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(s_away_modal, 0, 0);
+  lv_obj_set_style_bg_color(s_away_modal, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(s_away_modal, LV_OPA_50, 0);
+  lv_obj_set_style_border_width(s_away_modal, 0, 0);
+  lv_obj_clear_flag(s_away_modal, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* box = lv_obj_create(s_away_modal);
+  lv_obj_set_size(box, 480, 230);
+  lv_obj_center(box);
+  lv_obj_set_style_bg_color(box, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_radius(box, 18, 0);
+  lv_obj_set_style_border_width(box, 2, 0);
+  lv_obj_set_style_border_color(box, lv_color_hex(0xEA580C), 0);
+  lv_obj_set_style_pad_all(box, 20, 0);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* t = lv_label_create(box);
+  lv_label_set_text(t, "Player is Away (Traveling)");
+  lv_obj_set_style_text_font(t, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_color(t, lv_color_hex(0xEA580C), 0);
+
+  lv_obj_t* m = lv_label_create(box);
+  lv_label_set_text_fmt(m, "%s is currently away from home.\nAre you sure you want to start audio on this remote player?", player_name.c_str());
+  lv_obj_set_width(m, 430);
+  lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(m, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(m, lv_color_hex(0x23303A), 0);
+
+  lv_obj_t* r = lv_obj_create(box);
+  lv_obj_set_size(r, 420, 56);
+  lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(r, 0, 0);
+  lv_obj_set_style_pad_all(r, 0, 0);
+  lv_obj_set_style_pad_column(r, 18, 0);
+  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* bc = lv_btn_create(r);
+  lv_obj_set_size(bc, 170, 48);
+  lv_obj_set_style_radius(bc, 14, 0);
+  lv_obj_set_style_bg_color(bc, lv_color_hex(0xF3ECE0), 0);
+  lv_obj_add_event_cb(bc, [](lv_event_t*){
+    if(s_away_modal){ lv_obj_del_async(s_away_modal); s_away_modal = nullptr; }
+  }, LV_EVENT_CLICKED, NULL);
+  lv_obj_t* bcl = lv_label_create(bc);
+  lv_label_set_text(bcl, "Cancel");
+  lv_obj_set_style_text_font(bcl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(bcl, lv_color_hex(0x23303A), 0);
+  lv_obj_center(bcl);
+
+  lv_obj_t* bp = lv_btn_create(r);
+  lv_obj_set_size(bp, 190, 48);
+  lv_obj_set_style_radius(bp, 14, 0);
+  lv_obj_set_style_bg_color(bp, lv_color_hex(0xEA580C), 0);
+  lv_obj_add_event_cb(bp, [](lv_event_t*){
+    int ch = s_pending_away_ch;
+    if(s_away_modal){ lv_obj_del(s_away_modal); s_away_modal = nullptr; }
+    play_from_confirmed(ch);
+  }, LV_EVENT_CLICKED, NULL);
+  lv_obj_t* bpl = lv_label_create(bp);
+  lv_label_set_text(bpl, "Play Anyway");
+  lv_obj_set_style_text_font(bpl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(bpl, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_center(bpl);
+}
+
 static void play_from(int chapterIdx){
-  if(s_cur_card < 0 || chapterIdx < 0) return;
+  if(s_cur_card < 0) return;
+  // Away / Traveling Player Guard (Kiosk initiatePlayback parity: Block vs Confirm Prompt)
+  const core::PlayerInfo* target_pi = core::find_player_info(cfg::device_id);
+  if(target_pi && target_pi->online && !target_pi->is_home){
+    if(cfg::block_remote){
+      Serial.printf("[PLAY] Blocked playback to away player %s (block_remote=1)\n", cfg::device_id.c_str());
+      if(s_detail_play_lbl){
+        lv_label_set_text(s_detail_play_lbl, "Blocked: Player Away");
+        lv_refr_now(lv_disp_get_default());
+      }
+      return;
+    } else {
+      show_away_confirm_modal(target_pi->name, chapterIdx);
+      return;
+    }
+  }
+  play_from_confirmed(chapterIdx);
+}
+
+static void play_from_confirmed(int chapterIdx){
+  if(s_cur_card < 0) return;
   if(s_ch_count == 0){
     s_ch_count = 1;
     s_ch[0].key = "01";
+    s_ch[0].track_key = "01";
     s_ch[0].title = s_cards[s_cur_card].title.length() ? s_cards[s_cur_card].title : "Full Audiobook";
     s_ch[0].dur = 1800;
-  }
-  if(chapterIdx >= s_ch_count) chapterIdx = 0;
-
-  // Away / Traveling Player Guard (cfg::block_remote parity with Kiosk initiatePlayback)
-  const core::PlayerInfo* target_pi = core::find_player_info(cfg::device_id);
-  if(target_pi && target_pi->online && !target_pi->is_home && cfg::block_remote){
-    Serial.printf("[PLAY] Blocked playback to away player %s (block_remote=1)\n", cfg::device_id.c_str());
-    if(s_detail_play_lbl){
-      lv_label_set_text(s_detail_play_lbl, "Blocked: Player is Away");
-      lv_refr_now(lv_disp_get_default());
-    }
-    return;
   }
 
   // Kiosk initiatePlayback() parity: show "Starting..." feedback and confirm dispatch before switching to Now Playing
@@ -268,19 +358,36 @@ static void play_from(int chapterIdx){
     lv_refr_now(lv_disp_get_default());
   }
 
-  String payload = String("{\"id\":\"") + s_cards[s_cur_card].id
-                 + "\",\"chapterIdx\":" + chapterIdx
-                 + ",\"chapterKey\":\"" + s_ch[chapterIdx].key + "\"}";
+  String payload;
+  if(chapterIdx < 0){
+    // Resume mode ('Play Book' button): omit chapterKey/trackKey and pass chapterIdx = -1 so Core/Bridge resumes saved progress
+    payload = String("{\"id\":\"") + s_cards[s_cur_card].id + "\",\"chapterIdx\":-1}";
+  } else {
+    if(chapterIdx >= s_ch_count) chapterIdx = 0;
+    String tk = s_ch[chapterIdx].track_key.length() ? s_ch[chapterIdx].track_key : s_ch[chapterIdx].key;
+    payload = String("{\"id\":\"") + s_cards[s_cur_card].id
+            + "\",\"chapterIdx\":" + chapterIdx
+            + ",\"chapterKey\":\"" + s_ch[chapterIdx].key
+            + "\",\"trackKey\":\"" + tk + "\"}";
+  }
   int code = send_cmd("play", payload);
 
   if(code >= 200 && code < 300){
     arm_sleep_timer_if_needed();
-    s_cur_ch = chapterIdx; s_pos = 0; s_playing = true;
-    s_play_card = s_cur_card; s_play_ch = chapterIdx;
+    int resolved_ch = chapterIdx;
+    if(resolved_ch < 0){
+      resolved_ch = (core::s_last_play_resp_ch >= 0 && core::s_last_play_resp_ch < s_ch_count) ? core::s_last_play_resp_ch : 0;
+    }
+    s_cur_ch = resolved_ch;
+    s_pos = (chapterIdx < 0 && core::s_last_play_resp_pos > 0) ? core::s_last_play_resp_pos : 0;
+    s_playing = true;
+    s_play_card = s_cur_card; s_play_ch = resolved_ch;
     s_play_title = s_detail_title.length() ? s_detail_title : s_cards[s_cur_card].title;
     s_play_author = s_cards[s_cur_card].author;
-    s_play_chapter = s_ch[chapterIdx].title;
-    s_play_dur = s_ch[chapterIdx].dur > 0 ? s_ch[chapterIdx].dur : 1800;
+    s_play_chapter = (chapterIdx < 0 && core::s_last_play_resp_ch_title.length() > 0)
+                     ? core::s_last_play_resp_ch_title
+                     : s_ch[resolved_ch].title;
+    s_play_dur = s_ch[resolved_ch].dur > 0 ? s_ch[resolved_ch].dur : 1800;
     update_home_bar();
     open_now();
     lv_refr_now(lv_disp_get_default());

@@ -301,6 +301,32 @@ void loop(){
     thumb_load_step();
   }
 
+  // Periodic live player status sync in Core mode (every 8s when covers are done & user isn't mid-touch)
+  static uint32_t s_core_sync_t = 0;
+  if(s_lib_ok && !s_thumbs_loading && cfg::op_mode == "core" && cfg::core_url.length() > 0 &&
+     millis() - s_core_sync_t > 8000 && lv_disp_get_inactive_time(NULL) > 1500 &&
+     heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 16000){
+    s_core_sync_t = millis();
+    int saved_prof = core::s_active_profile_idx;
+    String saved_dev = cfg::device_id;
+    bool was_playing = s_playing;
+    int prev_card = s_play_card;
+    String prev_title = s_play_title;
+    String prev_ch = s_play_chapter;
+    if(core::fetch_config_and_profiles(cfg::core_url)){
+      core::s_active_profile_idx = saved_prof;
+      if(cfg::lock_player && cfg::locked_dev_id.length() > 0) cfg::device_id = cfg::locked_dev_id;
+      else if(saved_dev.length() > 0) cfg::device_id = saved_dev;
+      sync_active_player_playback();
+      if(s_playing != was_playing || s_play_card != prev_card || s_play_title != prev_title || s_play_chapter != prev_ch){
+        update_home_bar();
+      }
+      if(s_scr_now && lv_scr_act() == s_scr_now){
+        np_set_chapter_label(); np_set_playicon(); np_update_progress();
+      }
+    }
+  }
+
   // Warm the library cache during idle: only on the home screen or screensaver, and only after
   // a short lull, so the ~1s blocking fetch lands when nobody's mid-tap. Runs after
   // lv_timer_handler so any pending async screen deletes are already settled. Throttled to one

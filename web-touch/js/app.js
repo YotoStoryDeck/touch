@@ -62,7 +62,10 @@ Are you sure you want to start audio playback on this remote player?`);
       if (res && (res.ok || res.status === 'success')) {
         state.setCard(card);
         state.setPreviewCard(card);
-        state.setChapter(chapterIndex);
+        const resolvedIdx = (chapterIndex != null && chapterIndex >= 0)
+          ? chapterIndex
+          : (res.chapter != null && res.chapter > 0 ? (res.chapter - 1) : 0);
+        state.setChapter(resolvedIdx);
         state.setPlaying(true);
         state.localSessionActive = true;
         
@@ -286,6 +289,8 @@ Are you sure you want to start audio playback on this remote player?`);
             BrokerApi.fetchMediaTracks(id).then(tracks => {
               if (tracks && tracks.length > 0) {
                 found.chapters = tracks.map(t => ({
+                  key: t.key || '',
+                  track_key: t.track_key || t.key || '',
                   title: t.title,
                   duration: t.duration_seconds || 0,
                   icon_url: t.icon_url
@@ -556,6 +561,8 @@ Are you sure you want to start audio playback on this remote player?`);
             BrokerApi.fetchMediaTracks(id).then(tracks => {
               if (tracks && tracks.length > 0) {
                 state.card.chapters = tracks.map(t => ({
+                  key: t.key || '',
+                  track_key: t.track_key || t.key || '',
                   title: t.title,
                   duration: t.duration_seconds || 0,
                   icon_url: t.icon_url
@@ -611,7 +618,19 @@ Are you sure you want to start audio playback on this remote player?`);
         if (act === 'playstart') {
           const btn = document.getElementById('btn-play-book') || actBtn;
           const targetCard = state.previewCard || state.card;
-          this.initiatePlayback(targetCard, 0, btn);
+          const isSameActive = Boolean(
+            state.isPlaying && state.card && targetCard && (
+              (targetCard.id && (state.card.id === targetCard.id || state.card.cardId === targetCard.id)) ||
+              (targetCard.title && state.card.title === targetCard.title)
+            )
+          );
+          if (isSameActive) {
+            state.setScreen('now');
+            this.render();
+            return;
+          }
+          // Pass null for chapterIndex so 'Play Book' resumes where the profile/player left off
+          this.initiatePlayback(targetCard, null, btn);
           return;
         }
         if (act === 'toggle') {

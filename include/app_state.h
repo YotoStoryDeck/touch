@@ -25,6 +25,8 @@ struct PsramAllocator : ArduinoJson::Allocator {
 enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_ABS=2, TAB_YOTO=3 };
 static TabFilter s_active_tab = TAB_ALL;
 
+#define MAX_CARDS 96
+
 struct Card {
   String id; String title;
   String author="";                        // book author / creator
@@ -32,10 +34,10 @@ struct Card {
   String cover;                            // cover imageL URL (direct-API: fetch+decode from CDN)
   String source="yoto";                    // "yoto" or "abs"
   String series="";                        // primary series / collection name
-  float  sequence=0;                       // book sequence in series (supports fractional e.g. 1.5)
-  String seq_display="";                   // e.g. "#1" or "1-3"
+  float  sequence=-1.0f;                   // book sequence in series (-1.0f = none; >= 0.0f = valid e.g. 0.0 for #0-3)
+  String seq_display="";                   // e.g. "#0-3", "#1", or "1-3"
   String extra_series[2];                  // up to 2 additional series/groups from series_list
-  float  extra_seq[2] = {0, 0};
+  float  extra_seq[2] = {-1.0f, -1.0f};
   String extra_seq_disp[2];
   int    extra_series_cnt=0;
   bool   is_highlight=false;               // highlighted / pinned card
@@ -51,7 +53,7 @@ struct Card {
 static const char* YOTO_DAILY_ID    = "3nC80";
 static const char* YOTO_DAILY_COVER =
   "https://card-content.yotoplay.com/yoto/pub/jC1GVU5Iwhl0yo5Lpcsn_OtXvp-5q2H2KwGAqeZR9ds";
-static Card s_cards[64];
+static Card s_cards[MAX_CARDS];
 int s_card_count=0;
 static lv_obj_t* s_status=nullptr;
 static lv_obj_t* s_barlabel=nullptr;        // idle-state hint / cover-load progress (left side)
@@ -67,13 +69,14 @@ static int s_cur_card=-1;                   // card being BROWSED (detail/now sc
 #define DCOVER_H  333                       // 210 * 1011/638, keeps cover aspect
 #define DCOVER_SZ (DCOVER_W*DCOVER_H*2)
 #define MAX_CH    40
-struct Chapter { String key; String title; int dur; };
+struct Chapter { String key; String track_key; String title; int dur; };
 static Chapter   s_ch[MAX_CH];
 static int       s_ch_count=0;
 static String    s_detail_title;
 static uint8_t*  s_dcover=nullptr;          // reusable PSRAM buffer for the detail cover
 static lv_img_dsc_t s_dcover_dsc{};
 static lv_obj_t* s_detail_play_lbl = nullptr;
+static lv_obj_t* s_detail_bar = nullptr;    // bottom Now Playing mini-bar on Detail screen
 
 // now-playing screen + optimistic playback state
 #define NCOVER_W  170
@@ -227,6 +230,8 @@ inline String get_active_player_name(){
 inline void go_home(){
   s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=nullptr;
   s_set_sleep_lbl=nullptr;
+  s_detail_play_lbl=nullptr;
+  s_detail_bar=nullptr;
   if(s_scr_home) lv_scr_load(s_scr_home);
   else if(s_scr_error) lv_scr_load(s_scr_error);
   if(s_scr_detail){   lv_obj_del_async(s_scr_detail);   s_scr_detail=nullptr; }
@@ -282,9 +287,12 @@ inline void sync_active_player_playback(){
     else if(s_play_chapter.length() == 0) s_play_chapter = "Playing";
     if(pi->duration > 0) s_play_dur = pi->duration;
     if(pi->position >= 0) s_pos = pi->position;
-  } else if(!s_local_session_active){
-    s_playing   = false;
-    s_play_card = -1;
+  } else {
+    s_playing      = false;
+    s_play_card    = -1;
+    s_play_title   = "";
+    s_play_author  = "";
+    s_play_chapter = "";
   }
 }
 

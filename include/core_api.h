@@ -34,6 +34,8 @@ struct Profile {
   String id;
   String display_name;
   String avatar_url;
+  bool   has_custom_avatar = false;
+  String avatar_cache_key;
   uint32_t avatar_color = 0xE5352B;
   String avatar_initial;
   String default_player_id;
@@ -43,6 +45,11 @@ struct Profile {
   uint8_t* avatar_buf = nullptr;
   lv_img_dsc_t avatar_dsc{};
 };
+
+// Populated from POST /api/play response when resuming a book
+static int    s_last_play_resp_ch = -1;
+static String s_last_play_resp_ch_title = "";
+static int    s_last_play_resp_pos = 0;
 
 #define MAX_PROFILES 8
 static Profile s_profiles[MAX_PROFILES];
@@ -260,7 +267,20 @@ inline bool fetch_config_and_profiles(const String& base_url){
     if(av.startsWith("/")){
       av = base_url + av;
     }
+    if(pr.avatar_url != av && pr.avatar_buf){
+      free(pr.avatar_buf);
+      pr.avatar_buf = nullptr;
+    }
     pr.avatar_url = av;
+    pr.has_custom_avatar = !p["has_custom_avatar"].isNull()
+                           ? (bool)p["has_custom_avatar"]
+                           : ((av.indexOf("?t=") >= 0) || (av.length() > 0 && av.indexOf("/api/avatar/") < 0));
+    int t_pos = av.indexOf("?t=");
+    String ver_tag = (t_pos >= 0) ? av.substring(t_pos + 3) : String("1");
+    int amp_pos = ver_tag.indexOf('&');
+    if(amp_pos >= 0) ver_tag = ver_tag.substring(0, amp_pos);
+    if(ver_tag.length() > 6) ver_tag = ver_tag.substring(ver_tag.length() - 6);
+    pr.avatar_cache_key = String("av_") + pr.id + "_" + ver_tag;
     String col_str = (const char*)(p["avatar_color"] | "");
     if(col_str.startsWith("#") && col_str.length() == 7){
       pr.avatar_color = (uint32_t)strtoul(col_str.c_str() + 1, nullptr, 16);
@@ -452,14 +472,20 @@ inline int play_media(const String& base_url, const String& child_id, const Stri
       return true;
     };
 
+    s_last_play_resp_ch = -1;
+    s_last_play_resp_ch_title = "";
+    s_last_play_resp_pos = 0;
+
     JsonDocument doc;
     doc["child"]     = child_id.length() ? child_id : "default";
     doc["type"]      = card_type.length() ? card_type : "yoto";
     doc["id"]        = media_id;
     doc["device_id"] = eff_dev;
-    doc["chapter"]   = chapter_idx + 1; // 1-based chapter for broker
-    if(chapter_key.length() > 0 && !is_pure_digits(chapter_key)) doc["chapter_key"] = chapter_key;
-    if(track_key.length() > 0   && !is_pure_digits(track_key))   doc["track_key"]   = track_key;
+    if(chapter_idx >= 0){
+      doc["chapter"] = chapter_idx + 1; // 1-based chapter when explicitly selected; omitted when resuming book!
+      if(chapter_key.length() > 0 && !is_pure_digits(chapter_key)) doc["chapter_key"] = chapter_key;
+      if(track_key.length() > 0   && !is_pure_digits(track_key))   doc["track_key"]   = track_key;
+    }
 
     String payload;
     serializeJson(doc, payload);
@@ -472,6 +498,18 @@ inline int play_media(const String& base_url, const String& child_id, const Stri
 
     if((code == 401 || code == 403) && attempt == 0){
       continue; // re-authenticate once and retry
+    }
+    if(code >= 200 && code < 300 && resp.length() > 0){
+      JsonDocument rdoc;
+      if(!deserializeJson(rdoc, resp)){
+        if(!rdoc["chapter"].isNull()){
+          int rch = (int)rdoc["chapter"] - 1;
+          if(rch >= 0) s_last_play_resp_ch = rch;
+        }
+        const char* rct = rdoc["chapter_title"];
+        if(rct && *rct) s_last_play_resp_ch_title = rct;
+        if(!rdoc["position"].isNull()) s_last_play_resp_pos = (int)rdoc["position"];
+      }
     }
     return code;
   }
@@ -557,11 +595,21 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
       if(series.length() == 0 && !sl.isNull() && sl.size() > 0){
         series = (const char*)(sl[0]["name"] | "");
       }
-      float seq = (float)(item["sequence"] | 0.0f);
+      auto parse_lead_float = [](const String& s) -> float {
+        for(size_t i = 0; i < s.length(); i++){
+          if(s[i] >= '0' && s[i] <= '9'){
+            return s.substring(i).toFloat();
+          }
+        }
+        return -1.0f;
+      };
+      float seq = item["sequence"].isNull() ? -1.0f : (float)item["sequence"];
       String seq_disp = (const char*)(item["sequence_display"] | "");
-      if(seq == 0.0f && !sl.isNull() && sl.size() > 0){
-        seq = (float)(sl[0]["sequence"] | 0.0f);
+      if(seq < 0.0f && seq_disp.length() > 0) seq = parse_lead_float(seq_disp);
+      if(seq < 0.0f && !sl.isNull() && sl.size() > 0){
+        if(!sl[0]["sequence"].isNull()) seq = (float)sl[0]["sequence"];
         if(seq_disp.length() == 0) seq_disp = (const char*)(sl[0]["sequence_display"] | "");
+        if(seq < 0.0f && seq_disp.length() > 0) seq = parse_lead_float(seq_disp);
       }
       bool is_hl = (bool)(item["is_highlight"] | false);
       String item_src = (const char*)(item["source"] | item["type"] | src_name.c_str());
@@ -578,7 +626,7 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
 }
 
 // 7. Fetch Media Tracks / Chapters via Core Hub
-inline bool fetch_media_tracks(const String& base_url, const String& media_id, String& title_out, void (*track_cb)(const String& key, const String& title, int dur)){
+inline bool fetch_media_tracks(const String& base_url, const String& media_id, String& title_out, void (*track_cb)(const String& key, const String& trk_key, const String& title, int dur)){
   if(base_url.length() == 0 || media_id.length() == 0) return false;
   WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
   if(!http_begin_url(http, scli, pcli, base_url + "/api/media/" + media_id + "/tracks")) return false;
@@ -600,16 +648,17 @@ inline bool fetch_media_tracks(const String& base_url, const String& media_id, S
   JsonArray tracks = doc["tracks"].as<JsonArray>();
   int idx = 1;
   for(JsonObject tr : tracks){
-    String key = (const char*)(tr["key"] | tr["track_key"] | "");
+    String key = (const char*)(tr["key"] | "");
     if(key.length() == 0){
       char kbuf[8];
       snprintf(kbuf, sizeof(kbuf), "%02d", idx);
       key = kbuf;
     }
+    String trk_key = (const char*)(tr["track_key"] | key.c_str());
     String tr_title = (const char*)(tr["title"] | "");
     if(tr_title.length() == 0) tr_title = String("Chapter ") + idx;
     int dur = (int)(tr["duration_seconds"] | tr["duration"] | 0);
-    track_cb(key, tr_title, dur);
+    track_cb(key, trk_key, tr_title, dur);
     idx++;
   }
   return true;

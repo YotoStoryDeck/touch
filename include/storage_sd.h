@@ -57,7 +57,7 @@ inline String sd_chap_path(const String& id){
   return String(SD_DIR) + "/" + id + ".chap";
 }
 
-static const uint16_t CHAP_MAGIC = 0x4349;
+static const uint16_t CHAP_MAGIC = 0x434A;
 
 inline void sd_wr_str(File& f, const String& s){
   uint16_t n = (uint16_t)s.length();
@@ -91,6 +91,7 @@ inline void sd_chap_write(const String& id){
     int32_t d = s_ch[k].dur;
     f.write((const uint8_t*)&d, 4);
     sd_wr_str(f, s_ch[k].key);
+    sd_wr_str(f, s_ch[k].track_key);
     sd_wr_str(f, s_ch[k].title);
   }
   f.close();
@@ -115,8 +116,9 @@ inline bool sd_chap_read(const String& id){
       int32_t d;
       if(f.read((uint8_t*)&d, 4) != 4) break;
       s_ch[k].dur = d;
-      if(!sd_rd_str(f, s_ch[k].key))   break;
-      if(!sd_rd_str(f, s_ch[k].title)) break;
+      if(!sd_rd_str(f, s_ch[k].key))       break;
+      if(!sd_rd_str(f, s_ch[k].track_key)) break;
+      if(!sd_rd_str(f, s_ch[k].title))     break;
     }
     if(k == n){ s_ch_count = n; ok = true; }
   } while(0);

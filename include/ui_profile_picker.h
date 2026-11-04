@@ -50,9 +50,13 @@ static void profile_card_cb(lv_event_t* e){
   int idx = (int)(intptr_t)lv_event_get_user_data(e);
   if(idx >= 0 && idx < core::s_profile_count){
     core::s_active_profile_idx = idx;
+    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+      core::fetch_config_and_profiles(cfg::core_url);
+      core::s_active_profile_idx = idx;
+    }
     cfg::device_id = core::resolve_active_device_id(idx);
     cfg::save();
-    sync_active_device_playback();
+    sync_active_player_playback();
 
     // Load s_scr_home and schedule s_scr_profile deletion before rebuilding the catalog grid
     if(s_scr_profile){
@@ -161,7 +165,8 @@ void open_profile_picker(){
     // Only fetch/decode raster avatar if a custom uploaded photo URL is present (e.g. ?t=... or external http image).
     // For default generated initial avatars (/api/avatar/<id> without ?t=), crisp native LVGL vector font looks
     // sharper than a scaled 160->130 JPEG!
-    bool has_custom_photo = (pr.avatar_url.indexOf("?t=") >= 0) ||
+    bool has_custom_photo = pr.has_custom_avatar ||
+                            (pr.avatar_url.indexOf("?t=") >= 0) ||
                             (pr.avatar_url.length() > 0 && pr.avatar_url.indexOf("/api/avatar/") < 0);
     bool av_loaded = false;
     if(has_custom_photo){
@@ -169,7 +174,8 @@ void open_profile_picker(){
       if(!pr.avatar_buf){
         pr.avatar_buf = (uint8_t*)heap_caps_malloc(AV_SZ, MALLOC_CAP_SPIRAM);
         if(pr.avatar_buf){
-          av_loaded = load_cover_cached(String("av_") + pr.id, pr.avatar_url, 130, 130, AV_SZ, pr.avatar_buf);
+          String ckey = pr.avatar_cache_key.length() > 0 ? pr.avatar_cache_key : (String("av_") + pr.id);
+          av_loaded = load_cover_cached(ckey, pr.avatar_url, 130, 130, AV_SZ, pr.avatar_buf);
           if(!av_loaded){
             free(pr.avatar_buf);
             pr.avatar_buf = nullptr;

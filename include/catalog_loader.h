@@ -43,8 +43,20 @@ static char* read_body_psram(HTTPClient& http, size_t& outLen){
 
 // Add single card from Core catalog (preserving multiple series_list memberships for Kiosk parity)
 static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list){
-  if(s_card_count >= 64) return;
-  Card& c = s_cards[s_card_count];
+  int target_idx = s_card_count;
+  if(target_idx >= MAX_CARDS){
+    // Never drop a highlighted card even if catalog exceeds MAX_CARDS: replace last non-highlighted card
+    if(!is_hl) return;
+    int repl = -1;
+    for(int k = MAX_CARDS - 1; k >= 0; k--){
+      if(!s_cards[k].is_highlight){ repl = k; break; }
+    }
+    if(repl < 0) return;
+    target_idx = repl;
+  } else {
+    s_card_count++;
+  }
+  Card& c = s_cards[target_idx];
   c.id               = id;
   c.title            = title;
   c.author           = author;
@@ -61,7 +73,7 @@ static void add_core_card(const String& id, const String& title, const String& a
       if(sname.length() > 0 && !sname.equalsIgnoreCase(c.series)){
         int idx = c.extra_series_cnt++;
         c.extra_series[idx]   = sname;
-        c.extra_seq[idx]      = (float)(series_list[si]["sequence"] | seq);
+        c.extra_seq[idx]      = series_list[si]["sequence"].isNull() ? seq : (float)series_list[si]["sequence"];
         c.extra_seq_disp[idx] = (const char*)(series_list[si]["sequence_display"] | seq_disp.c_str());
       }
     }
@@ -70,7 +82,6 @@ static void add_core_card(const String& id, const String& title, const String& a
   c.daily        = false;
   c.tile         = nullptr;
   c.dsc.data     = nullptr;
-  s_card_count++;
 }
 
 static void sort_catalog_kiosk_order(){
@@ -245,11 +256,12 @@ static bool fetch_card_detail(int i){
   if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
     s_ch_count = 0;
     String title_out = c.title;
-    bool ok = core::fetch_media_tracks(cfg::core_url, c.id, title_out, [](const String& key, const String& tr_title, int dur){
+    bool ok = core::fetch_media_tracks(cfg::core_url, c.id, title_out, [](const String& key, const String& trk_key, const String& tr_title, int dur){
       if(s_ch_count >= MAX_CH) return;
-      s_ch[s_ch_count].key   = key;
-      s_ch[s_ch_count].title = tr_title;
-      s_ch[s_ch_count].dur   = dur;
+      s_ch[s_ch_count].key       = key;
+      s_ch[s_ch_count].track_key = trk_key;
+      s_ch[s_ch_count].title     = tr_title;
+      s_ch[s_ch_count].dur       = dur;
       s_ch_count++;
     });
     if(ok && s_ch_count > 0){
@@ -271,9 +283,10 @@ static bool fetch_card_detail(int i){
   if(!body) return false;
   JsonDocument filter;
   filter["card"]["title"] = true;
-  filter["card"]["content"]["chapters"][0]["key"]      = true;
-  filter["card"]["content"]["chapters"][0]["title"]    = true;
-  filter["card"]["content"]["chapters"][0]["duration"] = true;
+  filter["card"]["content"]["chapters"][0]["key"]                = true;
+  filter["card"]["content"]["chapters"][0]["title"]              = true;
+  filter["card"]["content"]["chapters"][0]["duration"]           = true;
+  filter["card"]["content"]["chapters"][0]["tracks"][0]["key"]   = true;
   PsramAllocator psram;
   JsonDocument doc(&psram);
   DeserializationError err = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
@@ -284,9 +297,17 @@ static bool fetch_card_detail(int i){
   s_ch_count = 0;
   for(JsonObject ch : card["content"]["chapters"].as<JsonArray>()){
     if(s_ch_count >= MAX_CH) break;
-    s_ch[s_ch_count].key   = (const char*)(ch["key"]   | "");
-    s_ch[s_ch_count].title = (const char*)(ch["title"] | "");
-    s_ch[s_ch_count].dur   = (int)(ch["duration"] | 0);
+    String ck = (const char*)(ch["key"] | "");
+    String tk = ck;
+    JsonArray trks = ch["tracks"].as<JsonArray>();
+    if(!trks.isNull() && trks.size() > 0){
+      const char* t0 = trks[0]["key"];
+      if(t0 && *t0) tk = t0;
+    }
+    s_ch[s_ch_count].key       = ck;
+    s_ch[s_ch_count].track_key = tk;
+    s_ch[s_ch_count].title     = (const char*)(ch["title"] | "");
+    s_ch[s_ch_count].dur       = (int)(ch["duration"] | 0);
     s_ch_count++;
   }
   sd_chap_write(c.id);
@@ -355,7 +376,7 @@ static void precache_step(){
       int svc = s_ch_count; String svt = s_detail_title;
       for(int k=0;k<svc;k++) sv[k] = s_ch[k];
       bool ok = fetch_card_detail(s_pc_cursor);
-      for(int k=0;k<svc;k++){ s_ch[k] = sv[k]; sv[k].key = String(); sv[k].title = String(); }
+      for(int k=0;k<svc;k++){ s_ch[k] = sv[k]; sv[k].key = String(); sv[k].track_key = String(); sv[k].title = String(); }
       s_ch_count = svc; s_detail_title = svt;
       if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }
       return;

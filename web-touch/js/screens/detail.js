@@ -37,6 +37,7 @@ export const DetailScreen = {
           <div class="chnum">${isChActive ? '▶' : (i + 1)}</div>
           <div class="chttl">${Utils.esc(ch.title || ('Chapter ' + (i + 1)))}</div>
           <div class="chdur">${Utils.mmss(ch.duration)}</div>
+          <button class="chplay-btn" data-ch="${i}" title="Play ${Utils.esc(ch.title || ('Chapter ' + (i + 1)))}" style="width:34px;height:34px;border-radius:50%;border:none;background:${isChActive ? '#3ab06a' : '#e5352b'};color:#fff;font-size:13px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:10px;flex-shrink:0;">&#9654;</button>
         </div>
       `;
     }).join('');
