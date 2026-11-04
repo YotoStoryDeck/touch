@@ -9,3 +9,6 @@
 *.o
 node_modules/
 .tmp/
+# Wokwi Virtual MicroSD Cache (cover .565 & chapter .chap files)
+sdcard/
+!sdcard/ythumbs/.gitkeep

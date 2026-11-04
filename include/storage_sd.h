@@ -8,10 +8,19 @@
 #include "hal_display.h"
 #include "app_state.h"
 
+#ifdef WOKWI_SIMULATION
+// In Wokwi simulation, FSPI (11/12/13) drives the ILI9341 LCD, so the virtual wokwi-microsd-card
+// uses HSPI on dedicated pins (SCK=18, MISO=19, MOSI=23, CS=6) for zero SPI bus contention.
+#define SD_PIN_SCK      18
+#define SD_PIN_MISO     19
+#define SD_PIN_MOSI     23
+#define SD_PIN_CS_DUMMY 6
+#else
 #define SD_PIN_SCK      12
 #define SD_PIN_MISO     13
 #define SD_PIN_MOSI     11
 #define SD_PIN_CS_DUMMY 6
+#endif
 #define SD_DIR          "/ythumbs"
 
 inline bool& get_sd_ok() {
@@ -23,10 +32,6 @@ inline bool& get_sd_ok() {
 static SPIClass s_sdspi(HSPI);
 
 inline bool sd_begin(){
-#ifdef WOKWI_SIMULATION
-  s_sd_ok = false;
-  return false;
-#endif
   ch422g_set(EXIO_SD_CS, false);
   s_sdspi.begin(SD_PIN_SCK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS_DUMMY);
   if(!SD.begin(SD_PIN_CS_DUMMY, s_sdspi, 20000000)) return false;
