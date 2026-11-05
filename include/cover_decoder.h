@@ -76,7 +76,7 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
     HTTPClient http;
     bool begin_ok = url.startsWith("https://") ? http.begin(scli, url) : http.begin(pcli, url);
     if(!begin_ok){ s_thumb_diag = "begin fail heap=" + String(ESP.getFreeHeap()); return false; }
-    http.setTimeout(8000);
+    http.setTimeout(2500);
     int code = http.GET();
     if(code != 200){ s_thumb_diag = "HTTP " + String(code) + " heap=" + String(ESP.getFreeHeap()); http.end(); return false; }
     int len = http.getSize();
@@ -97,7 +97,7 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
         int n = stream->readBytes(img + got, min(avail, cap - got));
         got += n; t0 = millis();
       } else if(!http.connected()){ break; }
-      else if(millis()-t0 > 15000){ break; }
+      else if(millis()-t0 > 4000){ break; }
       else delay(1);
     }
     http.end();

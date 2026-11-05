@@ -24,7 +24,6 @@ export const ProfileScreen = {
       <div class="profile-card" data-profile="${Utils.esc(p.id)}">
         <img class="profile-avatar" src="${Utils.esc(p.avatar_url)}" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=${Utils.esc(p.id)}'">
         <div class="profile-name">${Utils.esc(p.display_name)}</div>
-        <div class="profile-player">${Utils.esc(p.default_player_name || 'Yoto Player')}</div>
       </div>
     `).join('');
 

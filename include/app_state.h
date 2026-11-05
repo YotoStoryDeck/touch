@@ -8,6 +8,7 @@
 #include "app_config.h"
 #include "core_api.h"
 #include "hal_display.h"
+#include "app_log.h"
 
 // Keep big JSON work OUT of scarce internal RAM (which the TLS handshake + LVGL draw buffer
 // fight over) by routing it to the idle 8MB PSRAM. Used for the raw response body AND the
@@ -56,6 +57,7 @@ static const char* YOTO_DAILY_COVER =
 static Card s_cards[MAX_CARDS];
 int s_card_count=0;
 static lv_obj_t* s_status=nullptr;
+static lv_obj_t* s_status_box=nullptr;
 static lv_obj_t* s_barlabel=nullptr;        // idle-state hint / cover-load progress (left side)
 static lv_obj_t* s_bar=nullptr;             // home bottom bar — holds the mini now-playing
 
@@ -112,7 +114,6 @@ int s_sleep_sec=0;
 lv_obj_t* s_scr_settings=nullptr;
 lv_obj_t* s_scr_error=nullptr;
 lv_obj_t* s_scr_pin=nullptr;
-lv_obj_t* s_scr_profile=nullptr;
 lv_obj_t* s_scr_pairing=nullptr;
 static lv_timer_t* s_pairing_timer=nullptr;
 lv_obj_t* s_scr_prev=nullptr;               // tracks origin screen when opening PIN modal / settings
@@ -144,14 +145,44 @@ static void crash_guard_init(){
   Serial.printf("[BOOT] reset reason=%d crashes=%u safe_mode=%d\n", (int)r, (unsigned)s_crash_count, (int)s_safe_mode);
 }
 
+static void status_hide(){
+  if(s_status_box){
+    lv_obj_del(s_status_box);
+    s_status_box = nullptr;
+    s_status = nullptr;
+    lv_refr_now(lv_disp_get_default());
+  }
+}
+
 static void status(const char* msg){
-  if(!s_status){
-    s_status=lv_label_create(lv_scr_act());
+  lv_obj_t* cur_act = lv_scr_act();
+  if(!s_status_box || lv_obj_get_parent(s_status_box) != cur_act){
+    if(s_status_box){ lv_obj_del(s_status_box); s_status_box = nullptr; s_status = nullptr; }
+    // White card modal overlay with subtle border & shadow so message is crisp and prominent
+    s_status_box = lv_obj_create(cur_act);
+    lv_obj_set_size(s_status_box, 480, 120);
+    lv_obj_center(s_status_box);
+    lv_obj_set_style_bg_color(s_status_box, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(s_status_box, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_status_box, 16, 0);
+    lv_obj_set_style_border_width(s_status_box, 2, 0);
+    lv_obj_set_style_border_color(s_status_box, lv_color_hex(0xE5352B), 0);
+    lv_obj_set_style_shadow_width(s_status_box, 32, 0);
+    lv_obj_set_style_shadow_color(s_status_box, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_shadow_opa(s_status_box, LV_OPA_40, 0);
+    lv_obj_set_style_pad_all(s_status_box, 18, 0);
+    lv_obj_clear_flag(s_status_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_status = lv_label_create(s_status_box);
     lv_obj_set_style_text_font(s_status, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(s_status, lv_color_hex(0x23303A), 0);
-    lv_obj_align(s_status, LV_ALIGN_CENTER, 0, 0);
+    lv_label_set_long_mode(s_status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_status, 440);
+    lv_obj_set_style_text_align(s_status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(s_status);
   }
   lv_label_set_text(s_status, msg);
+  lv_obj_move_foreground(s_status_box);
   lv_refr_now(lv_disp_get_default());
 }
 
@@ -191,22 +222,6 @@ inline void fmt_sleep(char* b, size_t n){
   else                       snprintf(b, n, "%d sec left", s_sleep_sec);
 }
 
-// Return the list of players the user is allowed to select from on the catalog bar:
-// - Core mode: the active child profile's assigned players (s_profiles[s_active_profile_idx].players)
-// - Standalone mode: all discovered Yoto players on the account (s_standalone_players)
-static void get_selectable_players(const core::PlayerInfo*& out_list, int& out_count){
-  if(cfg::op_mode == "core"){
-    if(core::s_profile_count > 0 && core::s_active_profile_idx >= 0 && core::s_active_profile_idx < core::s_profile_count){
-      out_list  = core::s_profiles[core::s_active_profile_idx].players;
-      out_count = core::s_profiles[core::s_active_profile_idx].player_count;
-      return;
-    }
-    out_list = nullptr; out_count = 0;
-  } else {
-    out_list  = core::s_standalone_players;
-    out_count = core::s_standalone_player_count;
-  }
-}
 
 static lv_color_t get_player_dot_color(const String& dev_id){
   const core::PlayerInfo* pi = core::find_player_info(dev_id);
@@ -242,7 +257,6 @@ inline void go_home(){
   if(s_scr_now){      lv_obj_del_async(s_scr_now);      s_scr_now=nullptr; }
   if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
   if(s_scr_pin){      lv_obj_del_async(s_scr_pin);      s_scr_pin=nullptr; }
-  if(s_scr_profile){  lv_obj_del_async(s_scr_profile);  s_scr_profile=nullptr; }
   if(s_pairing_timer){ lv_timer_del(s_pairing_timer); s_pairing_timer=nullptr; }
   if(s_scr_pairing){  lv_obj_del_async(s_scr_pairing);  s_scr_pairing=nullptr; }
 }
@@ -311,7 +325,6 @@ static bool fetch_card_detail(int i);
 static void play_yoto_daily(int idx);
 void open_settings();
 void open_pin_modal(bool for_settings_change=false);
-void open_profile_picker();
 static void show_error(const char* title, const char* message, const char* action_hint=nullptr);
 void net_init_and_fetch();
 void build_grid();

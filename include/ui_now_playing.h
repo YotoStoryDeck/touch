@@ -106,12 +106,18 @@ static void open_now(){
   lv_obj_set_style_text_color(s_np_sleep, lv_color_hex(0xFFD9A0), 0);
   lv_obj_align(s_np_sleep, LV_ALIGN_TOP_RIGHT, -18, 24);
 
-  // cover
+  // cover (clickable: returns to book detail / tracklist view)
   lv_obj_t* cover=lv_img_create(scr);
   lv_obj_set_size(cover, NCOVER_W, NCOVER_H); lv_obj_set_pos(cover, 44, 120);
   lv_obj_set_style_radius(cover, 14, 0); lv_obj_set_style_clip_corner(cover, true, 0);
   lv_obj_set_style_bg_color(cover, lv_color_hex(0xB3211A), 0);
   lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
+  lv_obj_add_flag(cover, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(cover, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_add_event_cb(cover, [](lv_event_t*){
+    if(s_cur_card >= 0 && s_cur_card < s_card_count) open_detail(s_cur_card);
+    else go_home();
+  }, LV_EVENT_CLICKED, NULL);
   if(okv) set_img(s_ncover_dsc, cover, s_ncover, NCOVER_W, NCOVER_H, NCOVER_SZ);
 
   const int ix=224, iw=536;
@@ -121,6 +127,11 @@ static void open_now(){
   lv_label_set_text(tt, s_detail_title.c_str());
   lv_obj_set_style_text_font(tt, &lv_font_montserrat_28, 0);
   lv_obj_set_style_text_color(tt, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_add_flag(tt, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(tt, [](lv_event_t*){
+    if(s_cur_card >= 0 && s_cur_card < s_card_count) open_detail(s_cur_card);
+    else go_home();
+  }, LV_EVENT_CLICKED, NULL);
 
   s_np_chapter=lv_label_create(scr);
   lv_label_set_long_mode(s_np_chapter, LV_LABEL_LONG_DOT);

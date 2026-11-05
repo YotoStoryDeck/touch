@@ -95,8 +95,8 @@ static void show_error(const char* title, const char* message, const char* actio
       lv_label_set_text_fmt(s_err_hs_client_lbl, "%d device(s) connected! Open http://192.168.4.1/settings", stations);
       lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x137333), 0);
     } else {
-      lv_label_set_text(s_err_hs_client_lbl, "Broadcasting... Scan QR or connect to 'Yoto-Setup' (No password)");
-      lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x5F6368), 0);
+      lv_label_set_text(s_err_hs_client_lbl, "1. Connect to WiFi 'Yoto-Setup' (No pass)\n2. Open browser: http://192.168.4.1/settings");
+      lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x137333), 0);
     }
     lv_obj_set_style_text_font(s_err_hs_client_lbl, &lv_font_montserrat_14, 0);
     lv_obj_align(s_err_hs_client_lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
@@ -108,7 +108,9 @@ static void show_error(const char* title, const char* message, const char* actio
     details += "WiFi Connected: " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)\n";
     details += "Device IP: " + WiFi.localIP().toString() + "\n";
     details += "Web Settings: http://" + WiFi.localIP().toString() + "/settings\n";
-  } else if(!is_ap){
+  } else if(is_ap){
+    details += "Hotspot IP: http://192.168.4.1/settings\n";
+  } else {
     details += "WiFi not connected. Background reconnection active.\n";
   }
   if(action_hint && action_hint[0]){

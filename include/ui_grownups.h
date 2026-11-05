@@ -10,7 +10,6 @@
 extern int         s_sleep_sec;
 extern int         s_vol;
 extern lv_obj_t*   s_scr_home;
-extern lv_obj_t*   s_scr_profile;
 extern lv_obj_t*   s_scr_settings;
 extern lv_obj_t*   s_scr_pin;
 extern lv_obj_t*   s_scr_prev;
@@ -23,7 +22,6 @@ extern void fmt_sleep(char* b, size_t n);
 extern void np_volume(int v);
 extern void go_home();
 extern void build_grid();
-extern void open_profile_picker();
 extern void start_hotspot_cb(lv_event_t* e);
 
 void open_settings();             // fwd
@@ -465,14 +463,7 @@ void open_settings(){
       net_init_and_fetch();
       return;
     }
-    if(s_scr_prev == s_scr_profile && s_scr_profile && cfg::op_mode == "core"){
-      s_set_sleep_lbl = nullptr;
-      if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings=nullptr; }
-      s_scr_prev = nullptr;
-      open_profile_picker();
-    } else {
-      go_home();
-    }
+    go_home();
   }, LV_EVENT_CLICKED, NULL);
   lv_obj_t* bk = lv_label_create(back);
   lv_label_set_text(bk, LV_SYMBOL_LEFT);
@@ -624,140 +615,188 @@ void open_settings(){
   lv_obj_set_size(b_alw, 220, 48);
 
   // ==========================================
-  // TAB 1: 🎯 AUDIO TARGET & ROAMING
+  // TAB 1: 🎯 AUDIO TARGET & ASSIGNMENT (Single-User Touch Controller)
   // ==========================================
   lv_obj_t* p1 = s_gu_tab_panels[1];
 
   bool is_core_mode = (cfg::op_mode == "core");
-  set_section(p1, is_core_mode ? "Target Player & Profile Roaming" : "Target Player Assignment (Standalone)");
-  lv_obj_t* r_lock = set_row(p1);
-  lv_obj_t* b_roam = pill_btn(r_lock, is_core_mode ? "Profile Roaming" : "Roam Players", 0, [](lv_event_t*){
-    cfg::lock_player = false;
-    cfg::locked_dev_id = "";
-    if(cfg::op_mode == "core"){
-      cfg::device_id = core::resolve_active_device_id(core::s_active_profile_idx);
-    } else {
-      cfg::device_id = core::resolve_active_device_id(-1);
-    }
-    cfg::save();
-    sync_settings_if_core();
-    if(s_scr_home) build_grid();
-    open_settings();
-  }, !cfg::lock_player);
-  lv_obj_set_size(b_roam, 185, 50);
+  set_section(p1, is_core_mode ? "Controller Profile & Target Player" : "Target Yoto Player Assignment");
 
-  lv_obj_t* b_lock = pill_btn(r_lock, "Lock to Player", 1, [](lv_event_t*){
-    cfg::lock_player = true;
-    if(cfg::locked_dev_id.length() == 0) cfg::locked_dev_id = cfg::device_id;
-    cfg::device_id = cfg::locked_dev_id;
-    cfg::save();
-    sync_settings_if_core();
-    if(s_scr_home) build_grid();
-    open_settings();
-  }, cfg::lock_player);
-  lv_obj_set_size(b_lock, 185, 50);
+  if(is_core_mode){
+    // Row 1: Assigned Profile
+    lv_obj_t* r_prof = set_row(p1);
+    lv_obj_t* pr_lbl = lv_label_create(r_prof);
+    lv_label_set_text(pr_lbl, "Child Profile:");
+    lv_obj_set_style_text_font(pr_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(pr_lbl, lv_color_hex(0x23303A), 0);
 
-  // ONLY show the Locked Target Player selector when "Lock to Player" is selected!
-  if(cfg::lock_player){
-    lv_obj_t* r_drop = set_row(p1);
-    lv_obj_t* dd_lbl = lv_label_create(r_drop);
-    lv_label_set_text(dd_lbl, "Locked Player:");
-    lv_obj_set_style_text_font(dd_lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(dd_lbl, lv_color_hex(0x23303A), 0);
+    lv_obj_t* dd_prof = lv_dropdown_create(r_prof);
+    lv_obj_set_size(dd_prof, 360, 48);
+    lv_obj_set_style_text_font(dd_prof, &lv_font_montserrat_16, 0);
 
-    lv_obj_t* dd = lv_dropdown_create(r_drop);
-    lv_obj_set_size(dd, 360, 48);
-    lv_obj_set_style_text_font(dd, &lv_font_montserrat_16, 0);
-
-    String opt_str = "";
-    int cur_sel = 0;
-    int opt_idx = 0;
-    String seen_ids[16];
-    int seen_count = 0;
-    String target_lock_id = cfg::locked_dev_id.length() ? cfg::locked_dev_id : cfg::device_id;
-
-    auto add_opt = [&](const String& pid, const String& pname) {
-      if(pid.length() == 0 || seen_count >= 16) return;
-      for(int s = 0; s < seen_count; s++) if(seen_ids[s] == pid) return;
-      seen_ids[seen_count++] = pid;
-      if(opt_str.length() > 0) opt_str += "\n";
-      opt_str += (pname.length() > 0 ? pname : String("Player ") + pid);
-      if(target_lock_id == pid) cur_sel = opt_idx;
-      opt_idx++;
-    };
-
-    if(cfg::op_mode == "core"){
-      for(int p = 0; p < core::s_profile_count; p++){
-        for(int k = 0; k < core::s_profiles[p].player_count; k++){
-          add_opt(core::s_profiles[p].players[k].id, core::s_profiles[p].players[k].name);
-        }
-        add_opt(core::s_profiles[p].default_player_id, core::s_profiles[p].default_player_name);
-      }
-    } else {
-      for(int k = 0; k < core::s_standalone_player_count; k++){
-        add_opt(core::s_standalone_players[k].id, core::s_standalone_players[k].name);
+    String prof_opts = "";
+    int prof_sel = 0;
+    for(int p = 0; p < core::s_profile_count; p++){
+      if(p > 0) prof_opts += "\n";
+      prof_opts += core::s_profiles[p].display_name;
+      if(core::s_profiles[p].id == cfg::assigned_profile || 
+         (cfg::assigned_profile.length() == 0 && p == core::s_active_profile_idx)){
+        prof_sel = p;
       }
     }
-    if(cfg::device_id.length() > 0){
-      add_opt(cfg::device_id, get_active_player_name());
-    }
-    if(opt_str.length() == 0) opt_str = "No players discovered";
+    if(prof_opts.length() == 0) prof_opts = "No profiles found";
+    lv_dropdown_set_options(dd_prof, prof_opts.c_str());
+    lv_dropdown_set_selected(dd_prof, prof_sel);
 
-    lv_dropdown_set_options(dd, opt_str.c_str());
-    lv_dropdown_set_selected(dd, cur_sel);
-    lv_obj_add_event_cb(dd, [](lv_event_t* e){
+    lv_obj_add_event_cb(dd_prof, [](lv_event_t* e){
       lv_obj_t* d = lv_event_get_target(e);
       uint16_t sel = lv_dropdown_get_selected(d);
-      String opts[16];
-      int o_cnt = 0;
-      auto reg_id = [&](const String& pid){
-        if(pid.length() == 0 || o_cnt >= 16) return;
-        for(int s = 0; s < o_cnt; s++) if(opts[s] == pid) return;
-        opts[o_cnt++] = pid;
-      };
-      if(cfg::op_mode == "core"){
-        for(int p = 0; p < core::s_profile_count; p++){
-          for(int k = 0; k < core::s_profiles[p].player_count; k++){
-            reg_id(core::s_profiles[p].players[k].id);
-          }
-          reg_id(core::s_profiles[p].default_player_id);
+      if(sel < core::s_profile_count){
+        cfg::assigned_profile = core::s_profiles[sel].id;
+        core::s_assigned_profile = cfg::assigned_profile;
+        core::s_active_profile_idx = sel;
+        // Default target player to this profile's primary player
+        const auto& pr = core::s_profiles[sel];
+        String p_target = pr.default_player_id.length() ? pr.default_player_id : 
+                          (pr.player_count > 0 ? pr.players[0].id : "");
+        if(p_target.length() > 0){
+          cfg::device_id = p_target;
+          cfg::locked_dev_id = p_target;
+          cfg::lock_player = true;
         }
-      } else {
-        for(int k = 0; k < core::s_standalone_player_count; k++){
-          reg_id(core::s_standalone_players[k].id);
-        }
+        cfg::save();
+        sync_settings_if_core();
+        s_lib_ok = false;
+        status("Loading Child Profile...");
+        fetch_library_core();
+        status_hide();
+        if(s_scr_home) build_grid();
+        open_settings();
       }
-      if(cfg::device_id.length() > 0) reg_id(cfg::device_id);
-      if(sel < o_cnt){
-        cfg::device_id = opts[sel];
-        cfg::locked_dev_id = opts[sel];
+    }, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Row 2: Target Player for this profile
+    lv_obj_t* r_dev = set_row(p1);
+    lv_obj_t* dev_lbl = lv_label_create(r_dev);
+    lv_label_set_text(dev_lbl, "Target Player:");
+    lv_obj_set_style_text_font(dev_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(dev_lbl, lv_color_hex(0x23303A), 0);
+
+    lv_obj_t* dd_dev = lv_dropdown_create(r_dev);
+    lv_obj_set_size(dd_dev, 360, 48);
+    lv_obj_set_style_text_font(dd_dev, &lv_font_montserrat_16, 0);
+
+    String dev_opts = "";
+    int dev_sel = 0;
+    String dev_ids[16];
+    int dev_cnt = 0;
+
+    auto add_dev = [&](const String& did, const String& dname){
+      if(did.length() == 0 || dev_cnt >= 16) return;
+      for(int s = 0; s < dev_cnt; s++) if(dev_ids[s] == did) return;
+      dev_ids[dev_cnt] = did;
+      if(dev_cnt > 0) dev_opts += "\n";
+      dev_opts += (dname.length() ? dname : (String("Player ") + did));
+      if(cfg::device_id == did || cfg::locked_dev_id == did) dev_sel = dev_cnt;
+      dev_cnt++;
+    };
+
+    if(core::s_profile_count > 0 && prof_sel < core::s_profile_count){
+      const auto& pr = core::s_profiles[prof_sel];
+      if(pr.default_player_id.length() > 0){
+        add_dev(pr.default_player_id, pr.default_player_name);
+      }
+      for(int k = 0; k < pr.player_count; k++){
+        add_dev(pr.players[k].id, pr.players[k].name);
+      }
+    }
+    // Fallback if none in profile: add any discovered player or active player
+    if(dev_cnt == 0){
+      if(cfg::device_id.length()) add_dev(cfg::device_id, get_active_player_name());
+    }
+    if(dev_opts.length() == 0) dev_opts = "No players available";
+
+    lv_dropdown_set_options(dd_dev, dev_opts.c_str());
+    lv_dropdown_set_selected(dd_dev, dev_sel);
+
+    lv_obj_add_event_cb(dd_dev, [](lv_event_t* e){
+      lv_obj_t* d = lv_event_get_target(e);
+      uint16_t sel = lv_dropdown_get_selected(d);
+      // Reconstruct ids array
+      String dev_ids[16];
+      int dev_cnt = 0;
+      auto add_dev = [&](const String& did){
+        if(did.length() == 0 || dev_cnt >= 16) return;
+        for(int s = 0; s < dev_cnt; s++) if(dev_ids[s] == did) return;
+        dev_ids[dev_cnt++] = did;
+      };
+      int prof_idx = core::s_active_profile_idx;
+      if(core::s_profile_count > 0 && prof_idx < core::s_profile_count){
+        const auto& pr = core::s_profiles[prof_idx];
+        if(pr.default_player_id.length()) add_dev(pr.default_player_id);
+        for(int k = 0; k < pr.player_count; k++) add_dev(pr.players[k].id);
+      }
+      if(dev_cnt == 0 && cfg::device_id.length()) add_dev(cfg::device_id);
+
+      if(sel < dev_cnt){
+        cfg::device_id = dev_ids[sel];
+        cfg::locked_dev_id = dev_ids[sel];
+        cfg::lock_player = true;
         cfg::save();
         sync_settings_if_core();
         if(s_scr_home) build_grid();
       }
     }, LV_EVENT_VALUE_CHANGED, NULL);
 
-    lv_obj_t* lock_hint = lv_label_create(p1);
-    lv_label_set_text(lock_hint, "Locked Mode: Audio output is pinned to the selected player above.\nThe player picker on the catalog bar is disabled while locked.");
-    lv_obj_set_style_text_font(lock_hint, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lock_hint, lv_color_hex(0x7A7060), 0);
+    lv_obj_t* single_hint = lv_label_create(p1);
+    lv_label_set_text(single_hint, "Dedicated Controller: This Touch is locked to the child and player above.\nTo switch users or players, change assignments here or in Core Admin.");
+    lv_obj_set_style_text_font(single_hint, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(single_hint, lv_color_hex(0x7A7060), 0);
   } else {
-    lv_obj_t* roam_hint = lv_label_create(p1);
-    if(is_core_mode){
-      const String& cur_p = (core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count)
-                            ? core::s_profiles[core::s_active_profile_idx].display_name : String("Active Profile");
-      lv_label_set_text_fmt(roam_hint,
-        "Roaming Active (%s -> %s):\n"
-        "You can switch profiles and pick between assigned players directly on the catalog top bar.",
-        cur_p.c_str(), get_active_player_name().c_str());
-    } else {
-      lv_label_set_text_fmt(roam_hint,
-        "Player Roaming Active (Current: %s):\n"
-        "Tap the player pill on the catalog top bar to switch between any Yoto player on your account.",
-        get_active_player_name().c_str());
+    // Standalone Mode: No child profiles! Just pick target Yoto player
+    lv_obj_t* r_dev = set_row(p1);
+    lv_obj_t* dev_lbl = lv_label_create(r_dev);
+    lv_label_set_text(dev_lbl, "Target Player:");
+    lv_obj_set_style_text_font(dev_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(dev_lbl, lv_color_hex(0x23303A), 0);
+
+    lv_obj_t* dd_dev = lv_dropdown_create(r_dev);
+    lv_obj_set_size(dd_dev, 360, 48);
+    lv_obj_set_style_text_font(dd_dev, &lv_font_montserrat_16, 0);
+
+    String dev_opts = "";
+    int dev_sel = 0;
+    for(int k = 0; k < core::s_standalone_player_count; k++){
+      if(k > 0) dev_opts += "\n";
+      dev_opts += core::s_standalone_players[k].name;
+      if(core::s_standalone_players[k].id == cfg::device_id) dev_sel = k;
     }
-    lv_obj_set_style_text_font(roam_hint, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(roam_hint, lv_color_hex(0x137333), 0);
+    if(dev_opts.length() == 0){
+      if(cfg::device_id.length()){
+        dev_opts = get_active_player_name();
+      } else {
+        dev_opts = "No Yoto players discovered";
+      }
+    }
+    lv_dropdown_set_options(dd_dev, dev_opts.c_str());
+    lv_dropdown_set_selected(dd_dev, dev_sel);
+
+    lv_obj_add_event_cb(dd_dev, [](lv_event_t* e){
+      lv_obj_t* d = lv_event_get_target(e);
+      uint16_t sel = lv_dropdown_get_selected(d);
+      if(sel < core::s_standalone_player_count){
+        cfg::device_id = core::s_standalone_players[sel].id;
+        cfg::locked_dev_id = cfg::device_id;
+        cfg::lock_player = true;
+        cfg::save();
+        if(s_scr_home) build_grid();
+      }
+    }, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t* stand_hint = lv_label_create(p1);
+    lv_label_set_text(stand_hint, "Standalone Mode: Audio commands are sent directly to the selected Yoto player.\nChild profile management requires StoryDeck Core mode.");
+    lv_obj_set_style_text_font(stand_hint, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(stand_hint, lv_color_hex(0x7A7060), 0);
   }
 
   set_section(p1, "Operational Mode");
@@ -784,7 +823,7 @@ void open_settings(){
 
   lv_obj_t* mode_hint = lv_label_create(p1);
   lv_label_set_text(mode_hint, cfg::op_mode == "core"
-    ? "Core Managed: Hub-assisted multi-child profiles, ABS audiobooks & local proxy."
+    ? "Core Managed: Hub-assisted single child library, ABS audiobooks & local proxy."
     : "Standalone: Direct connection to Yoto Cloud without requiring a local Core server.");
   lv_obj_set_style_text_font(mode_hint, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(mode_hint, lv_color_hex(0x7A7060), 0);
@@ -869,6 +908,21 @@ void open_settings(){
 
   set_section(p3, "Hardware Maintenance");
   lv_obj_t* r_maint = set_row(p3);
+
+  // Instant catalog refresh button
+  lv_obj_t* rf = pill_btn(r_maint, "Refresh Catalog", 0, [](lv_event_t*){
+    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+      core::fetch_config_and_profiles(cfg::core_url);
+      fetch_library_core();
+    } else {
+      fetch_library();
+    }
+    if(s_scr_home) build_grid();
+    open_settings();
+  });
+  lv_obj_set_size(rf, 175, 50);
+  lv_obj_set_style_text_color(lv_obj_get_child(rf, 0), lv_color_hex(0x2563EB), 0);
+
   lv_obj_t* rb = pill_btn(r_maint, "Restart Device", 0, [](lv_event_t*){ ESP.restart(); });
   lv_obj_set_size(rb, 160, 50);
   lv_obj_set_style_text_color(lv_obj_get_child(rb, 0), lv_color_hex(0xE5352B), 0);

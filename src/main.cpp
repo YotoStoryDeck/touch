@@ -59,7 +59,6 @@ static void* tls_psram_calloc(size_t n, size_t size){
 #include "ui_now_playing.h"
 #include "playback_ctrl.h"
 #include "ui_grownups.h"
-#include "ui_profile_picker.h"
 #include "ui_setup_pairing.h"
 #include "ota_manager.h"
 
@@ -103,7 +102,7 @@ void net_init_and_fetch(){
   if(!s_lib_ok){
     if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
       status("Loading StoryDeck Profiles...");
-      if(core::fetch_config_and_profiles(cfg::core_url)){
+      if(core::fetch_config_and_profiles(cfg::core_url, false)){
         cfg::device_id = core::resolve_active_device_id(core::s_active_profile_idx);
       }
     } else if(cfg::op_mode != "core"){
@@ -139,16 +138,10 @@ void net_init_and_fetch(){
 
     Serial.printf("[HEAP] after-config: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
-    // Kiosk Profile Permissions:
-    // - If Core mode is active, profile switching is allowed, no specific profile was force-assigned to this hardware,
-    //   and multiple profiles exist -> open the Profile Picker immediately!
-    // - If a profile was force-assigned to this kiosk in Core Admin (or only 1 profile exists, or Standalone mode) ->
-    //   boot directly into the catalog!
-    if(cfg::op_mode == "core" && core::s_profile_count > 1 && core::s_allow_profile_switch && core::s_assigned_profile.length() == 0){
-      build_grid();       // initialize empty s_scr_home backing screen
-      s_lib_ok = true;
-      open_profile_picker();
-    } else {
+    // Touch Controller Single-User Flow:
+    // ESP32 Touch controllers are dedicated single-user devices. Always boot directly into
+    // the assigned profile catalog without presenting the multi-user profile picker screen.
+    {
       status("Fetching library...");
       bool lib_fetched = false;
       if(cfg::op_mode == "core"){
@@ -170,12 +163,14 @@ void net_init_and_fetch(){
 
       if(lib_fetched){
         Serial.printf("[HEAP] after-catalog: int=%u largest=%u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        status_hide();
         build_grid();
         lv_scr_load(s_scr_home);
         lv_refr_now(lv_disp_get_default());
         load_thumbs();
         s_lib_ok = true;
       } else if(cfg::op_mode == "core" && core::s_profile_count > 0){
+        status_hide();
         build_grid();
         lv_scr_load(s_scr_home);
       }
@@ -193,7 +188,11 @@ void net_init_and_fetch(){
 static void net_retry_cb(lv_timer_t* t){
   if(s_lib_ok){ lv_timer_del(t); return; }
   if(s_safe_mode) return;                   // wait for a manual Retry
+  static bool s_retrying = false;
+  if(s_retrying) return;
+  s_retrying = true;
   if(WiFi.status() == WL_CONNECTED) net_init_and_fetch();
+  s_retrying = false;
 }
 
 void setup(){
@@ -272,6 +271,9 @@ void setup(){
   uint32_t t0=millis();
   while(WiFi.status()!=WL_CONNECTED && millis()-t0 < 20000){ delay(200); }
 
+  // Start OTA & Web Portal immediately upon WiFi link so Port 80 (/settings, /logs) and Port 3232 (OTA) are ALWAYS live
+  ota_begin();
+
   if(cfg::op_mode != "core"){
     yoto::begin();                          // load tokens from NVS (standalone direct Yoto cloud)
   }
@@ -283,8 +285,7 @@ void setup(){
   ota_begin();
   if(WiFi.status() == WL_CONNECTED && cfg::op_mode == "core"){
     if(!core::ping(cfg::core_url)){
-      if(core::ping("http://192.168.1.11:5065")) cfg::core_url = "http://192.168.1.11:5065";
-      else if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
+      if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
       else if(core::ping("http://host.wokwi.internal:5065")) cfg::core_url = "http://host.wokwi.internal:5065";
     }
   }
@@ -308,13 +309,6 @@ void setup(){
   }
   lv_timer_create(net_retry_cb, 30000, NULL);   // self-deletes once the library is in
 
-#ifndef WOKWI_SIMULATION
-  // Start OTA LAST on physical hardware: the TLS handshakes to Yoto (refresh/library/covers above) are
-  // internal-RAM hungry, and mDNS + the web server compete for that same RAM. Bringing
-  // them up after the heavy boot fetch keeps the handshake headroom intact. OTA still
-  // starts here even if the library failed, so a bad build is always recoverable wirelessly.
-  ota_begin();
-#endif
 }
 
 void loop(){
@@ -327,10 +321,29 @@ void loop(){
     thumb_load_step();
   }
 
-  // Periodic live player status sync in Core mode (every 8s when covers are done & user isn't mid-touch)
+  // 4-Hour Deep Idle Catalog & Profile Refresh Watchdog (only runs during Screensaver or deep idle > 60s)
+  static uint32_t s_last_catalog_refresh_t = millis();
+  const uint32_t FOUR_HOURS_MS = 4UL * 60UL * 60UL * 1000UL;
+  if(s_lib_ok && !s_thumbs_loading && (millis() - s_last_catalog_refresh_t > FOUR_HOURS_MS)){
+    lv_obj_t* act = lv_scr_act();
+    bool is_deep_idle = (act == s_scr_saver) || (act == s_scr_home && lv_disp_get_inactive_time(NULL) > 60000);
+    if(is_deep_idle && heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 16000){
+      log_msg("[WATCHDOG] 4-Hour idle catalog refresh starting in background");
+      s_last_catalog_refresh_t = millis();
+      if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+        core::fetch_config_and_profiles(cfg::core_url);
+        fetch_library_core();
+      } else {
+        fetch_library();
+      }
+      if(s_scr_home && act == s_scr_home) build_grid();
+    }
+  }
+
+  // Periodic live player status sync in Core mode (every 15s during lull when user isn't actively interacting)
   static uint32_t s_core_sync_t = 0;
   if(s_lib_ok && !s_thumbs_loading && cfg::op_mode == "core" && cfg::core_url.length() > 0 &&
-     millis() - s_core_sync_t > 8000 && lv_disp_get_inactive_time(NULL) > 1500 &&
+     millis() - s_core_sync_t > 15000 && lv_disp_get_inactive_time(NULL) > 4000 &&
      heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 16000){
     s_core_sync_t = millis();
     int saved_prof = core::s_active_profile_idx;
@@ -339,7 +352,7 @@ void loop(){
     int prev_card = s_play_card;
     String prev_title = s_play_title;
     String prev_ch = s_play_chapter;
-    if(core::fetch_config_and_profiles(cfg::core_url)){
+    if(core::fetch_config_and_profiles(cfg::core_url, false)){
       core::s_active_profile_idx = saved_prof;
       if(cfg::lock_player && cfg::locked_dev_id.length() > 0) cfg::device_id = cfg::locked_dev_id;
       else if(saved_dev.length() > 0) cfg::device_id = saved_dev;
@@ -368,7 +381,10 @@ void loop(){
     // to a near-zero low-water. At-rest free is ~24-28KB, so a 16KB floor passes normally but
     // backs off during contention. (Rechecked next loop; this defers warming, never aborts it.)
     bool ram_ok = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 16000;
-    if(ram_ok && (act == s_scr_home || act == s_scr_saver) && lv_disp_get_inactive_time(NULL) > 1500){
+    // Deep cache building only runs during Screensaver (Night Clock) or deep idle (>60s)
+    bool is_deep_idle = (act == s_scr_saver) || (act == s_scr_home && lv_disp_get_inactive_time(NULL) > 60000);
+    if(ram_ok && is_deep_idle){
+      log_msg("[CACHE] Deep idle precache step for item %d/%d", s_pc_cursor, s_card_count);
       precache_step();
       s_pc_t = millis();
     }

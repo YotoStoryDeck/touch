@@ -11,10 +11,16 @@
 static void back_cb(lv_event_t* e){
   s_detail_play_lbl = nullptr;
   s_detail_bar = nullptr;
-  if(s_scr_home) lv_scr_load(s_scr_home);
-  else if(s_scr_error) lv_scr_load(s_scr_error);
-  // async: we're deleting the screen that owns the button firing this event
-  if(s_scr_detail){ lv_obj_del_async(s_scr_detail); s_scr_detail=nullptr; }
+  if(s_scr_home){
+    lv_scr_load(s_scr_home);
+    lv_refr_now(lv_disp_get_default());
+  } else if(s_scr_error){
+    lv_scr_load(s_scr_error);
+  }
+  if(s_scr_detail){
+    lv_obj_del_async(s_scr_detail);
+    s_scr_detail = nullptr;
+  }
 }
 
 // (Re)build the tappable chapter rows from the current s_ch globals into `list`, clearing any
@@ -40,9 +46,13 @@ static void detail_fill_chapters(lv_obj_t* list){
     lv_obj_set_style_bg_color(row, lv_color_hex(0xE5352B), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(row, LV_OPA_10, LV_STATE_PRESSED);
     lv_obj_set_user_data(row, (void*)(intptr_t)k);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(row, [](lv_event_t* e){
-      play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
-    }, LV_EVENT_CLICKED, NULL);
+      lv_event_code_t code = lv_event_get_code(e);
+      if(code == LV_EVENT_CLICKED || code == LV_EVENT_SHORT_CLICKED){
+        play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
+      }
+    }, LV_EVENT_ALL, NULL);
 
     bool is_ch_active = (s_playing && s_play_card == s_cur_card && s_play_ch == k);
     if(is_ch_active){
@@ -80,16 +90,20 @@ static void detail_fill_chapters(lv_obj_t* list){
 
     // Explicit Play button on the right of each chapter row so the user can skip directly to that chapter
     lv_obj_t* ch_play = lv_btn_create(row);
-    lv_obj_set_size(ch_play, 36, 36);
-    lv_obj_set_style_radius(ch_play, 18, 0);
+    lv_obj_set_size(ch_play, 44, 44);
+    lv_obj_set_style_radius(ch_play, 22, 0);
     lv_obj_set_style_bg_color(ch_play, is_ch_active ? lv_color_hex(0x3AB06A) : lv_color_hex(0xE5352B), 0);
     lv_obj_set_style_shadow_width(ch_play, 0, 0);
     lv_obj_set_style_pad_all(ch_play, 0, 0);
+    lv_obj_clear_flag(ch_play, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_set_user_data(ch_play, (void*)(intptr_t)k);
     lv_obj_add_event_cb(ch_play, [](lv_event_t* e){
-      lv_event_stop_bubbling(e);
-      play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
-    }, LV_EVENT_CLICKED, NULL);
+      lv_event_code_t code = lv_event_get_code(e);
+      if(code == LV_EVENT_CLICKED || code == LV_EVENT_SHORT_CLICKED){
+        lv_event_stop_bubbling(e);
+        play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
+      }
+    }, LV_EVENT_ALL, NULL);
     lv_obj_t* ch_pi = lv_label_create(ch_play);
     lv_label_set_text(ch_pi, LV_SYMBOL_PLAY);
     lv_obj_set_style_text_font(ch_pi, &lv_font_montserrat_16, 0);
@@ -107,6 +121,7 @@ static void detail_set_summary(lv_obj_t* sum){
 }
 
 static void open_detail(int i){
+  log_msg("[USER] Inspecting card %d: '%s' (%s) - prioritizing detail & tracks", i, s_cards[i].title.c_str(), s_cards[i].id.c_str());
   s_detail_play_lbl = nullptr;
   s_detail_bar = nullptr;
   s_cur_card = i;
@@ -202,11 +217,34 @@ static void open_detail(int i){
   lv_obj_set_style_text_font(sub, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(sub, lv_color_hex(0x7A7060), 0);
 
-  lv_obj_t* sum = lv_label_create(right);
+  lv_obj_t* sum_row = lv_obj_create(right);
+  lv_obj_set_size(sum_row, lv_pct(100), 32);
+  lv_obj_set_style_bg_opa(sum_row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(sum_row, 0, 0);
+  lv_obj_set_style_pad_all(sum_row, 0, 0);
+  lv_obj_set_style_pad_column(sum_row, 10, 0);
+  lv_obj_set_flex_flow(sum_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(sum_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(sum_row, LV_OBJ_FLAG_SCROLLABLE);
+
+  bool is_abs_book = (c.source == "abs");
+  lv_obj_t* src_badge = lv_label_create(sum_row);
+  lv_label_set_text(src_badge, is_abs_book ? "Audiobookshelf" : "Yoto");
+  lv_obj_set_style_text_font(src_badge, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(src_badge, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(src_badge, is_abs_book ? lv_color_hex(0x4F46E5) : lv_color_hex(0xE5352B), 0);
+  lv_obj_set_style_bg_opa(src_badge, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(src_badge, 6, 0);
+  lv_obj_set_style_pad_left(src_badge, 8, 0);
+  lv_obj_set_style_pad_right(src_badge, 8, 0);
+  lv_obj_set_style_pad_top(src_badge, 3, 0);
+  lv_obj_set_style_pad_bottom(src_badge, 3, 0);
+  lv_obj_clear_flag(src_badge, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t* sum = lv_label_create(sum_row);
   detail_set_summary(sum);
   lv_obj_set_style_text_font(sum, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(sum, lv_color_hex(0x3A6B50), 0);
-  lv_obj_set_style_pad_bottom(sum, 4, 0);
 
   lv_obj_t* list = lv_obj_create(right);
   lv_obj_set_width(list, lv_pct(100));
@@ -256,30 +294,58 @@ static void open_detail(int i){
   if(old) lv_obj_del(old);
   lv_refr_now(lv_disp_get_default());   // paint the screen NOW so the tap feels instant
 
-  // ---- slow path: now that the screen is up, fill in whatever wasn't served from SD ----
-  if(!have_ch){
-    if(fetch_card_detail(i) && s_ch_count > 0){
-      lv_label_set_text(title, s_detail_title.c_str());
-      detail_set_summary(sum);
-      detail_fill_chapters(list);
-      lv_refr_now(lv_disp_get_default());
-    } else if(s_ch_count == 0){
-      // Fallback single chapter so 'Play Book' always works even if track metadata is unavailable
-      s_ch_count = 1;
-      s_ch[0].key = "01";
-      s_ch[0].track_key = "01";
-      s_ch[0].title = c.title.length() ? c.title : "Full Audiobook";
-      s_ch[0].dur = 1800;
-      detail_set_summary(sum);
-      detail_fill_chapters(list);
-      lv_refr_now(lv_disp_get_default());
-    }
-  }
-  if(!cover_sd && s_dcover &&
-     load_cover_cached(c.id, c.cover, DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover)){
-    lv_img_set_zoom(cover, 256);                // undo the thumb-placeholder upscale
-    lv_img_set_pivot(cover, 0, 0);
-    set_img(s_dcover_dsc, cover, s_dcover, DCOVER_W, DCOVER_H, DCOVER_SZ);
-    lv_refr_now(lv_disp_get_default());
+  // ---- async slow path: defer heavy network / JPEG operations to a shallow timer ----
+  struct DetailAsyncCtx {
+    int card_idx;
+    bool need_ch;
+    bool need_cover;
+    lv_obj_t* scr_target;
+    lv_obj_t* title_lbl;
+    lv_obj_t* sum_lbl;
+    lv_obj_t* list_box;
+    lv_obj_t* cover_img;
+  };
+
+  if(!have_ch || (!cover_sd && s_dcover)){
+    DetailAsyncCtx* ctx = new DetailAsyncCtx{
+      i, !have_ch, (!cover_sd && s_dcover != nullptr),
+      scr, title, sum, list, cover
+    };
+    lv_timer_t* tmr = lv_timer_create([](lv_timer_t* t){
+      DetailAsyncCtx* c = (DetailAsyncCtx*)t->user_data;
+      lv_timer_del(t);
+      if(!c) return;
+      if(s_scr_detail != c->scr_target){
+        delete c;
+        return;
+      }
+      Card& card = s_cards[c->card_idx];
+      if(c->need_ch){
+        if(fetch_card_detail(c->card_idx) && s_ch_count > 0){
+          if(s_scr_detail == c->scr_target){
+            lv_label_set_text(c->title_lbl, s_detail_title.c_str());
+            detail_set_summary(c->sum_lbl);
+            detail_fill_chapters(c->list_box);
+          }
+        } else if(s_ch_count == 0 && s_scr_detail == c->scr_target){
+          s_ch_count = 1;
+          s_ch[0].key = "01";
+          s_ch[0].track_key = "01";
+          s_ch[0].title = card.title.length() ? card.title : "Full Audiobook";
+          s_ch[0].dur = 1800;
+          detail_set_summary(c->sum_lbl);
+          detail_fill_chapters(c->list_box);
+        }
+      }
+      if(c->need_cover && s_scr_detail == c->scr_target && s_dcover){
+        if(load_cover_cached(card.id, card.cover, DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover)){
+          lv_img_set_zoom(c->cover_img, 256);
+          lv_img_set_pivot(c->cover_img, 0, 0);
+          set_img(s_dcover_dsc, c->cover_img, s_dcover, DCOVER_W, DCOVER_H, DCOVER_SZ);
+        }
+      }
+      delete c;
+    }, 40, ctx);
+    lv_timer_set_repeat_count(tmr, 1);
   }
 }

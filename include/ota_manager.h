@@ -53,7 +53,6 @@ static void ota_splash_and_blank(){
     lv_scr_load(s_scr_ota);
   }
   lv_refr_now(lv_disp_get_default());   // clean paint: runs before the first flash write
-  delay(1200);                          // hold long enough to read
   ch422g_set(EXIO_BL_DISP, false);      // blank: dark beats garbage during the cache-disabling writes
 }
 // Recover the display if an OTA FAILS (no reboot happens, loop() resumes — and its 1 Hz backlight
@@ -66,6 +65,7 @@ static void ota_restore_display(){
 
 static void ota_begin(){
   ArduinoOTA.setHostname("yoto-controller");
+  ArduinoOTA.setTimeout(10000);   // Increase receive timeout from 1000ms default to 10000ms to eliminate Receive Failed errors
   if(sizeof(OTA_PASSWORD) > 1) ArduinoOTA.setPassword(OTA_PASSWORD);   // empty string => no auth
   ArduinoOTA.onStart([](){ Serial.println("[OTA] push start"); ota_splash_and_blank(); });
   ArduinoOTA.onEnd([](){   Serial.println("[OTA] push done");  });   // success -> board reboots
@@ -439,6 +439,97 @@ cv.addEventListener('pointercancel', e => { isDown = false; sendTouch(0, 0, fals
 </body>
 </html>)rawliteral";
     s_ota_web.send_P(200, "text/html", html);
+  });
+
+    // Live debug logger: /api/logs (JSON) & /logs (HTML live stream)
+  s_ota_web.on("/api/logs", HTTP_GET, [](){
+    String json = "{\"total\":" + String(s_log_total) + ",\"entries\":[";
+    int start = (s_log_total < MAX_LOG_ENTRIES) ? 0 : s_log_head;
+    for(int i = 0; i < s_log_total; i++){
+      int idx = (start + i) % MAX_LOG_ENTRIES;
+      if(i > 0) json += ",";
+      json += "{\"t\":" + String(s_log_ring[idx].ms) + ",\"msg\":\"";
+      for(const char* p = s_log_ring[idx].msg; *p; p++){
+        if(*p == '"') json += "\\\"";
+        else if(*p == '\\') json += "\\\\";
+        else if(*p == '\n') json += "\\n";
+        else if(*p == '\r') continue;
+        else json += *p;
+      }
+      json += "\"}";
+    }
+    json += "]}";
+    s_ota_web.send(200, "application/json", json);
+  });
+
+  s_ota_web.on("/logs", HTTP_GET, [](){
+    static const char log_html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StoryDeck Touch — Live Console Logs</title>
+<style>
+  body { margin:0; padding:18px; background:#121214; color:#E4E4E7; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:13px; line-height:1.5; }
+  .header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #27272A; padding-bottom:12px; margin-bottom:14px; }
+  .title { font-size:16px; font-weight:700; color:#E5352B; display:flex; align-items:center; gap:8px; }
+  .badge { background:#27272A; color:#A1A1AA; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; }
+  .log-box { display:flex; flex-direction:column; gap:4px; }
+  .entry { display:flex; gap:12px; border-bottom:1px solid rgba(255,255,255,0.03); padding:4px 0; }
+  .time { color:#71717A; font-weight:600; min-width:85px; flex-shrink:0; }
+  .msg { color:#E4E4E7; word-break:break-all; }
+  .tag-core { color:#38BDF8; font-weight:700; }
+  .tag-sd { color:#FBBF24; font-weight:700; }
+  .tag-cache { color:#34D399; font-weight:700; }
+  .tag-err { color:#F87171; font-weight:700; }
+  .controls { display:flex; gap:10px; align-items:center; }
+  button { background:#E5352B; color:#fff; border:none; padding:4px 12px; border-radius:6px; cursor:pointer; font-weight:600; font-family:inherit; }
+  button:hover { background:#DC2626; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">⚡ StoryDeck Touch Backend Console <span class="badge" id="count">0 msgs</span></div>
+    <div class="controls">
+      <label><input type="checkbox" id="autoScroll" checked> Auto-scroll</label>
+      <button onclick="fetchLogs()">Refresh</button>
+      <a href="/screen" target="_blank" style="color:#A1A1AA; text-decoration:none; font-size:12px;">📺 Screen Mirror</a>
+      <a href="/settings" target="_blank" style="color:#A1A1AA; text-decoration:none; font-size:12px;">⚙️ Settings</a>
+    </div>
+  </div>
+  <div class="log-box" id="logBox">Loading backend logs...</div>
+<script>
+async function fetchLogs(){
+  try {
+    const res = await fetch('/api/logs?t=' + Date.now());
+    if(!res.ok) return;
+    const data = await res.json();
+    document.getElementById('count').textContent = data.entries.length + ' entries';
+    const box = document.getElementById('logBox');
+    box.innerHTML = '';
+    data.entries.forEach(e => {
+      const row = document.createElement('div');
+      row.className = 'entry';
+      const sec = (e.t / 1000).toFixed(2) + 's';
+      let formatted = e.msg
+        .replace(/\[CORE\]/g, '<span class="tag-core">[CORE]</span>')
+        .replace(/\[SD\]/g, '<span class="tag-sd">[SD]</span>')
+        .replace(/\[CACHE\]/g, '<span class="tag-cache">[CACHE]</span>')
+        .replace(/\[ERR\]|fail|error/gi, '<span class="tag-err">$&</span>');
+      row.innerHTML = `<span class="time">${sec}</span><span class="msg">${formatted}</span>`;
+      box.appendChild(row);
+    });
+    if(document.getElementById('autoScroll').checked){
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+  } catch(err){}
+}
+setInterval(fetchLogs, 1500);
+fetchLogs();
+</script>
+</body>
+</html>)rawliteral";
+    s_ota_web.send_P(200, "text/html", log_html);
   });
 
   portal::begin(s_ota_web);   // /settings + /reboot ride the same server (see web_portal.h)

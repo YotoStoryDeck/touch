@@ -47,15 +47,11 @@ static String secret_row(const char* label, const char* name, const char* hint){
          "' placeholder='(unchanged — leave blank to keep)'><small>" + hint + "</small></label>";
 }
 
-// Friendly timezone dropdown. Values are the POSIX TZ rule strings the ESP32's C library
-// needs (it has no zoneinfo database), but the user only ever sees city names. If NVS holds
-// a string that isn't one of the presets (hand-set custom zone), it appears as a selected
-// "Custom" entry so saving the form never silently rewrites it.
 static String mode_select(){
   String h = "<label>Operational Mode<select name='mode' id='mode_sel' onchange='toggleModeFields()'>";
-  h += String("<option value='standalone'") + (cfg::op_mode != "core" ? " selected" : "") + ">Standalone Cloud (Direct Yoto API)</option>";
   h += String("<option value='core'") + (cfg::op_mode == "core" ? " selected" : "") + ">StoryDeck Core Managed (Hub + Profiles)</option>";
-  h += "</select><small>Choose whether this screen connects directly to Yoto Cloud or your local StoryDeck Core server.</small></label>";
+  h += String("<option value='standalone'") + (cfg::op_mode != "core" ? " selected" : "") + ">Standalone Cloud (Direct Yoto API)</option>";
+  h += "</select><small>Choose whether this screen connects to your local StoryDeck Core server or directly to Yoto Cloud.</small></label>";
   return h;
 }
 
@@ -87,13 +83,11 @@ static String wifi_picker(){
   h += "<select id='wf_sel' onchange='var el=document.getElementById(\"wf_in\");if(this.value)el.value=this.value' style='width:50%;margin-top:0'>";
   h += "<option value=''>-- Select nearby WiFi --</option>";
 
-  // If in AP or AP_STA mode, pause background STA retries so the single radio can hop channels
   if(WiFi.getMode() & WIFI_MODE_AP){
     WiFi.disconnect(false);
     delay(50);
   }
 
-  // Active scan without hidden SSIDs (async=false, show_hidden=false, passive=false, max_ms_per_chan=200)
   int n = WiFi.scanNetworks(false, false, false, 200);
   if(n > 0){
     for(int i = 0; i < n; i++){
@@ -107,6 +101,61 @@ static String wifi_picker(){
   h += "</select>";
   h += "<input id='wf_in' name='ssid' value=\"" + esc(cfg::wifi_ssid) + "\" placeholder='or type SSID' style='width:50%;margin-top:0'>";
   h += "</div><small>Pick a nearby 2.4 GHz network from the dropdown or type manually.</small></label>";
+  return h;
+}
+
+// Profile & Target Device Selection Section (Grown-ups & Admin parity)
+static String profile_device_picker(){
+  String h = "<div id='prof_device_sec'>";
+  h += "<h2>Profile &amp; Device Setup</h2>";
+
+  // Child Profile
+  h += "<label>Assigned Child Profile (Single-User Touch)";
+  h += "<select id='prof_sel' name='prof' onchange='onProfileSelectChange()'>";
+  h += "<option value=''>-- Select Profile or type below --</option>";
+  for(int i = 0; i < core::s_profile_count; i++){
+    bool sel = (cfg::assigned_profile == core::s_profiles[i].id);
+    h += "<option value=\"" + esc(core::s_profiles[i].id) + "\" data-player=\"" + esc(core::s_profiles[i].default_player_id) + "\"" + (sel ? " selected" : "") + ">" + esc(core::s_profiles[i].display_name) + " (" + esc(core::s_profiles[i].id) + ")</option>";
+  }
+  h += "</select>";
+  h += "<input id='prof_in' name='prof_custom' value=\"" + esc(cfg::assigned_profile) + "\" placeholder='or type Profile ID (e.g. child-id)' style='margin-top:6px;'>";
+  h += "<small>Select from discovered Core profiles or type profile ID. The controller boots directly into this child's library.</small></label>";
+
+  // Target Player
+  h += "<label style='margin-top:14px;'>Target Yoto Player (Audio Output)";
+  h += "<select id='dev_sel' name='devid' onchange='onPlayerSelectChange()'>";
+  h += "<option value=''>-- Select Player or type below --</option>";
+  
+  // Aggregate unique players across Core profiles & standalone list
+  String seen_ids[32]; int seen_cnt = 0;
+  auto add_player_opt = [&](const String& pid, const String& pname, bool online){
+    if(pid.length() == 0 || seen_cnt >= 32) return;
+    for(int s = 0; s < seen_cnt; s++){ if(seen_ids[s] == pid) return; }
+    seen_ids[seen_cnt++] = pid;
+    bool sel = (cfg::device_id == pid || cfg::locked_dev_id == pid);
+    h += "<option value=\"" + esc(pid) + "\"" + (sel ? " selected" : "") + ">" + esc(pname) + " (" + esc(pid) + ") &bull; " + (online ? "Online" : "Offline") + "</option>";
+  };
+
+  for(int i = 0; i < core::s_profile_count; i++){
+    for(int p = 0; p < core::s_profiles[i].player_count; p++){
+      add_player_opt(core::s_profiles[i].players[p].id, core::s_profiles[i].players[p].name, core::s_profiles[i].players[p].online);
+    }
+  }
+  for(int p = 0; p < core::s_standalone_player_count; p++){
+    add_player_opt(core::s_standalone_players[p].id, core::s_standalone_players[p].name, core::s_standalone_players[p].online);
+  }
+
+  h += "</select>";
+  h += "<input id='dev_in' name='devid_custom' value=\"" + esc(cfg::device_id) + "\" placeholder='or type Yoto Player Device ID' style='margin-top:6px;'>";
+  h += "<small>Select from discovered players or enter the Yoto Player ID that will play audio for this controller.</small></label>";
+
+  // Lock Player Checkbox
+  h += "<label style='display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:500;cursor:pointer;'>";
+  h += "<input type='checkbox' name='lockp' id='lockp' value='1' style='width:auto;margin:0;'" + String(cfg::lock_player ? " checked" : "") + ">";
+  h += "<span>Lock this controller to the target player</span></label>";
+
+  h += "<div style='margin-top:10px;'><button type='button' class='test-btn' onclick='fetchDiscovery()'>&#128260; Fetch Profiles &amp; Players from Core</button><span id='disc_badge'></span></div>";
+  h += "</div>";
   return h;
 }
 
@@ -136,6 +185,26 @@ static void handle_get(WebServer& w){
     "  if(cSec) cSec.style.display = isCore ? 'block' : 'none';\n"
     "  if(ySec) ySec.style.display = isCore ? 'none' : 'block';\n"
     "}\n"
+    "function onProfileSelectChange(){\n"
+    "  var sel = document.getElementById('prof_sel');\n"
+    "  var val = sel.value;\n"
+    "  if(val){ document.getElementById('prof_in').value = val; }\n"
+    "  var opt = sel.options[sel.selectedIndex];\n"
+    "  var defPlayer = opt ? opt.getAttribute('data-player') : '';\n"
+    "  if(defPlayer){\n"
+    "    var dsel = document.getElementById('dev_sel');\n"
+    "    dsel.value = defPlayer;\n"
+    "    document.getElementById('dev_in').value = defPlayer;\n"
+    "    document.getElementById('lockp').checked = true;\n"
+    "  }\n"
+    "}\n"
+    "function onPlayerSelectChange(){\n"
+    "  var val = document.getElementById('dev_sel').value;\n"
+    "  if(val){\n"
+    "    document.getElementById('dev_in').value = val;\n"
+    "    document.getElementById('lockp').checked = true;\n"
+    "  }\n"
+    "}\n"
     "function testWifi(){\n"
     "  var s = document.getElementById('wf_in').value;\n"
     "  var p = document.getElementById('pass').value;\n"
@@ -160,9 +229,42 @@ static void handle_get(WebServer& w){
     "    .then(d => {\n"
     "      b.className = 'status-badge ' + (d.ok ? 'badge-ok' : 'badge-err');\n"
     "      b.innerText = d.ok ? 'StoryDeck Core reachable (HTTP 200)' : ('Unreachable: ' + (d.error || 'Check URL/DNS'));\n"
+    "      if(d.ok){ fetchDiscovery(); }\n"
     "    })\n"
     "    .catch(e => {\n"
     "      b.className = 'status-badge badge-err'; b.innerText = 'Ping request failed: ' + e.message;\n"
+    "    });\n"
+    "}\n"
+    "function fetchDiscovery(){\n"
+    "  var u = document.getElementById('curl').value;\n"
+    "  var b = document.getElementById('disc_badge');\n"
+    "  b.className = 'status-badge badge-wait'; b.innerText = 'Fetching profiles & players...';\n"
+    "  fetch('/api/portal/discovery?url=' + encodeURIComponent(u))\n"
+    "    .then(r => r.json())\n"
+    "    .then(d => {\n"
+    "      if(d.ok){\n"
+    "        b.className = 'status-badge badge-ok';\n"
+    "        b.innerText = 'Loaded ' + d.profiles.length + ' profiles, ' + d.players.length + ' players';\n"
+    "        var psel = document.getElementById('prof_sel');\n"
+    "        var curProf = document.getElementById('prof_in').value;\n"
+    "        psel.innerHTML = '<option value=\"\">-- Select Profile or type below --</option>';\n"
+    "        d.profiles.forEach(function(p){\n"
+    "          var isSel = (p.id === curProf) ? ' selected' : '';\n"
+    "          psel.innerHTML += '<option value=\"' + p.id + '\" data-player=\"' + (p.default_player_id || '') + '\"' + isSel + '>' + p.name + ' (' + p.id + ')</option>';\n"
+    "        });\n"
+    "        var dsel = document.getElementById('dev_sel');\n"
+    "        var curDev = document.getElementById('dev_in').value;\n"
+    "        dsel.innerHTML = '<option value=\"\">-- Select Player or type below --</option>';\n"
+    "        d.players.forEach(function(pl){\n"
+    "          var isSel = (pl.id === curDev) ? ' selected' : '';\n"
+    "          dsel.innerHTML += '<option value=\"' + pl.id + '\"' + isSel + '>' + pl.name + ' (' + pl.id + ') • ' + (pl.online ? 'Online' : 'Offline') + '</option>';\n"
+    "        });\n"
+    "      } else {\n"
+    "        b.className = 'status-badge badge-err'; b.innerText = d.error || 'Discovery failed';\n"
+    "      }\n"
+    "    })\n"
+    "    .catch(e => {\n"
+    "      b.className = 'status-badge badge-err'; b.innerText = 'Discovery error: ' + e.message;\n"
     "    });\n"
     "}\n"
     "window.addEventListener('DOMContentLoaded', toggleModeFields);\n"
@@ -181,15 +283,16 @@ static void handle_get(WebServer& w){
     "<h2>StoryDeck Integration</h2>" +
     mode_select() +
     "<div id='core_sec'>" +
-    text_row("StoryDeck Core URL", "curl", cfg::core_url, "Hub address (e.g. https://storydeck.ohiodeans.us or http://192.168.1.11:5065). Required for Core Managed mode.") +
-    "<div><button type='button' class='test-btn' onclick='testCore()'>Test StoryDeck Core URL</button><span id='core_badge'></span></div>"
+    text_row("StoryDeck Core URL", "curl", cfg::core_url, "Hub address (e.g. http://<server-ip>:5065 or https://storydeck.local). Required for Core Managed mode.") +
+    "<div><button type='button' class='test-btn' onclick='testCore()'>Test StoryDeck Core URL</button><span id='core_badge'></span></div>" +
     "</div>" +
     "<div id='yoto_sec'>" +
-    "<h2>Yoto account</h2>" +
-    text_row("Client ID", "cid", cfg::client_id) +
-    secret_row("Client secret", "csec", "From the Yoto developer dashboard.") +
-    secret_row("Refresh token", "rt", "Paste a fresh one (from .yoto_tokens.json after oauth_login.py) to re-seed.") +
+    "<h2>Yoto Account (Standalone Direct)</h2>" +
+    text_row("Client ID", "cid", cfg::client_id, "From the Yoto developer dashboard.") +
+    secret_row("Client Secret", "csec", "From the Yoto developer dashboard.") +
+    secret_row("Refresh Token", "rt", "Paste a fresh refresh token to re-seed credentials.") +
     "</div>" +
+    profile_device_picker() +
     "<h2>Clock</h2>" +
     tz_select() +
     "<h2>Security &amp; PIN</h2>" +
@@ -213,14 +316,35 @@ static void handle_post(WebServer& w){
   v = w.arg("mode");  if(v.length()) cfg::op_mode       = v;
   v = w.arg("curl");  cfg::core_url = v;
   v = w.arg("tz");    if(v.length()) cfg::tz            = v;
-  v = w.arg("pin");   if(v.length() == 4) cfg::parent_pin   = v;
+  v = w.arg("pin");   if(v.length() == 4) cfg::parent_pin = v;
+
+  // Profile assignment
+  String prof = w.arg("prof_custom");
+  if(prof.length() == 0) prof = w.arg("prof");
+  prof.trim();
+  cfg::assigned_profile = prof;
+  core::s_assigned_profile = prof;
+
+  // Target Player assignment
+  String dev = w.arg("devid_custom");
+  if(dev.length() == 0) dev = w.arg("devid");
+  dev.trim();
+  if(dev.length() > 0){
+    cfg::device_id = dev;
+    cfg::locked_dev_id = dev;
+    cfg::lock_player = (w.hasArg("lockp") && (w.arg("lockp") == "1" || w.arg("lockp") == "on"));
+  } else {
+    cfg::locked_dev_id = "";
+    cfg::lock_player = false;
+  }
+
   cfg::save();
   v = w.arg("rt");
   if(v.length()) yoto::set_refresh(v);                  // also clears the cached access token
   w.send(200, "text/html; charset=utf-8",
     "<!doctype html><body style='font-family:system-ui;background:#fbf7f0;padding:24px'>"
     "<h2 style='color:#3a6b50'>Saved.</h2>"
-    "<p>WiFi / credential changes apply at next boot.</p>"
+    "<p>Settings saved to device flash. Changes take effect immediately or upon reboot.</p>"
     "<p><a href='/reboot'>Reboot now</a> &middot; <a href='/settings'>Back to settings</a></p></body>");
 }
 
@@ -291,12 +415,63 @@ static void handle_ping_core(WebServer& w){
   }
 }
 
+// Live Discovery of Profiles & Players from StoryDeck Core
+static void handle_portal_discovery(WebServer& w){
+  if(!auth_ok(w)) return;
+  String u = w.arg("url");
+  if(u.length() == 0) u = cfg::core_url;
+  if(u.length() == 0){
+    w.send(200, "application/json", "{\"ok\":false,\"error\":\"Core URL empty\"}");
+    return;
+  }
+
+  bool ok = core::fetch_config_and_profiles(u, false);
+  if(!ok && core::s_profile_count == 0){
+    w.send(200, "application/json", "{\"ok\":false,\"error\":\"Could not load profiles from Core\"}");
+    return;
+  }
+
+  String out = "{\"ok\":true,\"profiles\":[";
+  for(int i = 0; i < core::s_profile_count; i++){
+    if(i > 0) out += ",";
+    out += "{\"id\":\"" + esc(core::s_profiles[i].id) + "\",";
+    out += "\"name\":\"" + esc(core::s_profiles[i].display_name) + "\",";
+    out += "\"default_player_id\":\"" + esc(core::s_profiles[i].default_player_id) + "\"}";
+  }
+  out += "],\"players\":[";
+  int pcount = 0;
+  String seen[32]; int seen_cnt = 0;
+  auto append_json_player = [&](const String& pid, const String& pname, bool online){
+    if(pid.length() == 0 || seen_cnt >= 32) return;
+    for(int s = 0; s < seen_cnt; s++){ if(seen[s] == pid) return; }
+    seen[seen_cnt++] = pid;
+    if(pcount > 0) out += ",";
+    out += "{\"id\":\"" + esc(pid) + "\",";
+    out += "\"name\":\"" + esc(pname) + "\",";
+    out += "\"online\":" + String(online ? "true" : "false") + "}";
+    pcount++;
+  };
+
+  for(int i = 0; i < core::s_profile_count; i++){
+    for(int p = 0; p < core::s_profiles[i].player_count; p++){
+      append_json_player(core::s_profiles[i].players[p].id, core::s_profiles[i].players[p].name, core::s_profiles[i].players[p].online);
+    }
+  }
+  for(int p = 0; p < core::s_standalone_player_count; p++){
+    append_json_player(core::s_standalone_players[p].id, core::s_standalone_players[p].name, core::s_standalone_players[p].online);
+  }
+  out += "]}";
+
+  w.send(200, "application/json", out);
+}
+
 static void begin(WebServer& w){
   w.on("/settings", HTTP_GET,  [&w](){ handle_get(w);    });
   w.on("/settings", HTTP_POST, [&w](){ handle_post(w);   });
   w.on("/reboot",   HTTP_GET,  [&w](){ handle_reboot(w); });
   w.on("/api/ping/wifi", HTTP_GET, [&w](){ handle_ping_wifi(w); });
   w.on("/api/ping/core", HTTP_GET, [&w](){ handle_ping_core(w); });
+  w.on("/api/portal/discovery", HTTP_GET, [&w](){ handle_portal_discovery(w); });
 }
 
 } // namespace portal

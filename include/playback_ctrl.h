@@ -14,6 +14,81 @@
 #include "ui_screensaver.h"
 #include "ui_now_playing.h"
 
+// ---------------- asynchronous playback command queue ----------------
+struct TransportCmd {
+  char name[16];
+  int  volume;
+  bool is_volume;
+};
+
+static QueueHandle_t s_cmd_queue = nullptr;
+static TaskHandle_t  s_cmd_task  = nullptr;
+
+static void transport_worker_task(void* param){
+  TransportCmd cmd;
+  while(true){
+    if(xQueueReceive(s_cmd_queue, &cmd, portMAX_DELAY) == pdTRUE){
+      // Drain consecutive pending volume commands to coalesce rapid slider scrubs
+      while(cmd.is_volume && uxQueueMessagesWaiting(s_cmd_queue) > 0){
+        TransportCmd next_cmd;
+        if(xQueuePeek(s_cmd_queue, &next_cmd, 0) == pdTRUE && next_cmd.is_volume){
+          xQueueReceive(s_cmd_queue, &cmd, 0);
+        } else {
+          break;
+        }
+      }
+
+      if(cfg::device_id.length() == 0){
+        cfg::device_id = core::resolve_active_device_id(core::s_active_profile_idx);
+      }
+
+      if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+        if(cmd.is_volume){
+          core::player_control(cfg::core_url, cfg::device_id, "volume", cmd.volume);
+        } else {
+          core::player_control(cfg::core_url, cfg::device_id, cmd.name);
+        }
+      } else {
+        // Standalone Yoto Cloud mode
+        String ycmd, ypayload;
+        if(cmd.is_volume){
+          ycmd = "volume/set";
+          JsonDocument p; p["volume"] = cmd.volume; serializeJson(p, ypayload);
+        } else if(strcmp(cmd.name, "pause") == 0 || strcmp(cmd.name, "resume") == 0 || strcmp(cmd.name, "stop") == 0){
+          ycmd = String("card/") + cmd.name;
+        }
+        if(ycmd.length() > 0){
+          String path = String("/device-v2/") + cfg::device_id + "/command/" + ycmd;
+          String out;
+          yoto::post(path, ypayload.length() ? ypayload : String("{}"), out);
+        }
+      }
+    }
+  }
+}
+
+inline void init_transport_queue(){
+  if(!s_cmd_queue){
+    s_cmd_queue = xQueueCreate(8, sizeof(TransportCmd));
+    xTaskCreatePinnedToCore(transport_worker_task, "transport_cmd", 4096, nullptr, 3, &s_cmd_task, 0);
+  }
+}
+
+static void queue_cmd(const char* name, int volume = -1){
+  init_transport_queue();
+  TransportCmd cmd;
+  memset(&cmd, 0, sizeof(cmd));
+  strncpy(cmd.name, name, sizeof(cmd.name) - 1);
+  if(volume >= 0){
+    cmd.is_volume = true;
+    cmd.volume = volume;
+  } else {
+    cmd.is_volume = false;
+    cmd.volume = -1;
+  }
+  xQueueSend(s_cmd_queue, &cmd, 0);
+}
+
 // ---------------- now-playing screen + playback ----------------
 static int send_cmd(const char* name, const String& body){
   JsonDocument in;
@@ -236,11 +311,15 @@ static void np_toggle(){
   s_playing = !s_playing;
   np_set_playicon(); update_home_bar();
   lv_refr_now(lv_disp_get_default());
-  send_cmd(s_playing ? "resume" : "pause", "{}");
+  queue_cmd(s_playing ? "resume" : "pause");
 }
 void np_next(){ if(s_cur_ch < s_ch_count-1) np_goto_chapter(s_cur_ch+1); }
 void np_prev(){ if(s_cur_ch > 0)           np_goto_chapter(s_cur_ch-1); }
-void np_volume(int v){ s_vol=v; send_cmd("volume", String("{\"volume\":")+v+"}"); }
+void np_volume(int v){
+  if(v < 0) v = 0; if(v > cfg::vol_max) v = cfg::vol_max;
+  s_vol = v;
+  queue_cmd("volume", v);
+}
 
 static lv_obj_t* s_away_modal = nullptr;
 static int s_pending_away_ch = 0;

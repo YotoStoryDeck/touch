@@ -114,14 +114,17 @@ bool fetch_library_core(){
   if(core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count){
     prof_id = core::s_profiles[core::s_active_profile_idx].id;
   }
+  uint32_t t_cat0 = millis();
   bool ok = core::fetch_catalog(cfg::core_url, prof_id, add_core_card);
   if(!ok || s_card_count == 0){
     core::fetch_catalog(cfg::core_url, "default", add_core_card);
   }
+  log_msg("[CORE] Catalog loaded: %d cards for profile '%s' in %u ms", s_card_count, prof_id.c_str(), (unsigned)(millis() - t_cat0));
   sort_catalog_kiosk_order();
-  if(s_card_count > 0 && (!core::s_allow_profile_switch || core::s_profile_count <= 1)){
-    sd_prune_stale_covers(false);
-  }
+  // SD pruning deferred to idle/maintenance tab to eliminate boot freeze
+  // if(s_card_count > 0 && (!core::s_allow_profile_switch || core::s_profile_count <= 1)){
+  //   sd_prune_stale_covers(false);
+  // }
   sync_active_player_playback();
   return (s_card_count > 0);
 }
@@ -217,6 +220,7 @@ void load_thumbs(){
 
   // Immediate first-paint pass: load up to the first 8 visible tiles from MicroSD (~80ms)
   // so the initial viewport is populated immediately without triggering the ESP32 Watchdog Timer.
+  uint32_t t_th0 = millis();
   if(s_sd_ok){
     int preload_limit = (s_card_count < 8) ? s_card_count : 8;
     for(int i = 0; i < preload_limit; i++){
@@ -226,6 +230,7 @@ void load_thumbs(){
       }
     }
     lv_refr_now(lv_disp_get_default());
+    log_msg("[SD] Preloaded %d visible covers in %u ms", s_thumb_ok, (unsigned)(millis() - t_th0));
   }
 
   if(s_thumb_ok >= s_card_count){
@@ -239,6 +244,8 @@ void load_thumbs(){
 
 inline void thumb_load_step(){
   if(!s_thumbs_loading) return;
+  // Yield immediately if user is interacting with the screen (UI responsiveness always comes first!)
+  if(lv_disp_get_inactive_time(NULL) < 2000) return;
   // Load up to 4 SD-cached covers per loop() tick, or 1 network cover per tick, yielding to FreeRTOS/WDT
   int steps = 0;
   while(steps < 4){

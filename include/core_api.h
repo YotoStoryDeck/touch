@@ -144,7 +144,7 @@ inline bool register_device(const String& base_url, String& err_out){
     return false;
   }
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(6000);
+  http.setTimeout(1200);
 
   JsonDocument doc;
   doc["mac"]              = get_mac();
@@ -184,14 +184,14 @@ inline bool register_device(const String& base_url, String& err_out){
 }
 
 // 3. Fetch Device Config & Child Profiles
-inline bool fetch_config_and_profiles(const String& base_url){
+inline bool fetch_config_and_profiles(const String& base_url, bool prune_avatars = false){
   if(base_url.length() == 0) return false;
   WiFiClientSecure scli; WiFiClient pcli; HTTPClient http;
   if(!http_begin_url(http, scli, pcli, base_url + "/api/device/config?device_id=" + get_mac())) return false;
   if(s_access_token.length() > 0){
     http.addHeader("Authorization", String("Bearer ") + s_access_token);
   }
-  http.setTimeout(6000);
+  http.setTimeout(1200);
   int code = http.GET();
   if(code != 200){ http.end(); return false; }
 
@@ -209,44 +209,70 @@ inline bool fetch_config_and_profiles(const String& base_url){
     cfg::parent_pin = pin;
     cfg_changed = true;
   }
-  if(!doc["lock_player"].isNull()){
-    bool lp = (bool)doc["lock_player"];
-    if(cfg::lock_player != lp){ cfg::lock_player = lp; cfg_changed = true; }
-  }
   const char* lpid = doc["locked_player_id"];
   if(lpid && *lpid && cfg::locked_dev_id != lpid){
     cfg::locked_dev_id = lpid;
+    cfg::device_id = lpid;
+    cfg::lock_player = true;
     cfg_changed = true;
+  } else if(!doc["lock_player"].isNull()){
+    bool lp = (bool)doc["lock_player"];
+    if(cfg::lock_player != lp){ cfg::lock_player = lp; cfg_changed = true; }
   }
   if(!doc["settings"].isNull() && doc["settings"].is<JsonObject>()){
     JsonObject st = doc["settings"].as<JsonObject>();
-    if(!st["sleepTimerMin"].isNull())  { cfg::sleep_min = (int)st["sleepTimerMin"]; cfg_changed = true; }
-    if(!st["sleepTimerMode"].isNull()) { cfg::sleep_bedtime = (String((const char*)st["sleepTimerMode"]) != "always"); cfg_changed = true; }
-    if(!st["screensaverMin"].isNull()) { cfg::saver_min = (int)st["screensaverMin"]; cfg_changed = true; }
-    if(!st["clockSize"].isNull())      { cfg::saver_size = (int)st["clockSize"]; cfg_changed = true; }
-    if(!st["blockRemotePlayback"].isNull()){ cfg::block_remote = (bool)st["blockRemotePlayback"]; cfg_changed = true; }
+    if(!st["sleepTimerMin"].isNull()){
+      int sm = (int)st["sleepTimerMin"];
+      if(cfg::sleep_min != sm){ cfg::sleep_min = sm; cfg_changed = true; }
+    }
+    if(!st["sleepTimerMode"].isNull()){
+      bool sb = (String((const char*)st["sleepTimerMode"]) != "always");
+      if(cfg::sleep_bedtime != sb){ cfg::sleep_bedtime = sb; cfg_changed = true; }
+    }
+    if(!st["screensaverMin"].isNull()){
+      int smin = (int)st["screensaverMin"];
+      if(cfg::saver_min != smin){ cfg::saver_min = smin; cfg_changed = true; }
+    }
+    if(!st["clockSize"].isNull()){
+      int cs = (int)st["clockSize"];
+      if(cfg::saver_size != cs){ cfg::saver_size = cs; cfg_changed = true; }
+    }
+    if(!st["blockRemotePlayback"].isNull()){
+      bool br = (bool)st["blockRemotePlayback"];
+      if(cfg::block_remote != br){ cfg::block_remote = br; cfg_changed = true; }
+    }
     if(!st["bedtime"].isNull()){
       String bt = (const char*)st["bedtime"];
       int colon = bt.indexOf(':');
       if(colon > 0){
-        cfg::night_h = bt.substring(0, colon).toInt();
-        cfg::night_m = bt.substring(colon + 1).toInt();
-        cfg_changed = true;
+        int nh = bt.substring(0, colon).toInt();
+        int nm = bt.substring(colon + 1).toInt();
+        if(cfg::night_h != nh || cfg::night_m != nm){
+          cfg::night_h = nh; cfg::night_m = nm; cfg_changed = true;
+        }
       }
     }
     if(!st["wakeTime"].isNull()){
       String wt = (const char*)st["wakeTime"];
       int colon = wt.indexOf(':');
       if(colon > 0){
-        cfg::wake_h = wt.substring(0, colon).toInt();
-        cfg::wake_m = wt.substring(colon + 1).toInt();
-        cfg_changed = true;
+        int wh = wt.substring(0, colon).toInt();
+        int wm = wt.substring(colon + 1).toInt();
+        if(cfg::wake_h != wh || cfg::wake_m != wm){
+          cfg::wake_h = wh; cfg::wake_m = wm; cfg_changed = true;
+        }
       }
     }
   }
   if(cfg_changed) cfg::save();
 
   s_assigned_profile = (const char*)(doc["assigned_profile"] | "");
+  if(s_assigned_profile.length() > 0 && cfg::assigned_profile != s_assigned_profile){
+    cfg::assigned_profile = s_assigned_profile;
+    cfg_changed = true;
+  } else if(s_assigned_profile.length() == 0 && cfg::assigned_profile.length() > 0){
+    s_assigned_profile = cfg::assigned_profile;
+  }
   if(!doc["allow_profile_switch"].isNull()){
     s_allow_profile_switch = (bool)doc["allow_profile_switch"];
   } else {
@@ -335,8 +361,8 @@ inline bool fetch_config_and_profiles(const String& base_url){
     s_profile_count++;
   }
 
-  // Prune any superseded or deleted profile avatar .565 files from MicroSD
-  if(s_profile_count > 0){
+  // Prune any superseded or deleted profile avatar .565 files from MicroSD (only on explicit boot/maintenance)
+  if(prune_avatars && s_profile_count > 0){
     String valid_av_keys[MAX_PROFILES];
     for(int i = 0; i < s_profile_count; i++) valid_av_keys[i] = s_profiles[i].avatar_cache_key;
     sd_prune_stale_avatars(valid_av_keys, s_profile_count);
@@ -356,8 +382,11 @@ inline bool fetch_config_and_profiles(const String& base_url){
 
 // Kiosk parity: resolve best active player for a profile (or standalone)
 inline String resolve_active_device_id(int prof_idx){
-  if(cfg::lock_player && cfg::locked_dev_id.length() > 0){
+  if(cfg::locked_dev_id.length() > 0){
     return cfg::locked_dev_id;
+  }
+  if(cfg::device_id.length() > 0 && cfg::device_id != "unknown"){
+    return cfg::device_id;
   }
   if(cfg::op_mode != "core"){
     if(s_standalone_player_count > 0){
@@ -429,6 +458,7 @@ inline bool sync_device_settings(const String& base_url){
   doc["parent_pin"]       = cfg::parent_pin;
   doc["lock_player"]      = cfg::lock_player;
   doc["locked_player_id"] = cfg::locked_dev_id;
+  doc["assigned_profile"] = cfg::assigned_profile;
 
   JsonObject st = doc["settings"].to<JsonObject>();
   st["sleepTimerMin"]       = cfg::sleep_min;
@@ -540,7 +570,7 @@ inline int player_control(const String& base_url, const String& device_id, const
     if(s_access_token.length() > 0){
       http.addHeader("Authorization", String("Bearer ") + s_access_token);
     }
-    http.setTimeout(8000);
+    http.setTimeout(2500);
 
     String eff_dev = device_id;
     if(eff_dev.length() == 0) eff_dev = resolve_active_device_id(s_active_profile_idx);
