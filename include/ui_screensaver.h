@@ -48,7 +48,7 @@ static void saver_tick(){
   int night_t = cfg::night_h * 60 + cfg::night_m;
   bool night   = ok && ((now_m >= night_t) || (now_m < wake_t));
   bool morning = ok && !night && (now_m < wake_t + 120);
-  uint32_t col = night ? 0xE5352B : morning ? 0x3AB06A : 0xF2EDE0;
+  uint32_t col = night ? 0xE5352B : morning ? 0x00FF33 : 0xF2EDE0;
   if(now_m == s_sv_lastmin && col == s_sv_lastcol) return;   // only repaint on change —
   s_sv_lastmin = now_m; s_sv_lastcol = col;                  // this ticks at 1 Hz
   int hh = ok ? ((tmv.tm_hour + 11) % 12) + 1 : -1;

@@ -17,7 +17,7 @@ import { state } from '../state.js';
  *
  * Color rules:
  * - 🔴 Bedtime (night): 0xE5352B (#E5352B)
- * - 🟢 OK-to-Wake (morning wake_time -> wake_time + 120min): 0x3AB06A (#3AB06A)
+ * - 🟢 OK-to-Wake (morning wake_time -> wake_time + 120min): 0x00FF33 (#00FF33)
  * - ⚪ Daytime: 0xF2EDE0 (#F2EDE0)
  */
 
@@ -59,7 +59,7 @@ export const ScreensaverScreen = {
       color = '#E5352B'; // Red bedtime
       statusText = 'Bedtime';
     } else if (isMorning) {
-      color = '#3AB06A'; // Green OK-to-wake
+      color = '#00FF33'; // Bright stoplight green OK-to-wake
       statusText = 'OK to Wake';
     }
 
