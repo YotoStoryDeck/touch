@@ -319,8 +319,13 @@ static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
 static std::vector<PsramString, PsramVectorAlloc<PsramString>> s_series_group_names;
 static void series_tile_cb(lv_event_t* e){
   int g_idx = (int)(intptr_t)lv_event_get_user_data(e);
+  if(g_idx < 0 || g_idx >= (int)s_series_group_names.size()){
+    lv_obj_t* target = lv_event_get_current_target(e);
+    if(target) g_idx = (int)(intptr_t)lv_obj_get_user_data(target);
+  }
   if(g_idx >= 0 && g_idx < (int)s_series_group_names.size()){
     s_selected_series_filter = s_series_group_names[g_idx];
+    Serial.printf("[SERIES] Selected series: '%s' (idx %d)\n", s_selected_series_filter.c_str(), g_idx);
     populate_grid();
     lv_refr_now(lv_disp_get_default());
   }
@@ -343,7 +348,7 @@ static lv_obj_t* create_series_tile(lv_obj_t* parent, int elig_g_idx, const Psra
   lv_obj_set_style_translate_y(tile, 3, LV_STATE_PRESSED);
   lv_obj_set_style_opa(tile, LV_OPA_80, LV_STATE_PRESSED);
   lv_obj_set_user_data(tile, (void*)(intptr_t)elig_g_idx);
-  lv_obj_add_event_cb(tile, series_tile_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(tile, series_tile_cb, LV_EVENT_CLICKED, (void*)(intptr_t)elig_g_idx);
 
   if(rep_card_idx >= 0 && rep_card_idx < s_card_count){
     Card& rc = s_cards[rep_card_idx];
@@ -479,7 +484,9 @@ static void populate_grid(){
         bool match = cs.equalsIgnoreCase(sel_grp.c_str());
         if(!match){
           for(int ex = 0; ex < s_cards[i].extra_series_cnt; ex++){
-            if(strcasecmp(s_cards[i].extra_series[ex].c_str(), sel_grp.c_str()) == 0){ match = true; break; }
+            String es = s_cards[i].extra_series[ex].c_str();
+            es.trim();
+            if(es.equalsIgnoreCase(sel_grp.c_str())){ match = true; break; }
           }
         }
         if(match) m_idx.push_back(i);
