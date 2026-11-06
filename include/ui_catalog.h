@@ -46,7 +46,6 @@ static bool card_matches_active_tab(const Card& c){
   if(s_active_tab == TAB_SERIES) return (c.series.length() > 0);
   if(s_active_tab == TAB_RECENT){
     if(c.daily) return true;
-    if(c.is_highlight) return true;
     return is_played_past_7_days(c.lp);
   }
   if(s_active_tab == TAB_YOTO) return (!c.is_abs() || c.daily);
@@ -120,8 +119,9 @@ static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
     lv_obj_add_flag(title_lbl, LV_OBJ_FLAG_HIDDEN);
   }
 
-  // 1. Highlight Star Badge (top-left)
-  if(c.is_highlight){
+  // 1. Highlight Star Badge (top-left) - ONLY show in main Catalog tab, NOT in Series or Recently Played
+  bool show_star = c.is_highlight && (s_active_tab == TAB_ALL);
+  if(show_star){
     if(!star_lbl){
       star_lbl = lv_label_create(tile);
       lv_obj_set_user_data(star_lbl, (void*)1002);
@@ -642,12 +642,7 @@ static void populate_grid(){
       const Card& a = s_cards[ia];
       const Card& b = s_cards[ib];
       if(a.daily != b.daily) return a.daily;
-      bool a_lp = is_played_past_7_days(a.lp);
-      bool b_lp = is_played_past_7_days(b.lp);
-      if(a_lp && b_lp) return a.lp > b.lp; // newest played first
-      if(a_lp != b_lp) return a_lp;        // played items before non-played highlights
-      if(a.is_highlight != b.is_highlight) return a.is_highlight;
-      return a.sort_title < b.sort_title;
+      return a.lp > b.lp; // newest played first
     });
   }
 

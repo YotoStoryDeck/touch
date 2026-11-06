@@ -65,10 +65,9 @@ export const CatalogScreen = {
           </div>
         </div>
         <div class="nav-tabs">
-          <button class="tab-btn ${state.activeTab === 'all' ? 'active' : ''}" data-tab="all">All Books</button>
-          <button class="tab-btn ${state.activeTab === 'series' ? 'active' : ''}" data-tab="series">Series / Groups</button>
-          <button class="tab-btn ${state.activeTab === 'abs' ? 'active' : ''}" data-tab="abs">Audiobooks</button>
-          <button class="tab-btn ${state.activeTab === 'yoto' ? 'active' : ''}" data-tab="yoto">Yoto Cards</button>
+          <button class="tab-btn ${state.activeTab === 'all' ? 'active' : ''}" data-tab="all">Catalog</button>
+          <button class="tab-btn ${state.activeTab === 'series' ? 'active' : ''}" data-tab="series">Series</button>
+          <button class="tab-btn ${state.activeTab === 'recent' ? 'active' : ''}" data-tab="recent">Recently Played</button>
           
           <!-- Grown-Ups Screen Gear (Hold 2.5s) -->
           <button class="nav-gear-btn" data-act="gear-button" title="Hold for 2.5s to open Grown-ups settings">&#9881;</button>
@@ -150,7 +149,6 @@ export const CatalogScreen = {
         return `
           <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
             <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
-            ${c.is_highlight ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
             ${seqLabel ? `<span class="badge-seq">${Utils.esc(seqLabel)}</span>` : ''}
             ${c.source === 'abs' || c.type === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
           </div>
@@ -169,12 +167,45 @@ export const CatalogScreen = {
       `;
     }).join('');
   },
+  isPlayedPast7Days(lp) {
+    if (!lp) return false;
+    try {
+      const cutoff = Date.now() - (7 * 86400 * 1000);
+      const t = new Date(lp).getTime();
+      return !isNaN(t) && t >= cutoff;
+    } catch (e) {
+      return false;
+    }
+  },
   render() {
     if (state.activeTab === 'series') {
       return `
         ${this.renderTopNav()}
         <div class="grid-series">
           ${this.renderSeriesView()}
+        </div>
+        ${PlayerScreen.renderNowbar()}
+      `;
+    }
+    if (state.activeTab === 'recent') {
+      const recentItems = state.catalog.filter(c => {
+        if (c.daily) return true;
+        return this.isPlayedPast7Days(c.last_played_at);
+      });
+      recentItems.sort((a, b) => {
+        if (Boolean(a.daily) !== Boolean(b.daily)) return a.daily ? -1 : 1;
+        return (b.last_played_at || '').localeCompare(a.last_played_at || '');
+      });
+      const tiles = recentItems.map(c => `
+        <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
+          <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
+          ${c.source === 'abs' || c.type === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
+        </div>
+      `).join('');
+      return `
+        ${this.renderTopNav()}
+        <div class="grid">
+          ${tiles.length ? tiles : '<div style="padding:40px; color:#888; text-align:center;">No audiobooks played in the past 7 days.</div>'}
         </div>
         ${PlayerScreen.renderNowbar()}
       `;
@@ -194,7 +225,7 @@ export const CatalogScreen = {
     const tiles = filtered.map(c => `
       <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">
         <img src="${Utils.esc(c.cover || c.img)}" onerror="this.src='https://placehold.co/122x193/2b2622/ffffff?text=Book'">
-        ${c.is_highlight ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
+        ${(c.is_highlight && state.activeTab === 'all') ? '<span class="badge-star" title="Highlighted">★</span>' : ''}
         ${c.source === 'abs' || c.type === 'abs' ? '<span class="badge-abs">ABS</span>' : '<span class="badge-yoto">YOTO</span>'}
       </div>
     `).join('');
