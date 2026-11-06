@@ -6,15 +6,30 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'Release Tag (e.g. v1.0.0, v1.0.0-rc.1, v1.1.0-beta.1)'
+      bump:
+        description: 'Semantic Version Action'
         required: true
-        type: string
-      prerelease:
-        description: 'Mark as Pre-release?'
+        type: choice
+        options:
+          - 'current'
+          - 'patch'
+          - 'minor'
+          - 'major'
+          - 'custom'
+        default: 'current'
+      release_type:
+        description: 'Release Classification'
+        required: true
+        type: choice
+        options:
+          - 'pre-release (RC)'
+          - 'stable (Full Release)'
+        default: 'pre-release (RC)'
+      custom_tag:
+        description: 'Custom Tag (only evaluated if bump=custom)'
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -51,27 +66,14 @@ jobs:
       - name: Determine Tag & Release Classification
         id: meta
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.tag_name }}"
-            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
-            if [ "$IS_PRERELEASE" != "true" ] && [[ "$TAG" == *-* ]]; then
-              IS_PRERELEASE="true"
-            fi
-          else
-            TAG="${GITHUB_REF_NAME}"
-            if [[ "$TAG" == *-* ]]; then
-              IS_PRERELEASE="true"
-            else
-              IS_PRERELEASE="false"
-            fi
-          fi
-
-          # Strip any leading 'v' or 'V' (preventing duplication like 'vv1.0.0') and trim whitespace
-          CLEAN_VER=$(echo "${TAG}" | sed -E 's/^[[:space:]]*[vV]+//' | sed -E 's/[[:space:]]*$//')
-          TAG="v${CLEAN_VER}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
-          echo "Resolved Tag: ${TAG} (Pre-release: ${IS_PRERELEASE})"
+          git fetch --tags --force
+          python3 .github/scripts/calculate_version.py \
+            --repo-dir . \
+            --event "${{ github.event_name }}" \
+            --ref-name "${GITHUB_REF_NAME}" \
+            --bump "${{ github.event.inputs.bump }}" \
+            --release-type "${{ github.event.inputs.release_type }}" \
+            --custom-tag "${{ github.event.inputs.custom_tag }}"
 
       - name: Configure Firmware Build Seeds
         run: |
@@ -90,58 +92,19 @@ jobs:
           cp .pio/build/waveshare-s3-43b/bootloader.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-bootloader.bin || true
           cp .pio/build/waveshare-s3-43b/partitions.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-partitions.bin || true
 
-      - name: Generate Changelog & Release Notes
-        id: changelog
+      - name: Prepare Release Notes Banner
+        id: notes
         run: |
-          git fetch --tags --force
-
-          TAG="${{ steps.meta.outputs.tag }}"
           IS_PRERELEASE="${{ steps.meta.outputs.prerelease }}"
-
-          echo "Resolving previous tag for changelog comparison..."
-          if [ "${IS_PRERELEASE}" = "true" ]; then
-            # Pre-release: Compare against the immediate previous tag (stable or pre-release)
-            PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n 1 || true)
-            echo "Pre-release: Previous tag resolved to '${PREV_TAG:-none}'"
-          else
-            # Full release: Compare against previous full/stable release (exclude pre-releases with '-')
-            PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -n 1 || true)
-            echo "Full release: Previous stable tag resolved to '${PREV_TAG:-none}'"
-          fi
-
           NOTES_FILE="release_notes.md"
           rm -f "${NOTES_FILE}"
 
-          # Mimic donetick pre-release warning callout
           if [ "${IS_PRERELEASE}" = "true" ]; then
             echo "> [!WARNING]" >> "${NOTES_FILE}"
             echo "> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions." >> "${NOTES_FILE}"
             echo "" >> "${NOTES_FILE}"
           fi
-
-          echo "## Changelog" >> "${NOTES_FILE}"
-
-          if [ -n "${PREV_TAG}" ]; then
-            COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"* %H: %s (@%an)")
-            if [ -n "${COMMITS}" ]; then
-              echo "${COMMITS}" >> "${NOTES_FILE}"
-            else
-              echo "* Maintenance release / no commit delta" >> "${NOTES_FILE}"
-            fi
-            echo "" >> "${NOTES_FILE}"
-            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}" >> "${NOTES_FILE}"
-          else
-            COMMITS=$(git log --pretty=format:"* %H: %s (@%an)")
-            if [ -n "${COMMITS}" ]; then
-              echo "${COMMITS}" >> "${NOTES_FILE}"
-            else
-              echo "* Initial release" >> "${NOTES_FILE}"
-            fi
-            echo "" >> "${NOTES_FILE}"
-          fi
-
-          echo "Generated release notes:"
-          cat "${NOTES_FILE}"
+          touch "${NOTES_FILE}"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -151,6 +114,7 @@ jobs:
           name: ${{ steps.meta.outputs.tag }}
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           draft: false
+          generate_release_notes: true
           body_path: release_notes.md
           files: |
             dist/*
