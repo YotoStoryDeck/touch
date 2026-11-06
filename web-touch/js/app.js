@@ -166,12 +166,12 @@ Are you sure you want to start audio playback on this remote player?`);
   },
   syncActiveDevicePlayback() {
     const dev = state.activeDevice;
+    if (dev && dev.volume != null) {
+      state.volume = Math.min(dev.volume_max != null ? dev.volume_max : 100, dev.volume);
+    }
     const hasCard = dev && (dev.has_card || dev.is_playing || dev.now_playing || dev.item_id);
     if (hasCard) {
       state.isPlaying = Boolean(dev.is_playing);
-      if (dev.volume != null) {
-        state.volume = Math.min(dev.volume_max != null ? dev.volume_max : 100, dev.volume);
-      }
       // Find matching item in catalog by ID or Title
       const matched = state.catalog.find(c => 
         (dev.item_id && (c.id === dev.item_id || c.cardId === dev.item_id)) ||

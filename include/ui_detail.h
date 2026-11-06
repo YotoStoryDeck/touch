@@ -48,11 +48,8 @@ static void detail_fill_chapters(lv_obj_t* list){
     lv_obj_set_user_data(row, (void*)(intptr_t)k);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(row, [](lv_event_t* e){
-      lv_event_code_t code = lv_event_get_code(e);
-      if(code == LV_EVENT_CLICKED || code == LV_EVENT_SHORT_CLICKED){
-        play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
-      }
-    }, LV_EVENT_ALL, NULL);
+      play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
+    }, LV_EVENT_CLICKED, NULL);
 
     bool is_ch_active = (s_playing && s_play_card == s_cur_card && s_play_ch == k);
     if(is_ch_active){
@@ -98,12 +95,9 @@ static void detail_fill_chapters(lv_obj_t* list){
     lv_obj_clear_flag(ch_play, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_set_user_data(ch_play, (void*)(intptr_t)k);
     lv_obj_add_event_cb(ch_play, [](lv_event_t* e){
-      lv_event_code_t code = lv_event_get_code(e);
-      if(code == LV_EVENT_CLICKED || code == LV_EVENT_SHORT_CLICKED){
-        lv_event_stop_bubbling(e);
-        play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
-      }
-    }, LV_EVENT_ALL, NULL);
+      lv_event_stop_bubbling(e);
+      play_from((int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e)));
+    }, LV_EVENT_CLICKED, NULL);
     lv_obj_t* ch_pi = lv_label_create(ch_play);
     lv_label_set_text(ch_pi, LV_SYMBOL_PLAY);
     lv_obj_set_style_text_font(ch_pi, &lv_font_montserrat_16, 0);

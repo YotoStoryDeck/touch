@@ -126,7 +126,7 @@ export const PlayerScreen = {
                   </div>
                 </div>
                 <span class="vol-btn" data-act="vol-up" title="Volume Up">&#128266;</span>
-                <span class="vol-text">${vol}%</span>
+                <span class="vol-text">${vol}%${devMaxVol < 100 ? ` (Max ${devMaxVol}%)` : ''}</span>
               </span>
             </div>
           </div>

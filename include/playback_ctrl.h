@@ -405,6 +405,12 @@ static void show_away_confirm_modal(const String& player_name, int chapterIdx){
 
 static void play_from(int chapterIdx){
   if(s_cur_card < 0) return;
+  static uint32_t s_last_play_click_t = 0;
+  if(millis() - s_last_play_click_t < 800){
+    Serial.printf("[PLAY] Suppressed duplicate play_from(%d) debounce\n", chapterIdx);
+    return;
+  }
+  s_last_play_click_t = millis();
   // Away / Traveling Player Guard (Kiosk initiatePlayback parity: Block vs Confirm Prompt)
   const core::PlayerInfo* target_pi = core::find_player_info(cfg::device_id);
   if(target_pi && target_pi->online && !target_pi->is_home){

@@ -227,6 +227,9 @@ static lv_obj_t* s_np_playicon=nullptr;
 static lv_obj_t* s_np_chapter=nullptr;
 static lv_obj_t* s_np_sleep=nullptr;        // "Zz 23m" sleep-timer chip on the now screen
 static lv_obj_t* s_np_vol_slider=nullptr;   // active volume slider widget on now-playing
+static lv_obj_t* s_np_vol_limit=nullptr;    // parent volume ceiling indicator overlay
+static lv_obj_t* s_np_vol_label=nullptr;    // volume percentage and limiter label
+void np_update_vol_ui();
 static String s_play_cover="";              // live cover URL for currently active media / external cards
 static String s_play_item_id="";            // item/card ID for active media
 static int  s_play_dur=0;                   // duration (s) of the chapter actually playing
@@ -377,7 +380,7 @@ inline String get_active_player_name(){
 }
 
 inline void go_home(){
-  s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=s_np_vol_slider=nullptr;
+  s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=s_np_vol_slider=s_np_vol_limit=s_np_vol_label=nullptr;
   s_set_sleep_lbl=nullptr;
   s_detail_play_lbl=nullptr;
   s_detail_bar=nullptr;
@@ -413,15 +416,10 @@ inline void sync_active_player_playback(){
   const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
   if(!pi) return;
   int vmax = get_active_player_vol_max();
-  if(pi->volume > 0){
+  if(pi->volume >= 0){
     s_vol = pi->volume < vmax ? pi->volume : vmax;
   }
-  if(s_np_vol_slider){
-    lv_slider_set_range(s_np_vol_slider, 0, vmax);
-    if(!lv_obj_has_state(s_np_vol_slider, LV_STATE_EDITED) && !lv_obj_has_state(s_np_vol_slider, LV_STATE_FOCUSED)){
-      lv_slider_set_value(s_np_vol_slider, s_vol > vmax ? vmax : s_vol, LV_ANIM_OFF);
-    }
-  }
+  np_update_vol_ui();
   bool has_media = (pi->is_playing || pi->has_card || pi->item_id.length() > 0 || pi->now_playing.length() > 0);
   if(has_media){
     s_playing = pi->is_playing;

@@ -336,6 +336,18 @@
   border-radius: 999px;
   box-shadow: 0 0 6px rgba(255,255,255,0.6);
   pointer-events: none;
+  z-index: 1;
+}
+
+.volbar-limit {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(239, 68, 68, 0.45);
+  border-radius: 0 999px 999px 0;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .volbar-thumb {
@@ -348,16 +360,7 @@
   border-radius: 50%;
   box-shadow: 0 2px 6px rgba(0,0,0,0.5);
   pointer-events: none;
-}
-
-.volbar-limit {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: rgba(239, 68, 68, 0.45);
-  border-radius: 0 999px 999px 0;
-  pointer-events: none;
+  z-index: 3;
 }
 
 .vol-text {

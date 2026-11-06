@@ -132,6 +132,8 @@ void net_init_and_fetch(){
             pi.name    = (const char*)(d["name"] | "Yoto Player");
             pi.online  = (bool)(d["online"] | false);
             pi.is_home = pi.online;
+            pi.volume  = (int)(d["volume"] | 50);
+            pi.volume_max = (int)(d["volume_max"] | 100);
           }
         }
         free(body);

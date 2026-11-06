@@ -8,14 +8,42 @@
 void np_next();
 void np_prev();
 
-static void np_update_progress(){
+void np_update_vol_ui(){
+  int vmax = get_active_player_vol_max();
+  if(vmax < 0) vmax = 100;
+  if(vmax > 100) vmax = 100;
+  if(s_vol > vmax) s_vol = vmax;
+  if(s_vol < 0) s_vol = 0;
+
   if(s_np_vol_slider){
-    int vmax = get_active_player_vol_max();
-    lv_slider_set_range(s_np_vol_slider, 0, vmax);
-    if(!lv_obj_has_state(s_np_vol_slider, LV_STATE_EDITED) && !lv_obj_has_state(s_np_vol_slider, LV_STATE_FOCUSED)){
-      lv_slider_set_value(s_np_vol_slider, s_vol > vmax ? vmax : s_vol, LV_ANIM_OFF);
+    lv_slider_set_range(s_np_vol_slider, 0, 100);
+    if(!lv_obj_has_state(s_np_vol_slider, LV_STATE_PRESSED) && !lv_obj_has_state(s_np_vol_slider, LV_STATE_EDITED)){
+      lv_slider_set_value(s_np_vol_slider, s_vol, LV_ANIM_OFF);
     }
   }
+  if(s_np_vol_limit){
+    if(vmax < 100){
+      int track_w = 260;
+      int cap_w = track_w - (track_w * vmax / 100);
+      int cap_x = 224 + 44 + (track_w * vmax / 100);
+      lv_obj_set_pos(s_np_vol_limit, cap_x, 292 + 112);
+      lv_obj_set_size(s_np_vol_limit, cap_w, 16);
+      lv_obj_clear_flag(s_np_vol_limit, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(s_np_vol_limit, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if(s_np_vol_label){
+    if(vmax < 100){
+      lv_label_set_text_fmt(s_np_vol_label, "%d%% (Max %d%%)", s_vol, vmax);
+    } else {
+      lv_label_set_text_fmt(s_np_vol_label, "%d%%", s_vol);
+    }
+  }
+}
+
+static void np_update_progress(){
+  np_update_vol_ui();
   if(!s_np_barfill) return;
   int dur = s_play_dur;
   int pct = dur>0 ? (int)(100L*s_pos/dur) : 0;
@@ -214,10 +242,8 @@ static void open_now(){
   lv_obj_set_pos(vi, ix, cy+108);
   lv_obj_t* slider=lv_slider_create(scr);
   lv_obj_set_size(slider, 260, 16); lv_obj_set_pos(slider, ix+44, cy+112);
-  // the parent-set cap IS the top of the slider — full-right now means "as loud as allowed",
-  // instead of showing 100 while the command silently clamps to the cap
   int vmax = get_active_player_vol_max();
-  lv_slider_set_range(slider, 0, vmax);
+  lv_slider_set_range(slider, 0, 100);
   lv_slider_set_value(slider, s_vol > vmax ? vmax : s_vol, LV_ANIM_OFF);
   s_np_vol_slider = slider;
   lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
@@ -225,9 +251,44 @@ static void open_now(){
   lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
   lv_obj_set_style_pad_all(slider, 10, LV_PART_KNOB);   // grow the knob (~36px) so it's easy to grab
+
+  // Parent volume ceiling overlay (red zone on slider track from vmax to 100)
+  lv_obj_t* limit_bar = lv_obj_create(scr);
+  lv_obj_set_style_bg_color(limit_bar, lv_color_hex(0xEF4444), 0);
+  lv_obj_set_style_bg_opa(limit_bar, LV_OPA_70, 0);
+  lv_obj_set_style_border_width(limit_bar, 0, 0);
+  lv_obj_set_style_radius(limit_bar, 6, 0);
+  lv_obj_clear_flag(limit_bar, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  s_np_vol_limit = limit_bar;
+
+  // Volume text label: "50% (Max 75%)" or "50%"
+  lv_obj_t* vlbl = lv_label_create(scr);
+  lv_obj_set_pos(vlbl, ix + 44 + 260 + 16, cy + 110);
+  lv_obj_set_style_text_font(vlbl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(vlbl, lv_color_hex(0xFFFFFF), 0);
+  s_np_vol_label = vlbl;
+
   lv_obj_add_event_cb(slider, [](lv_event_t* e){
-    np_volume(lv_slider_get_value(lv_event_get_target(e)));
-  }, LV_EVENT_RELEASED, NULL);
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t* sl = lv_event_get_target(e);
+    int val = lv_slider_get_value(sl);
+    int maxv = get_active_player_vol_max();
+    if(val > maxv){
+      val = maxv;
+      lv_slider_set_value(sl, maxv, LV_ANIM_OFF);
+    }
+    s_vol = val;
+    if(s_np_vol_label){
+      if(maxv < 100){
+        lv_label_set_text_fmt(s_np_vol_label, "%d%% (Max %d%%)", val, maxv);
+      } else {
+        lv_label_set_text_fmt(s_np_vol_label, "%d%%", val);
+      }
+    }
+    if(code == LV_EVENT_RELEASED){
+      np_volume(val);
+    }
+  }, LV_EVENT_ALL, NULL);
 
   np_update_progress();
 

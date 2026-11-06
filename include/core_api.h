@@ -389,11 +389,8 @@ inline bool fetch_config_and_profiles(const String& base_url, bool prune_avatars
 
 // Kiosk parity: resolve best active player for a profile (or standalone)
 inline String resolve_active_device_id(int prof_idx){
-  if(cfg::locked_dev_id.length() > 0){
+  if(cfg::lock_player && cfg::locked_dev_id.length() > 0){
     return cfg::locked_dev_id;
-  }
-  if(cfg::device_id.length() > 0 && cfg::device_id != "unknown"){
-    return cfg::device_id;
   }
   if(cfg::op_mode != "core"){
     if(s_standalone_player_count > 0){
@@ -407,7 +404,10 @@ inline String resolve_active_device_id(int prof_idx){
     }
     return cfg::device_id;
   }
-  if(prof_idx < 0 || prof_idx >= s_profile_count) return cfg::device_id;
+  if(prof_idx < 0 || prof_idx >= s_profile_count){
+    if(cfg::device_id.length() > 0 && cfg::device_id != "unknown") return cfg::device_id;
+    return cfg::device_id;
+  }
   const Profile& pr = s_profiles[prof_idx];
   for(int i = 0; i < pr.player_count; i++){
     if(pr.players[i].is_playing) return pr.players[i].id;
