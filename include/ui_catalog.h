@@ -81,9 +81,63 @@ static void tab_btn_cb(lv_event_t* e){
 static lv_obj_t* s_top_dev_lbl = nullptr;
 static lv_obj_t* s_top_dev_dot = nullptr;
 
+// Returns the resolved sequence float and display string for a card in the given series context
+static void get_card_seq_info(const Card& c, const PsramString& target_grp, float& out_seq, String& out_disp){
+  out_seq = -1.0f;
+  out_disp = "";
+
+  PsramString cs = c.series; cs.trim();
+  if(cs.length() == 0) cs = "Standalone & Singles";
+
+  // 1. Check primary series if target_grp matches or if target_grp is empty
+  if(target_grp.length() == 0 || cs.equalsIgnoreCase(target_grp)){
+    if(c.sequence >= 0.0f) out_seq = c.sequence;
+    if(c.seq_display.length() > 0) out_disp = c.seq_display.c_str();
+  }
+
+  // 2. Check extra_series
+  for(int ex = 0; ex < c.extra_series_cnt; ex++){
+    if(c.extra_series[ex].equalsIgnoreCase(target_grp)){
+      if(c.extra_seq[ex] >= 0.0f) out_seq = c.extra_seq[ex];
+      if(c.extra_seq_disp[ex].length() > 0) out_disp = c.extra_seq_disp[ex].c_str();
+      break;
+    }
+  }
+
+  // 3. Fallback to primary if target_grp had no sequence
+  if(out_seq < 0.0f && out_disp.length() == 0){
+    if(c.sequence >= 0.0f) out_seq = c.sequence;
+    if(c.seq_display.length() > 0) out_disp = c.seq_display.c_str();
+  }
+
+  // 4. Parse from out_disp to float if out_seq is still < 0
+  if(out_seq < 0.0f && out_disp.length() > 0){
+    for(size_t i = 0; i < out_disp.length(); i++){
+      if(out_disp[i] >= '0' && out_disp[i] <= '9'){
+        out_seq = out_disp.substring(i).toFloat();
+        break;
+      }
+    }
+  }
+
+  // 5. Title fallback for #<num> (e.g. Captain Underpants #01, Star Wars #0-3)
+  if(out_seq < 0.0f && out_disp.length() == 0){
+    String t = c.title.c_str();
+    int hash_pos = t.indexOf('#');
+    if(hash_pos >= 0){
+      int end_pos = hash_pos + 1;
+      while(end_pos < (int)t.length() && (isDigit(t[end_pos]) || t[end_pos] == '.' || t[end_pos] == '-')) end_pos++;
+      if(end_pos > hash_pos + 1){
+        out_disp = t.substring(hash_pos + 1, end_pos);
+        out_seq = out_disp.toFloat();
+      }
+    }
+  }
+}
+
 // Add Kiosk badges (ABS / YOTO source badge, ★ highlight badge, #sequence badge, and optional title fallback)
 // Optimized to reuse existing child objects and avoid lv_obj_clean churn / memory fragmentation
-static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
+static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq, int seq_pos){
   if(!tile || card_idx < 0 || card_idx >= s_card_count) return;
   const Card& c = s_cards[card_idx];
   bool has_cover = (c.pool_slot >= 0 && s_thumb_pool[c.pool_slot].buf != nullptr);
@@ -143,34 +197,46 @@ static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
     lv_obj_add_flag(star_lbl, LV_OBJ_FLAG_HIDDEN);
   }
 
-  // 2. Sequence Badge in Series view (top-right)
-  bool has_seq = (c.seq_display.length() > 0 || c.sequence >= 0.0f);
-  if(show_seq && has_seq){
-    String s_txt;
-    if(c.seq_display.length() > 0){
-      s_txt = c.seq_display.startsWith("#") ? String(c.seq_display.c_str()) : (String("#") + c.seq_display.c_str());
-    } else {
-      int iv = (int)c.sequence;
-      if(fabsf(c.sequence - (float)iv) < 0.01f) s_txt = String("#") + String(iv);
-      else s_txt = String("#") + String(c.sequence, 1);
+  // 2. Sequence Badge in Series Level 2 view (top-right)
+  if(show_seq && s_active_tab == TAB_SERIES && s_selected_series_filter.length() > 0){
+    float cur_seq = -1.0f;
+    String cur_disp = "";
+    get_card_seq_info(c, s_selected_series_filter, cur_seq, cur_disp);
+
+    String s_txt = "";
+    if(cur_disp.length() > 0){
+      s_txt = cur_disp.startsWith("#") ? cur_disp : (String("#") + cur_disp);
+    } else if(cur_seq >= 0.0f){
+      int iv = (int)cur_seq;
+      if(fabsf(cur_seq - (float)iv) < 0.01f) s_txt = String("#") + String(iv);
+      else s_txt = String("#") + String(cur_seq, 1);
+    } else if(seq_pos > 0){
+      s_txt = String("#") + String(seq_pos);
+    } else if(seq_lbl && !lv_obj_has_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN)){
+      s_txt = lv_label_get_text(seq_lbl);
     }
-    if(!seq_lbl){
-      seq_lbl = lv_label_create(tile);
-      lv_obj_set_user_data(seq_lbl, (void*)1003);
-      lv_obj_set_style_text_font(seq_lbl, &lv_font_montserrat_14, 0);
-      lv_obj_set_style_text_color(seq_lbl, lv_color_hex(0xFFFFFF), 0);
-      lv_obj_set_style_bg_color(seq_lbl, lv_color_hex(0x1E293B), 0);
-      lv_obj_set_style_bg_opa(seq_lbl, LV_OPA_90, 0);
-      lv_obj_set_style_radius(seq_lbl, 6, 0);
-      lv_obj_set_style_pad_left(seq_lbl, 6, 0);
-      lv_obj_set_style_pad_right(seq_lbl, 6, 0);
-      lv_obj_set_style_pad_top(seq_lbl, 2, 0);
-      lv_obj_set_style_pad_bottom(seq_lbl, 2, 0);
-      lv_obj_clear_flag(seq_lbl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_align(seq_lbl, LV_ALIGN_TOP_RIGHT, -6, 6);
+
+    if(s_txt.length() > 0){
+      if(!seq_lbl){
+        seq_lbl = lv_label_create(tile);
+        lv_obj_set_user_data(seq_lbl, (void*)1003);
+        lv_obj_set_style_text_font(seq_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(seq_lbl, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_bg_color(seq_lbl, lv_color_hex(0x1E293B), 0);
+        lv_obj_set_style_bg_opa(seq_lbl, LV_OPA_90, 0);
+        lv_obj_set_style_radius(seq_lbl, 6, 0);
+        lv_obj_set_style_pad_left(seq_lbl, 6, 0);
+        lv_obj_set_style_pad_right(seq_lbl, 6, 0);
+        lv_obj_set_style_pad_top(seq_lbl, 2, 0);
+        lv_obj_set_style_pad_bottom(seq_lbl, 2, 0);
+        lv_obj_clear_flag(seq_lbl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(seq_lbl, LV_ALIGN_TOP_RIGHT, -6, 6);
+      }
+      lv_label_set_text(seq_lbl, s_txt.c_str());
+      lv_obj_clear_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN);
+    } else if(seq_lbl){
+      lv_obj_add_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_label_set_text(seq_lbl, s_txt.c_str());
-    lv_obj_clear_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN);
   } else if(seq_lbl){
     lv_obj_add_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN);
   }
@@ -223,7 +289,7 @@ static int acquire_thumb_slot(int card_idx){
       s_cards[old_idx].pool_slot = -1;
       if(s_cards[old_idx].tile && lv_obj_is_valid(s_cards[old_idx].tile)){
         lv_obj_set_style_bg_img_src(s_cards[old_idx].tile, NULL, 0);
-        decorate_tile(s_cards[old_idx].tile, old_idx, s_active_tab == TAB_SERIES);
+        decorate_tile(s_cards[old_idx].tile, old_idx, s_active_tab == TAB_SERIES && s_selected_series_filter.length() > 0);
         lv_obj_invalidate(s_cards[old_idx].tile);
       }
     }
@@ -259,7 +325,7 @@ bool load_thumb_for_card(int card_idx, bool force_refr){
 
   if(c.tile && lv_obj_is_valid(c.tile)){
     lv_obj_set_style_bg_img_src(c.tile, &s_thumb_pool[slot].dsc, 0);
-    if(s_active_tab != TAB_SERIES || s_selected_series_filter.length() > 0) decorate_tile(c.tile, card_idx, s_active_tab == TAB_SERIES);
+    if(s_active_tab != TAB_SERIES || s_selected_series_filter.length() > 0) decorate_tile(c.tile, card_idx, s_active_tab == TAB_SERIES && s_selected_series_filter.length() > 0);
     lv_obj_invalidate(c.tile);
   }
 
@@ -325,7 +391,7 @@ inline bool stream_visible_uncached_thumb(){
   return false;
 }
 
-static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
+static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq, int seq_pos = -1){
   Card& c = s_cards[i];
   lv_obj_t* tile = lv_obj_create(parent);
   lv_obj_set_size(tile, THUMB_W, THUMB_H);
@@ -345,7 +411,7 @@ static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
   } else {
     lv_obj_set_style_bg_img_src(tile, NULL, 0);
   }
-  decorate_tile(tile, i, show_seq);
+  decorate_tile(tile, i, show_seq, seq_pos);
   return tile;
 }
 
@@ -453,28 +519,11 @@ static void populate_grid(){
     rep_idx.clear();
     m_idx.clear();
 
-    auto parse_disp_seq = [](const PsramString& sd) -> float {
-      for(size_t i = 0; i < sd.length(); i++){
-        if(sd[i] >= '0' && sd[i] <= '9') return sd.substring(i).toFloat();
-      }
-      return -1.0f;
-    };
     auto card_seq_in_group = [&](const Card& c, const PsramString& grp) -> float {
-      PsramString cs = c.series; cs.trim();
-      if(cs.length() == 0) cs = "Standalone & Singles";
-      if(cs.equalsIgnoreCase(grp)){
-        if(c.sequence >= 0.0f) return c.sequence;
-        float p = parse_disp_seq(c.seq_display);
-        return p >= 0.0f ? p : 999999.0f;
-      }
-      for(int ex = 0; ex < c.extra_series_cnt; ex++){
-        if(c.extra_series[ex].equalsIgnoreCase(grp)){
-          if(c.extra_seq[ex] >= 0.0f) return c.extra_seq[ex];
-          float p = parse_disp_seq(c.extra_seq_disp[ex]);
-          return p >= 0.0f ? p : 999999.0f;
-        }
-      }
-      return 999999.0f;
+      float seq = -1.0f;
+      String disp;
+      get_card_seq_info(c, grp, seq, disp);
+      return (seq >= 0.0f) ? seq : 999999.0f;
     };
 
     auto add_to_group = [&](const PsramString& raw_name, int card_index){
@@ -524,21 +573,15 @@ static void populate_grid(){
         }
         if(match) m_idx.push_back(i);
       }
+      std::sort(m_idx.begin(), m_idx.end(), [&](int idx_a, int idx_b){
+        const Card& ca = s_cards[idx_a];
+        const Card& cb = s_cards[idx_b];
+        float sa = card_seq_in_group(ca, sel_grp);
+        float sb = card_seq_in_group(cb, sel_grp);
+        if(sa != sb) return sa < sb;
+        return ca.sort_title < cb.sort_title;
+      });
       int m_cnt = (int)m_idx.size();
-      for(int a = 0; a < m_cnt; a++){
-        for(int b = a + 1; b < m_cnt; b++){
-          const Card& ca = s_cards[m_idx[a]];
-          const Card& cb = s_cards[m_idx[b]];
-          float sa = card_seq_in_group(ca, sel_grp);
-          float sb = card_seq_in_group(cb, sel_grp);
-          bool swap_it = false;
-          if(sb != sa) swap_it = (sb < sa);
-          else swap_it = (cb.sort_title < ca.sort_title);
-          if(swap_it){
-            int tmp = m_idx[a]; m_idx[a] = m_idx[b]; m_idx[b] = tmp;
-          }
-        }
-      }
 
       // Level 2 Header Row with Back Button
       lv_obj_t* hdr = lv_obj_create(s_grid);
@@ -582,7 +625,7 @@ static void populate_grid(){
       lv_obj_set_style_text_color(hcnt, lv_color_hex(0x8A8276), 0);
 
       for(int k = 0; k < m_cnt; k++){
-        create_card_tile(s_grid, m_idx[k], true);
+        create_card_tile(s_grid, m_idx[k], true, k + 1);
       }
       lv_obj_update_layout(s_grid);
       return;

@@ -101,10 +101,19 @@ export const CatalogScreen = {
             if (!groups.has(groupName)) {
               groups.set(groupName, []);
             }
+            let gSeq = entry.sequence != null ? entry.sequence : item.sequence;
+            let gDisp = entry.sequence_display || item.sequence_display || (entry.sequence != null ? String(entry.sequence) : (item.sequence != null ? String(item.sequence) : null));
+            if (gSeq == null && !gDisp) {
+              const m = (item.title || '').match(/#(\d+(?:\.\d+)?)/);
+              if (m) {
+                gSeq = parseFloat(m[1]);
+                gDisp = m[1];
+              }
+            }
             groups.get(groupName).push({
               ...item,
-              groupSequence: entry.sequence != null ? entry.sequence : item.sequence,
-              groupSequenceDisplay: entry.sequence_display || item.sequence_display || (entry.sequence != null ? String(entry.sequence) : (item.sequence != null ? String(item.sequence) : null))
+              groupSequence: gSeq,
+              groupSequenceDisplay: gDisp
             });
           }
         });
@@ -139,12 +148,14 @@ export const CatalogScreen = {
         }
         return this.cleanTitle(a.title).localeCompare(this.cleanTitle(b.title));
       });
-      const tiles = items.map(c => {
+      const tiles = items.map((c, index) => {
         let seqLabel = '';
         if (c.groupSequenceDisplay) {
           seqLabel = c.groupSequenceDisplay.startsWith('#') ? c.groupSequenceDisplay : `#${c.groupSequenceDisplay}`;
         } else if (c.groupSequence != null) {
           seqLabel = `#${c.groupSequence % 1 === 0 ? c.groupSequence : c.groupSequence.toFixed(1)}`;
+        } else {
+          seqLabel = `#${index + 1}`;
         }
         return `
           <div class="tile" data-card="${Utils.esc(c.id || c.cardId)}" title="${Utils.esc(c.title)}">

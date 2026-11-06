@@ -101,15 +101,53 @@ static void add_core_card(const String& id, const String& title, const String& a
   c.seq_display      = seq_disp.c_str();
   c.has_physical     = has_phys;
   c.extra_series_cnt = 0;
-  if(!series_list.isNull() && series_list.size() > 1){
-    for(size_t si = 1; si < series_list.size() && c.extra_series_cnt < 2; si++){
+  if(!series_list.isNull() && series_list.size() > 0){
+    for(size_t si = 0; si < series_list.size(); si++){
       String sname = (const char*)(series_list[si]["name"] | "");
       sname.trim();
-      if(sname.length() > 0 && !sname.equalsIgnoreCase(series)){
-        int idx = c.extra_series_cnt++;
-        c.extra_series[idx]   = sname.c_str();
-        c.extra_seq[idx]      = series_list[si]["sequence"].isNull() ? seq : (float)series_list[si]["sequence"];
-        c.extra_seq_disp[idx] = (const char*)(series_list[si]["sequence_display"] | seq_disp.c_str());
+      if(sname.length() == 0) continue;
+
+      float s_seq = -1.0f;
+      if(!series_list[si]["sequence"].isNull()){
+        s_seq = (float)series_list[si]["sequence"];
+      }
+      String s_disp = (const char*)(series_list[si]["sequence_display"] | "");
+      s_disp.trim();
+
+      if(sname.equalsIgnoreCase(series) || c.series.length() == 0){
+        if(c.series.length() == 0) c.series = sname.c_str();
+        if(c.sequence < 0.0f && s_seq >= 0.0f) c.sequence = s_seq;
+        if(c.seq_display.length() == 0 && s_disp.length() > 0) c.seq_display = s_disp.c_str();
+      } else {
+        bool already = false;
+        for(int ex = 0; ex < c.extra_series_cnt; ex++){
+          if(c.extra_series[ex].equalsIgnoreCase(sname.c_str())){
+            already = true;
+            if(c.extra_seq[ex] < 0.0f && s_seq >= 0.0f) c.extra_seq[ex] = s_seq;
+            if(c.extra_seq_disp[ex].length() == 0 && s_disp.length() > 0) c.extra_seq_disp[ex] = s_disp.c_str();
+            break;
+          }
+        }
+        if(!already && c.extra_series_cnt < Card::MAX_EXTRA_SERIES){
+          int idx = c.extra_series_cnt++;
+          c.extra_series[idx]   = sname.c_str();
+          c.extra_seq[idx]      = s_seq;
+          c.extra_seq_disp[idx] = s_disp.c_str();
+        }
+      }
+    }
+  }
+
+  // Title fallback parsing if sequence is still missing
+  if(c.sequence < 0.0f && c.seq_display.length() == 0){
+    int hash_pos = title.indexOf('#');
+    if(hash_pos >= 0){
+      int end_pos = hash_pos + 1;
+      while(end_pos < (int)title.length() && (isDigit(title[end_pos]) || title[end_pos] == '.' || title[end_pos] == '-')) end_pos++;
+      if(end_pos > hash_pos + 1){
+        String num_str = title.substring(hash_pos + 1, end_pos);
+        c.seq_display = num_str.c_str();
+        c.sequence = num_str.toFloat();
       }
     }
   }

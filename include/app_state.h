@@ -126,9 +126,10 @@ struct Card {
   PsramString series;                      // primary series / collection name
   float       sequence = -1.0f;            // book sequence in series (-1.0f = none; >= 0.0f = valid)
   PsramString seq_display;                 // e.g. "#0-3", "#1", or "1-3"
-  PsramString extra_series[2];             // up to 2 additional series/groups from series_list
-  float       extra_seq[2] = {-1.0f, -1.0f};
-  PsramString extra_seq_disp[2];
+  static const int MAX_EXTRA_SERIES = 6;
+  PsramString extra_series[MAX_EXTRA_SERIES]; // additional series/groups from series_list
+  float       extra_seq[MAX_EXTRA_SERIES] = {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f};
+  PsramString extra_seq_disp[MAX_EXTRA_SERIES];
   int         extra_series_cnt = 0;
   bool        is_highlight = false;        // highlighted / pinned card
   bool        has_physical = false;        // physically owned card
@@ -481,6 +482,6 @@ void load_thumbs();
 bool load_thumb_for_card(int card_idx, bool force_refr = false);
 void update_visible_thumbs(bool force_refr = false);
 bool fetch_library_core();
-static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq);
+static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq, int seq_pos = -1);
 static void ensure_hotspot_active();
 void start_hotspot_cb(lv_event_t* e);
