@@ -30,6 +30,7 @@ static void populate_grid(); // fwd
 static void tab_btn_cb(lv_event_t* e){
   int tab = (int)(intptr_t)lv_event_get_user_data(e);
   if(tab < 0 || tab > 1) return;
+  s_selected_series_filter = "";
   Serial.printf("[TAB] Switched catalog tab to %d (%s)\n", tab, tab == 1 ? "Series" : "All");
   s_active_tab = (TabFilter)tab;
   for(int i = 0; i < 2; i++){
@@ -49,43 +50,69 @@ static lv_obj_t* s_top_dev_lbl = nullptr;
 static lv_obj_t* s_top_dev_dot = nullptr;
 
 // Add Kiosk badges (ABS / YOTO source badge, ★ highlight badge, #sequence badge, and optional title fallback)
+// Optimized to reuse existing child objects and avoid lv_obj_clean churn / memory fragmentation
 static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
   if(!tile || card_idx < 0 || card_idx >= s_card_count) return;
-  lv_obj_clean(tile);
   const Card& c = s_cards[card_idx];
+  bool has_cover = (c.pool_slot >= 0 && s_thumb_pool[c.pool_slot].buf != nullptr);
 
-  // If cover is not yet decoded or loaded in PSRAM pool, show centered book title on the colored tile
-  if(c.pool_slot < 0 || !s_thumb_pool[c.pool_slot].buf){
-    lv_obj_t* lbl = lv_label_create(tile);
-    lv_label_set_text(lbl, c.title.c_str());
-    lv_obj_set_width(lbl, THUMB_W - 20);
-    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_clear_flag(lbl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_center(lbl);
+  lv_obj_t* title_lbl = nullptr;
+  lv_obj_t* star_lbl  = nullptr;
+  lv_obj_t* seq_lbl   = nullptr;
+  uint32_t cnt = lv_obj_get_child_cnt(tile);
+  for(uint32_t idx = 0; idx < cnt; idx++){
+    lv_obj_t* ch = lv_obj_get_child(tile, idx);
+    void* ud = lv_obj_get_user_data(ch);
+    if(ud == (void*)1001) title_lbl = ch;
+    else if(ud == (void*)1002) star_lbl = ch;
+    else if(ud == (void*)1003) seq_lbl = ch;
   }
 
-  // 1. Highlight Star Badge (top-left, single styled lv_label pill)
+  // Fallback title label
+  if(!has_cover){
+    if(!title_lbl){
+      title_lbl = lv_label_create(tile);
+      lv_obj_set_user_data(title_lbl, (void*)1001);
+      lv_obj_set_width(title_lbl, THUMB_W - 20);
+      lv_label_set_long_mode(title_lbl, LV_LABEL_LONG_WRAP);
+      lv_obj_set_style_text_align(title_lbl, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_text_font(title_lbl, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_color(title_lbl, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_clear_flag(title_lbl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_center(title_lbl);
+    }
+    lv_label_set_text(title_lbl, c.title.c_str());
+    lv_obj_clear_flag(title_lbl, LV_OBJ_FLAG_HIDDEN);
+  } else if(title_lbl){
+    lv_obj_add_flag(title_lbl, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  // 1. Highlight Star Badge (top-left)
   if(c.is_highlight){
-    lv_obj_t* sl = lv_label_create(tile);
-    lv_label_set_text(sl, " * ");
-    lv_obj_set_style_text_font(sl, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(sl, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_color(sl, lv_color_hex(0xF59E0B), 0);
-    lv_obj_set_style_bg_opa(sl, LV_OPA_90, 0);
-    lv_obj_set_style_radius(sl, 6, 0);
-    lv_obj_set_style_pad_left(sl, 4, 0);
-    lv_obj_set_style_pad_right(sl, 4, 0);
-    lv_obj_set_style_pad_top(sl, 2, 0);
-    lv_obj_set_style_pad_bottom(sl, 0, 0);
-    lv_obj_clear_flag(sl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 6, 6);
+    if(!star_lbl){
+      star_lbl = lv_label_create(tile);
+      lv_obj_set_user_data(star_lbl, (void*)1002);
+      lv_label_set_text(star_lbl, " * ");
+      lv_obj_set_style_text_font(star_lbl, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_color(star_lbl, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_set_style_bg_color(star_lbl, lv_color_hex(0xF59E0B), 0);
+      lv_obj_set_style_bg_opa(star_lbl, LV_OPA_90, 0);
+      lv_obj_set_style_radius(star_lbl, 6, 0);
+      lv_obj_set_style_pad_left(star_lbl, 4, 0);
+      lv_obj_set_style_pad_right(star_lbl, 4, 0);
+      lv_obj_set_style_pad_top(star_lbl, 2, 0);
+      lv_obj_set_style_pad_bottom(star_lbl, 0, 0);
+      lv_obj_clear_flag(star_lbl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_align(star_lbl, LV_ALIGN_TOP_LEFT, 6, 6);
+    }
+    lv_obj_clear_flag(star_lbl, LV_OBJ_FLAG_HIDDEN);
+  } else if(star_lbl){
+    lv_obj_add_flag(star_lbl, LV_OBJ_FLAG_HIDDEN);
   }
 
-  // 2. Sequence Badge in Series view (top-right, single styled lv_label pill e.g. #0-3, #1, #2)
-  if(show_seq && (c.seq_display.length() > 0 || c.sequence >= 0.0f)){
+  // 2. Sequence Badge in Series view (top-right)
+  bool has_seq = (c.seq_display.length() > 0 || c.sequence >= 0.0f);
+  if(show_seq && has_seq){
     String s_txt;
     if(c.seq_display.length() > 0){
       s_txt = c.seq_display.startsWith("#") ? String(c.seq_display.c_str()) : (String("#") + c.seq_display.c_str());
@@ -94,19 +121,25 @@ static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq){
       if(fabsf(c.sequence - (float)iv) < 0.01f) s_txt = String("#") + String(iv);
       else s_txt = String("#") + String(c.sequence, 1);
     }
-    lv_obj_t* ql = lv_label_create(tile);
-    lv_label_set_text(ql, s_txt.c_str());
-    lv_obj_set_style_text_font(ql, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(ql, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_color(ql, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_bg_opa(ql, LV_OPA_90, 0);
-    lv_obj_set_style_radius(ql, 6, 0);
-    lv_obj_set_style_pad_left(ql, 6, 0);
-    lv_obj_set_style_pad_right(ql, 6, 0);
-    lv_obj_set_style_pad_top(ql, 2, 0);
-    lv_obj_set_style_pad_bottom(ql, 2, 0);
-    lv_obj_clear_flag(ql, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(ql, LV_ALIGN_TOP_RIGHT, -6, 6);
+    if(!seq_lbl){
+      seq_lbl = lv_label_create(tile);
+      lv_obj_set_user_data(seq_lbl, (void*)1003);
+      lv_obj_set_style_text_font(seq_lbl, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(seq_lbl, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_set_style_bg_color(seq_lbl, lv_color_hex(0x1E293B), 0);
+      lv_obj_set_style_bg_opa(seq_lbl, LV_OPA_90, 0);
+      lv_obj_set_style_radius(seq_lbl, 6, 0);
+      lv_obj_set_style_pad_left(seq_lbl, 6, 0);
+      lv_obj_set_style_pad_right(seq_lbl, 6, 0);
+      lv_obj_set_style_pad_top(seq_lbl, 2, 0);
+      lv_obj_set_style_pad_bottom(seq_lbl, 2, 0);
+      lv_obj_clear_flag(seq_lbl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_align(seq_lbl, LV_ALIGN_TOP_RIGHT, -6, 6);
+    }
+    lv_label_set_text(seq_lbl, s_txt.c_str());
+    lv_obj_clear_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN);
+  } else if(seq_lbl){
+    lv_obj_add_flag(seq_lbl, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -193,7 +226,7 @@ bool load_thumb_for_card(int card_idx, bool force_refr){
 
   if(c.tile && lv_obj_is_valid(c.tile)){
     lv_obj_set_style_bg_img_src(c.tile, &s_thumb_pool[slot].dsc, 0);
-    decorate_tile(c.tile, card_idx, s_active_tab == TAB_SERIES);
+    if(s_active_tab != TAB_SERIES || s_selected_series_filter.length() > 0) decorate_tile(c.tile, card_idx, s_active_tab == TAB_SERIES);
     lv_obj_invalidate(c.tile);
   }
 
@@ -266,7 +299,6 @@ static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
   lv_obj_set_style_bg_color(tile, c.is_abs() ? lv_color_hex(0x312E81) : lv_color_hex(0xE5352B), 0);
   lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(tile, 14, 0);
-  lv_obj_set_style_clip_corner(tile, true, 0);
   lv_obj_set_style_pad_all(tile, 0, 0);
   lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
@@ -284,66 +316,249 @@ static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
   return tile;
 }
 
+static std::vector<PsramString, PsramVectorAlloc<PsramString>> s_series_group_names;
+static void series_tile_cb(lv_event_t* e){
+  int g_idx = (int)(intptr_t)lv_event_get_user_data(e);
+  if(g_idx >= 0 && g_idx < (int)s_series_group_names.size()){
+    s_selected_series_filter = s_series_group_names[g_idx];
+    populate_grid();
+    lv_refr_now(lv_disp_get_default());
+  }
+}
+static void series_back_cb(lv_event_t*){
+  s_selected_series_filter = "";
+  populate_grid();
+  lv_refr_now(lv_disp_get_default());
+}
+
+static lv_obj_t* create_series_tile(lv_obj_t* parent, int elig_g_idx, const PsramString& gname, int rep_card_idx, int count){
+  lv_obj_t* tile = lv_obj_create(parent);
+  lv_obj_set_size(tile, THUMB_W, THUMB_H);
+  lv_obj_set_style_bg_color(tile, lv_color_hex(0x312E81), 0);
+  lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(tile, 14, 0);
+  lv_obj_set_style_pad_all(tile, 0, 0);
+  lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_translate_y(tile, 3, LV_STATE_PRESSED);
+  lv_obj_set_style_opa(tile, LV_OPA_80, LV_STATE_PRESSED);
+  lv_obj_set_user_data(tile, (void*)(intptr_t)elig_g_idx);
+  lv_obj_add_event_cb(tile, series_tile_cb, LV_EVENT_CLICKED, NULL);
+
+  if(rep_card_idx >= 0 && rep_card_idx < s_card_count){
+    Card& rc = s_cards[rep_card_idx];
+    rc.tile = tile;
+    if(rc.pool_slot >= 0 && s_thumb_pool[rc.pool_slot].buf){
+      lv_obj_set_style_bg_img_src(tile, &s_thumb_pool[rc.pool_slot].dsc, 0);
+    }
+  }
+
+  // Top-right count pill: number-only "(7)"
+  lv_obj_t* ql = lv_label_create(tile);
+  lv_label_set_text_fmt(ql, "(%d)", count);
+  lv_obj_set_style_text_font(ql, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(ql, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(ql, lv_color_hex(0x1E293B), 0);
+  lv_obj_set_style_bg_opa(ql, LV_OPA_90, 0);
+  lv_obj_set_style_radius(ql, 6, 0);
+  lv_obj_set_style_pad_left(ql, 6, 0);
+  lv_obj_set_style_pad_right(ql, 6, 0);
+  lv_obj_set_style_pad_top(ql, 2, 0);
+  lv_obj_set_style_pad_bottom(ql, 2, 0);
+  lv_obj_clear_flag(ql, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_align(ql, LV_ALIGN_TOP_RIGHT, -6, 6);
+
+  // Bottom translucent banner: Series title
+  lv_obj_t* ban = lv_obj_create(tile);
+  lv_obj_set_size(ban, THUMB_W, 52);
+  lv_obj_align(ban, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(ban, lv_color_hex(0x1E293B), 0);
+  lv_obj_set_style_bg_opa(ban, LV_OPA_80, 0);
+  lv_obj_set_style_radius(ban, 10, 0);
+  lv_obj_set_style_pad_left(ban, 6, 0);
+  lv_obj_set_style_pad_right(ban, 6, 0);
+  lv_obj_set_style_pad_top(ban, 4, 0);
+  lv_obj_set_style_pad_bottom(ban, 4, 0);
+  lv_obj_set_style_border_width(ban, 0, 0);
+  lv_obj_clear_flag(ban, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t* bl = lv_label_create(ban);
+  lv_label_set_text(bl, gname.c_str());
+  lv_obj_set_width(bl, THUMB_W - 16);
+  lv_label_set_long_mode(bl, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(bl, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(bl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(bl, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_clear_flag(bl, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_center(bl);
+
+  return tile;
+}
+
 static void populate_grid(){
+
   if(!s_grid) return;
   lv_obj_clean(s_grid);
   clear_card_pool_slots();
 
   if(s_active_tab == TAB_SERIES){
-    // Kiosk CatalogScreen.renderSeriesView() parity:
-    // Group books by series name, optionally exclude 1-card series, sort series headers alphabetically
-    // ignoring 'The', 'A', 'An' (with 'Standalone & Singles' last), and sort books within each series by sequence ascending!
-    // IMPORTANT: Keep group_names/elig_idx/m_idx in static/heap storage so populate_grid() uses near-zero stack inside LVGL callbacks!
     lv_obj_set_flex_flow(s_grid, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(s_grid, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-    static std::vector<PsramString, PsramVectorAlloc<PsramString>> group_names;
     static std::vector<int, PsramVectorAlloc<int>> group_counts;
     static std::vector<int, PsramVectorAlloc<int>> elig_idx;
+    static std::vector<int, PsramVectorAlloc<int>> rep_idx;
     static std::vector<int, PsramVectorAlloc<int>> m_idx;
-    group_names.clear();
+    s_series_group_names.clear();
     group_counts.clear();
     elig_idx.clear();
+    rep_idx.clear();
     m_idx.clear();
 
-    auto add_to_group = [&](const PsramString& raw_name){
+    auto parse_disp_seq = [](const PsramString& sd) -> float {
+      for(size_t i = 0; i < sd.length(); i++){
+        if(sd[i] >= '0' && sd[i] <= '9') return sd.substring(i).toFloat();
+      }
+      return -1.0f;
+    };
+    auto card_seq_in_group = [&](const Card& c, const PsramString& grp) -> float {
+      PsramString cs = c.series; cs.trim();
+      if(cs.length() == 0) cs = "Standalone & Singles";
+      if(cs.equalsIgnoreCase(grp)){
+        if(c.sequence >= 0.0f) return c.sequence;
+        float p = parse_disp_seq(c.seq_display);
+        return p >= 0.0f ? p : 999999.0f;
+      }
+      for(int ex = 0; ex < c.extra_series_cnt; ex++){
+        if(c.extra_series[ex].equalsIgnoreCase(grp)){
+          if(c.extra_seq[ex] >= 0.0f) return c.extra_seq[ex];
+          float p = parse_disp_seq(c.extra_seq_disp[ex]);
+          return p >= 0.0f ? p : 999999.0f;
+        }
+      }
+      return 999999.0f;
+    };
+
+    auto add_to_group = [&](const PsramString& raw_name, int card_index){
       PsramString gname = raw_name;
       gname.trim();
       if(gname.length() == 0) gname = "Standalone & Singles";
       int found = -1;
-      for(size_t g = 0; g < group_names.size(); g++){
-        if(group_names[g].equalsIgnoreCase(gname)){ found = (int)g; break; }
+      for(size_t g = 0; g < s_series_group_names.size(); g++){
+        if(s_series_group_names[g].equalsIgnoreCase(gname)){ found = (int)g; break; }
       }
       if(found >= 0){
         group_counts[found]++;
+        int cur_rep = rep_idx[found];
+        float cur_seq = (cur_rep >= 0) ? card_seq_in_group(s_cards[cur_rep], gname) : 999999.0f;
+        float new_seq = card_seq_in_group(s_cards[card_index], gname);
+        if(new_seq < cur_seq) rep_idx[found] = card_index;
       } else {
-        group_names.push_back(gname);
+        s_series_group_names.push_back(gname);
         group_counts.push_back(1);
+        rep_idx.push_back(card_index);
       }
     };
 
     for(int i = 0; i < s_card_count; i++){
-      add_to_group(s_cards[i].series);
+      add_to_group(s_cards[i].series, i);
       for(int ex = 0; ex < s_cards[i].extra_series_cnt; ex++){
         if(s_cards[i].extra_series[ex].length() > 0){
-          add_to_group(s_cards[i].extra_series[ex]);
+          add_to_group(s_cards[i].extra_series[ex], i);
         }
       }
     }
 
-    // Kiosk CatalogScreen.renderSeriesView() parity:
-    // Filter out groups that have only 1 item when exclude_single_card_series is enabled
-    for(size_t g = 0; g < group_names.size(); g++){
+    // LEVEL 2: Selected Series Tracklist View
+    if(s_selected_series_filter.length() > 0){
+      const PsramString& sel_grp = s_selected_series_filter;
+      for(int i = 0; i < s_card_count; i++){
+        String cs = s_cards[i].series.c_str();
+        cs.trim();
+        if(cs.length() == 0) cs = "Standalone & Singles";
+        bool match = cs.equalsIgnoreCase(sel_grp.c_str());
+        if(!match){
+          for(int ex = 0; ex < s_cards[i].extra_series_cnt; ex++){
+            if(strcasecmp(s_cards[i].extra_series[ex].c_str(), sel_grp.c_str()) == 0){ match = true; break; }
+          }
+        }
+        if(match) m_idx.push_back(i);
+      }
+      int m_cnt = (int)m_idx.size();
+      for(int a = 0; a < m_cnt; a++){
+        for(int b = a + 1; b < m_cnt; b++){
+          const Card& ca = s_cards[m_idx[a]];
+          const Card& cb = s_cards[m_idx[b]];
+          float sa = card_seq_in_group(ca, sel_grp);
+          float sb = card_seq_in_group(cb, sel_grp);
+          bool swap_it = false;
+          if(sb != sa) swap_it = (sb < sa);
+          else swap_it = (cb.sort_title < ca.sort_title);
+          if(swap_it){
+            int tmp = m_idx[a]; m_idx[a] = m_idx[b]; m_idx[b] = tmp;
+          }
+        }
+      }
+
+      // Level 2 Header Row with Back Button
+      lv_obj_t* hdr = lv_obj_create(s_grid);
+      lv_obj_set_size(hdr, LCD_H_RES - 36, 44);
+      lv_obj_set_style_bg_color(hdr, lv_color_hex(0xF3ECE0), 0);
+      lv_obj_set_style_radius(hdr, 12, 0);
+      lv_obj_set_style_border_width(hdr, 1, 0);
+      lv_obj_set_style_border_color(hdr, lv_color_hex(0xE7E0D2), 0);
+      lv_obj_set_style_pad_left(hdr, 10, 0);
+      lv_obj_set_style_pad_right(hdr, 14, 0);
+      lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_style_pad_column(hdr, 12, 0);
+      lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
+
+      lv_obj_t* bk_btn = lv_btn_create(hdr);
+      lv_obj_set_size(bk_btn, 170, 34);
+      lv_obj_set_style_radius(bk_btn, 17, 0);
+      lv_obj_set_style_bg_color(bk_btn, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_set_style_border_width(bk_btn, 1, 0);
+      lv_obj_set_style_border_color(bk_btn, lv_color_hex(0xE7E0D2), 0);
+      lv_obj_set_style_shadow_width(bk_btn, 0, 0);
+      lv_obj_add_event_cb(bk_btn, series_back_cb, LV_EVENT_CLICKED, NULL);
+
+      lv_obj_t* bkl = lv_label_create(bk_btn);
+      lv_label_set_text(bkl, LV_SYMBOL_LEFT " Back to Series");
+      lv_obj_set_style_text_font(bkl, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(bkl, lv_color_hex(0x23303A), 0);
+      lv_obj_center(bkl);
+
+      lv_obj_t* htitle = lv_label_create(hdr);
+      lv_label_set_text(htitle, sel_grp.c_str());
+      lv_obj_set_style_text_font(htitle, &lv_font_montserrat_20, 0);
+      lv_obj_set_style_text_color(htitle, lv_color_hex(0x23303A), 0);
+      lv_label_set_long_mode(htitle, LV_LABEL_LONG_DOT);
+      lv_obj_set_flex_grow(htitle, 1);
+
+      lv_obj_t* hcnt = lv_label_create(hdr);
+      lv_label_set_text_fmt(hcnt, "(%d)", m_cnt);
+      lv_obj_set_style_text_font(hcnt, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_color(hcnt, lv_color_hex(0x8A8276), 0);
+
+      for(int k = 0; k < m_cnt; k++){
+        create_card_tile(s_grid, m_idx[k], true);
+      }
+      lv_obj_update_layout(s_grid);
+      return;
+    }
+
+    // LEVEL 1: Series Collection Browser
+    for(size_t g = 0; g < s_series_group_names.size(); g++){
       if(core::s_exclude_single_series && group_counts[g] <= 1) continue;
       elig_idx.push_back((int)g);
     }
     int elig_cnt = (int)elig_idx.size();
 
-    // Sort eligible series groups alphabetically ignoring 'The', 'A', 'An' ('Standalone & Singles' last)
     for(int a = 0; a < elig_cnt; a++){
       for(int b = a + 1; b < elig_cnt; b++){
-        const PsramString& na = group_names[elig_idx[a]];
-        const PsramString& nb = group_names[elig_idx[b]];
+        const PsramString& na = s_series_group_names[elig_idx[a]];
+        const PsramString& nb = s_series_group_names[elig_idx[b]];
         bool swap_it = false;
         if(na == "Standalone & Singles" && nb != "Standalone & Singles") swap_it = true;
         else if(nb != "Standalone & Singles" && clean_sort_title(nb.c_str()) < clean_sort_title(na.c_str())) swap_it = true;
@@ -365,90 +580,8 @@ static void populate_grid(){
     }
 
     for(int e = 0; e < elig_cnt; e++){
-      const PsramString& gname = group_names[elig_idx[e]];
-      m_idx.clear();
-      auto parse_disp_seq = [](const PsramString& sd) -> float {
-        for(size_t i = 0; i < sd.length(); i++){
-          if(sd[i] >= '0' && sd[i] <= '9') return sd.substring(i).toFloat();
-        }
-        return -1.0f;
-      };
-      auto card_seq_in_group = [&](const Card& c, const PsramString& grp) -> float {
-        PsramString cs = c.series; cs.trim();
-        if(cs.length() == 0) cs = "Standalone & Singles";
-        if(cs.equalsIgnoreCase(grp)){
-          if(c.sequence >= 0.0f) return c.sequence;
-          float p = parse_disp_seq(c.seq_display);
-          return p >= 0.0f ? p : 999999.0f;
-        }
-        for(int ex = 0; ex < c.extra_series_cnt; ex++){
-          if(c.extra_series[ex].equalsIgnoreCase(grp)){
-            if(c.extra_seq[ex] >= 0.0f) return c.extra_seq[ex];
-            float p = parse_disp_seq(c.extra_seq_disp[ex]);
-            return p >= 0.0f ? p : 999999.0f;
-          }
-        }
-        return 999999.0f;
-      };
-
-      for(int i = 0; i < s_card_count; i++){
-        String cs = s_cards[i].series.c_str();
-        cs.trim();
-        if(cs.length() == 0) cs = "Standalone & Singles";
-        bool match = cs.equalsIgnoreCase(gname.c_str());
-        if(!match){
-          for(int ex = 0; ex < s_cards[i].extra_series_cnt; ex++){
-            if(strcasecmp(s_cards[i].extra_series[ex].c_str(), gname.c_str()) == 0){ match = true; break; }
-          }
-        }
-        if(match){
-          m_idx.push_back(i);
-        }
-      }
-      int m_cnt = (int)m_idx.size();
-      // Sort books within this series by group-specific sequence ascending, then clean title
-      for(int a = 0; a < m_cnt; a++){
-        for(int b = a + 1; b < m_cnt; b++){
-          const Card& ca = s_cards[m_idx[a]];
-          const Card& cb = s_cards[m_idx[b]];
-          float sa = card_seq_in_group(ca, gname);
-          float sb = card_seq_in_group(cb, gname);
-          bool swap_it = false;
-          if(sb != sa) swap_it = (sb < sa);
-          else swap_it = (cb.sort_title < ca.sort_title);
-          if(swap_it){
-            int tmp = m_idx[a]; m_idx[a] = m_idx[b]; m_idx[b] = tmp;
-          }
-        }
-      }
-
-      // Series Section Header Row (full width)
-      lv_obj_t* hdr = lv_obj_create(s_grid);
-      lv_obj_set_size(hdr, LCD_H_RES - 40, 38);
-      lv_obj_set_style_bg_color(hdr, lv_color_hex(0xF3ECE0), 0);
-      lv_obj_set_style_radius(hdr, 10, 0);
-      lv_obj_set_style_border_width(hdr, 1, 0);
-      lv_obj_set_style_border_color(hdr, lv_color_hex(0xE7E0D2), 0);
-      lv_obj_set_style_pad_left(hdr, 14, 0);
-      lv_obj_set_style_pad_right(hdr, 14, 0);
-      lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
-      lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-      lv_obj_set_style_pad_column(hdr, 10, 0);
-      lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
-
-      lv_obj_t* htitle = lv_label_create(hdr);
-      lv_label_set_text(htitle, gname.c_str());
-      lv_obj_set_style_text_font(htitle, &lv_font_montserrat_20, 0);
-      lv_obj_set_style_text_color(htitle, lv_color_hex(0x23303A), 0);
-
-      lv_obj_t* hcnt = lv_label_create(hdr);
-      lv_label_set_text_fmt(hcnt, "(%d %s)", m_cnt, m_cnt == 1 ? "card" : "cards");
-      lv_obj_set_style_text_font(hcnt, &lv_font_montserrat_16, 0);
-      lv_obj_set_style_text_color(hcnt, lv_color_hex(0x8A8276), 0);
-
-      for(int k = 0; k < m_cnt; k++){
-        create_card_tile(s_grid, m_idx[k], true);
-      }
+      int g_idx = elig_idx[e];
+      create_series_tile(s_grid, g_idx, s_series_group_names[g_idx], rep_idx[g_idx], group_counts[g_idx]);
     }
     lv_obj_update_layout(s_grid);
     return;
@@ -594,16 +727,11 @@ void build_grid(){
   lv_obj_set_style_pad_row(cont, 20, 0);
   lv_obj_set_style_pad_column(cont, 20, 0);
   lv_obj_set_scroll_dir(cont, LV_DIR_VER);
+  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLL_ELASTIC);
   lv_obj_add_event_cb(cont, [](lv_event_t* e){
     lv_event_code_t code = lv_event_get_code(e);
     if(code == LV_EVENT_SCROLL_END){
       update_visible_thumbs(true);
-    } else if(code == LV_EVENT_SCROLL){
-      static uint32_t s_last_sc = 0;
-      if(millis() - s_last_sc > 300){
-        update_visible_thumbs(false);
-        s_last_sc = millis();
-      }
     }
   }, LV_EVENT_ALL, NULL);
 

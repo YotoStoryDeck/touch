@@ -22,6 +22,7 @@
 #include "yoto_api.h"
 
 #include "core_api.h"
+#include "standalone_curation.h"
 
 
 
@@ -114,8 +115,10 @@ static void add_core_card(const String& id, const String& title, const String& a
   c.daily        = false;
   c.tile         = nullptr;
   c.pool_slot    = -1;
-  s_cards.push_back(c);
-  s_card_count = (int)s_cards.size();
+  if(s_card_count < cfg::catalog_card_limit){
+    s_cards.push_back(c);
+    s_card_count = (int)s_cards.size();
+  }
 }
 
 static void sort_catalog_kiosk_order(){
@@ -171,7 +174,8 @@ bool fetch_library_core(){
 
 
 
-static bool fetch_library(){
+bool fetch_library(){
+
 
   size_t blen = 0;
 
@@ -239,50 +243,99 @@ static bool fetch_library(){
 
   if(err){ status((String("JSON error: ") + err.c_str() + " (" + blen + "B)").c_str()); return false; }
 
+  curation::load();
+  clear_card_pool_slots();
+  s_cards.clear();
+  s_cards.reserve(256);
   s_card_count = 0;
 
+  static std::vector<Card, PsramVectorAlloc<Card>> raw_cards;
+  raw_cards.clear();
+
   for(JsonObject c : doc["cards"].as<JsonArray>()){
+    Card item;
+    item.id         = (const char*)(c["cardId"] | "");
+    item.title      = (const char*)(c["card"]["title"] | "");
+    item.sort_title = clean_sort_title(item.title.c_str());
+    item.lp         = (const char*)(c["lastPlayedAt"] | "");
+    item.cover      = (const char*)(c["card"]["content"]["cover"]["imageL"] | "");
+    item.source     = 0;
+    item.is_highlight = curation::is_card_pinned(item.id.c_str());
+    item.has_physical = curation::is_card_physical(item.id.c_str());
 
-    if(s_card_count >= 64) break;
-
-    s_cards[s_card_count].id    = (const char*)(c["cardId"] | "");
-
-    s_cards[s_card_count].title = (const char*)(c["card"]["title"] | "");
-
-    s_cards[s_card_count].lp    = (const char*)(c["lastPlayedAt"] | "");
-
-    s_cards[s_card_count].cover = (const char*)(c["card"]["content"]["cover"]["imageL"] | "");
-
-    s_card_count++;
-
+    if(curation::get_hide_physical() && item.has_physical){
+      continue; // Filtered out by Grown-ups setting
+    }
+    raw_cards.push_back(item);
   }
 
-  // recently-played first — ISO-8601 timestamps sort lexically; "" (never played) sinks last
+  // 1. Last-Played items (lp descending)
+  static std::vector<Card, PsramVectorAlloc<Card>> last_played;
+  static std::vector<Card, PsramVectorAlloc<Card>> pinned;
+  static std::vector<Card, PsramVectorAlloc<Card>> pool;
+  last_played.clear();
+  pinned.clear();
+  pool.clear();
 
-  for(int a=0;a<s_card_count;a++)
-
-    for(int b=a+1;b<s_card_count;b++)
-
-      if(s_cards[b].lp > s_cards[a].lp){ Card t=s_cards[a]; s_cards[a]=s_cards[b]; s_cards[b]=t; }
-
-  // inject the "Yoto Daily" tile at the front
-
-  if(s_card_count < 64){
-
-    for(int k=s_card_count; k>0; k--) s_cards[k] = s_cards[k-1];
-
-    s_cards[0] = Card{};
-
-    s_cards[0].id = YOTO_DAILY_ID; s_cards[0].title = "Yoto Daily";
-
-    s_cards[0].cover = YOTO_DAILY_COVER; s_cards[0].daily = true;
-
-    s_card_count++;
-
+  for(const auto& item : raw_cards){
+    if(item.lp.length() > 0){
+      last_played.push_back(item);
+    } else if(item.is_highlight){
+      pinned.push_back(item);
+    } else {
+      pool.push_back(item);
+    }
   }
 
+  // Sort last-played descending
+  std::sort(last_played.begin(), last_played.end(), [](const Card& a, const Card& b){
+    return a.lp > b.lp;
+  });
+
+  // Sort pinned favorites by title
+  std::sort(pinned.begin(), pinned.end(), [](const Card& a, const Card& b){
+    return a.sort_title < b.sort_title;
+  });
+
+  // Sort discovery pool: digital before physical, then deterministic daily rotation hash
+  char date_buf[16] = "2026-11-06";
+  struct tm ti;
+  if(getLocalTime(&ti, 50)){
+    strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &ti);
+  }
+  std::sort(pool.begin(), pool.end(), [&](const Card& a, const Card& b){
+    if(a.has_physical != b.has_physical) return !a.has_physical;
+    uint32_t ha = 5381, hb = 5381;
+    for(size_t i = 0; i < strlen(date_buf); i++){ ha = ((ha << 5) + ha) + date_buf[i]; hb = ((hb << 5) + hb) + date_buf[i]; }
+    for(size_t i = 0; i < a.id.length(); i++) ha = ((ha << 5) + ha) + a.id[i];
+    for(size_t i = 0; i < b.id.length(); i++) hb = ((hb << 5) + hb) + b.id[i];
+    return ha < hb;
+  });
+
+  // Inject Yoto Daily at index 0
+  Card daily_card;
+  daily_card.id    = YOTO_DAILY_ID;
+  daily_card.title = "Yoto Daily";
+  daily_card.cover = YOTO_DAILY_COVER;
+  daily_card.daily = true;
+  s_cards.push_back(daily_card);
+
+  int limit = cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 80;
+  for(const auto& c : last_played){
+    if((int)s_cards.size() >= limit) break;
+    s_cards.push_back(c);
+  }
+  for(const auto& c : pinned){
+    if((int)s_cards.size() >= limit) break;
+    s_cards.push_back(c);
+  }
+  for(const auto& c : pool){
+    if((int)s_cards.size() >= limit) break;
+    s_cards.push_back(c);
+  }
+
+  s_card_count = (int)s_cards.size();
   if(s_card_count > 0) sd_prune_stale_covers(false);
-
   return s_card_count > 0;
 
 }

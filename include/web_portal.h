@@ -13,6 +13,10 @@
 #include "app_config.h"
 #include "yoto_api.h"
 #include "core_api.h"
+#include "standalone_curation.h"
+
+extern bool fetch_library();
+extern void build_grid();
 
 namespace portal {
 
@@ -324,6 +328,49 @@ static String profile_device_picker(){
 
 static void handle_get(WebServer& w){
   if(!auth_ok(w)) return;
+  String tab = w.arg("tab");
+  if(tab == "curation" && cfg::op_mode != "core"){
+    curation::load();
+    String ch = "<!doctype html><html><head><meta charset='utf-8'>"
+      "<meta name=viewport content='width=device-width,initial-scale=1'>"
+      "<title>StoryDeck Standalone Curation</title><style>"
+      "body{font-family:-apple-system,system-ui,sans-serif;background:#fbf7f0;color:#23303a;max-width:680px;margin:0 auto;padding:18px}"
+      "h1{color:#e5352b;font-size:1.5em}h2{font-size:1.05em;margin:1.4em 0 .3em;color:#3a6b50}"
+      "table{width:100%;border-collapse:collapse;margin-top:12px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1)}"
+      "th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #f0eae0}"
+      "th{background:#f4ede0;color:#23303a;font-weight:700;font-size:0.9em}"
+      "button.save-btn{background:#e5352b;color:#fff;border:0;border-radius:11px;padding:12px 22px;font-size:1.05em;font-weight:700;margin-top:14px;cursor:pointer;width:100%}"
+      "a.nav-btn{display:inline-block;padding:8px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.95em}"
+      "</style></head><body>"
+      "<div style='display:flex;gap:8px;margin-bottom:18px;'>"
+      "<a href='/settings' class='nav-btn' style='background:#f4ede0;color:#23303a;'>Settings</a>"
+      "<a href='/settings?tab=curation' class='nav-btn' style='background:#e5352b;color:#fff;'>Card Curation</a>"
+      "</div>"
+      "<h1>Card Curation &amp; Ownership</h1>"
+      "<p style='color:#7a7060;font-size:0.92em;'>Manage sticky favorites and mark physical plastic card copies owned in bedroom stands. Physical cards receive lower rotation probability unless hidden.</p>"
+      "<form method='POST' action='/settings/curation'>"
+      "<label style='display:flex;align-items:center;gap:10px;background:#fff;padding:12px;border-radius:10px;border:1px solid #e7e0d2;cursor:pointer;font-weight:600;'>"
+      "<input type='checkbox' name='hide_phys' value='1'" + String(curation::get_hide_physical() ? " checked" : "") + " style='width:auto;margin:0;'>"
+      "<span>Hide Physical Cards from Touchscreen Catalog</span></label>"
+      "<table><thead><tr><th style='width:50px;'>Cover</th><th>Title</th><th style='width:70px;text-align:center;'>Sticky &#11088;</th><th style='width:70px;text-align:center;'>Physical &#127188;</th></tr></thead><tbody>";
+
+    for(int i = 0; i < s_card_count; i++){
+      if(s_cards[i].daily) continue;
+      bool is_p = curation::is_card_pinned(s_cards[i].id.c_str());
+      bool is_ph = curation::is_card_physical(s_cards[i].id.c_str());
+      ch += "<tr><td><img src='" + esc(s_cards[i].cover.c_str()) + "' style='width:36px;height:54px;object-fit:cover;border-radius:4px;'></td>";
+      ch += "<td><strong>" + esc(s_cards[i].title.c_str()) + "</strong><br><small style='color:#9a9384;'>" + esc(s_cards[i].id.c_str()) + "</small></td>";
+      ch += "<td style='text-align:center;'><input type='checkbox' name='pin_" + esc(s_cards[i].id.c_str()) + "' value='1'" + (is_p ? " checked" : "") + "></td>";
+      ch += "<td style='text-align:center;'><input type='checkbox' name='phys_" + esc(s_cards[i].id.c_str()) + "' value='1'" + (is_ph ? " checked" : "") + "></td></tr>";
+    }
+
+    ch += "</tbody></table>"
+      "<button type='submit' class='save-btn'>Save Curation to MicroSD</button></form>"
+      "</body></html>";
+    w.send(200, "text/html; charset=utf-8", ch);
+    return;
+  }
+
   String h =
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -456,6 +503,14 @@ static void handle_get(WebServer& w){
     secret_row("Refresh Token", "rt", "Paste a fresh refresh token to re-seed credentials.") +
     "</div>" +
     profile_device_picker() +
+        "<h2>Library Rotation &amp; Discovery</h2>" +
+    "<label>Catalog Card Limit"
+    "<input type='number' name='catlim' id='catlim' min='10' max='300' value='" + String(cfg::catalog_card_limit) + "'>"
+    "<small>Maximum cards loaded into grid memory (default: 80). Lower values optimize RAM and scrolling speed.</small></label>" +
+    "<label>Daily Rotation Refresh Hour (0-23)"
+    "<input type='number' name='rothr' id='rothr' min='0' max='23' value='" + String(cfg::rotation_hour) + "'>"
+    "<small>Local hour when discovery rotation re-rolls (default: 3 for 3:00 AM).</small></label>" +
+
     "<h2>Clock</h2>" +
     tz_select() +
     "<h2>Security &amp; PIN</h2>" +
@@ -512,6 +567,8 @@ static void handle_post(WebServer& w){
     cfg::lock_player = false;
   }
 
+    v = w.arg("catlim"); if(v.length()){ int n = v.toInt(); if(n >= 10 && n <= 300) cfg::catalog_card_limit = n; }
+  v = w.arg("rothr");  if(v.length()){ int h = v.toInt(); if(h >= 0 && h <= 23) cfg::rotation_hour = h; }
   cfg::save();
   v = w.arg("rt");
   if(v.length()) yoto::set_refresh(v);                  // also clears the cached access token
@@ -639,9 +696,35 @@ static void handle_portal_discovery(WebServer& w){
   w.send(200, "application/json", out);
 }
 
+static void handle_curation_post(WebServer& w){
+  if(!auth_ok(w)) return;
+  curation::load();
+  curation::set_hide_physical(w.hasArg("hide_phys"));
+
+  for(int i = 0; i < s_card_count; i++){
+    if(s_cards[i].daily) continue;
+    String id = s_cards[i].id.c_str();
+    bool pin = w.hasArg("pin_" + id);
+    bool phys = w.hasArg("phys_" + id);
+    curation::toggle_card_pinned(id, pin);
+    curation::toggle_card_physical(id, phys);
+  }
+  curation::save();
+  fetch_library();
+  if(s_scr_home) build_grid();
+
+  w.send(200, "text/html; charset=utf-8",
+    "<!doctype html><body style='font-family:system-ui;background:#fbf7f0;padding:24px'>"
+    "<h2 style='color:#3a6b50'>Curation Saved.</h2>"
+    "<p>Card highlights and physical tags saved to MicroSD.</p>"
+    "<p><a href='/settings?tab=curation'>Back to Card Curation</a> &middot; <a href='/settings'>Settings</a></p></body>");
+}
+
 static void begin(WebServer& w){
+
   w.on("/settings", HTTP_GET,  [&w](){ handle_get(w);    });
   w.on("/settings", HTTP_POST, [&w](){ handle_post(w);   });
+  w.on("/settings/curation", HTTP_POST, [&w](){ handle_curation_post(w); });
   w.on("/reboot",   HTTP_GET,  [&w](){ handle_reboot(w); });
   w.on("/api/ping/wifi", HTTP_GET, [&w](){ handle_ping_wifi(w); });
   w.on("/api/ping/core", HTTP_GET, [&w](){ handle_ping_core(w); });

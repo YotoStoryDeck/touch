@@ -100,6 +100,7 @@ inline bool operator!=(const String& s, const PsramString& ps) { return ps != s;
 #define THUMB_SZ  (THUMB_W*THUMB_H*2)      // RGB565 bytes per cover (81280)
 enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_ABS=2, TAB_YOTO=3 };
 static TabFilter s_active_tab = TAB_ALL;
+static PsramString s_selected_series_filter = ""; // Level 2 Series navigation state (empty = Level 1 Index)
 
 // Fixed Viewport Thumbnail Pool in PSRAM:
 // Exactly 24 active bitmap buffers (~1.95 MB PSRAM total) regardless of catalog size (243+ books).
@@ -130,6 +131,7 @@ struct Card {
   PsramString extra_seq_disp[2];
   int         extra_series_cnt = 0;
   bool        is_highlight = false;        // highlighted / pinned card
+  bool        has_physical = false;        // physically owned card
   bool        daily = false;               // synthetic "Yoto Daily" tile
   lv_obj_t*   tile = nullptr;              // the lv_img tile in the grid
   int         pool_slot = -1;              // Index into s_thumb_pool (-1 = lightweight placeholder)

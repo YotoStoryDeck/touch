@@ -487,7 +487,7 @@ void open_settings(){
   lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
 
-  static const char* tab_titles[4] = {"Sleep / Bed", "Audio Target", "Display / Dim", "Network"};
+  static const char* tab_titles[4] = {"Sleep / Bed", "Audio", "Display / Dim", "Network"};
   for(int t = 0; t < 4; t++){
     lv_obj_t* tb = lv_btn_create(nav);
     lv_obj_set_size(tb, 180, 40);
@@ -743,7 +743,39 @@ void open_settings(){
     lv_label_set_text(single_hint, "Dedicated Controller: This Touch is locked to the child and player above.\nTo switch users or players, change assignments here or in Core Admin.");
     lv_obj_set_style_text_font(single_hint, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(single_hint, lv_color_hex(0x7A7060), 0);
-  } else {
+  }
+
+  // Unified Library Rotation & Catalog Refresh in Audio Tab
+  set_section(p1, "Library Rotation & Catalog Refresh");
+  lv_obj_t* r_rot = set_row(p1);
+  lv_obj_t* rot_lbl = lv_label_create(r_rot);
+  lv_label_set_text(rot_lbl, "Refresh Hour:");
+  lv_obj_set_style_text_font(rot_lbl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(rot_lbl, lv_color_hex(0x23303A), 0);
+
+  lv_obj_t* dd_rot = lv_dropdown_create(r_rot);
+  lv_obj_set_size(dd_rot, 140, 48);
+  lv_dropdown_set_options(dd_rot, "12 AM\n1 AM\n2 AM\n3 AM\n4 AM\n5 AM\n6 AM\n7 AM\n8 AM\n9 AM\n10 AM\n11 AM\n12 PM\n1 PM\n2 PM\n3 PM\n4 PM\n5 PM\n6 PM\n7 PM\n8 PM\n9 PM\n10 PM\n11 PM");
+  lv_dropdown_set_selected(dd_rot, (cfg::rotation_hour >= 0 && cfg::rotation_hour < 24) ? cfg::rotation_hour : 3);
+  lv_obj_add_event_cb(dd_rot, [](lv_event_t* e){
+    cfg::rotation_hour = lv_dropdown_get_selected(lv_event_get_target(e));
+    cfg::save();
+  }, LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_obj_t* rf_now = pill_btn(r_rot, "Refresh Catalog Now", 0, [](lv_event_t*){
+    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+      core::fetch_config_and_profiles(cfg::core_url);
+      fetch_library_core();
+    } else {
+      fetch_library();
+    }
+    if(s_scr_home) build_grid();
+    open_settings();
+  });
+  lv_obj_set_size(rf_now, 210, 48);
+  lv_obj_set_style_text_color(lv_obj_get_child(rf_now, 0), lv_color_hex(0x2563EB), 0);
+
+  if(!is_core_mode){
     // Standalone Mode: No child profiles! Just pick target Yoto player
     lv_obj_t* r_dev = set_row(p1);
     lv_obj_t* dev_lbl = lv_label_create(r_dev);
@@ -884,20 +916,6 @@ void open_settings(){
 
   set_section(p3, "Hardware Maintenance");
   lv_obj_t* r_maint = set_row(p3);
-
-  // Instant catalog refresh button
-  lv_obj_t* rf = pill_btn(r_maint, "Refresh Catalog", 0, [](lv_event_t*){
-    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-      core::fetch_config_and_profiles(cfg::core_url);
-      fetch_library_core();
-    } else {
-      fetch_library();
-    }
-    if(s_scr_home) build_grid();
-    open_settings();
-  });
-  lv_obj_set_size(rf, 175, 50);
-  lv_obj_set_style_text_color(lv_obj_get_child(rf, 0), lv_color_hex(0x2563EB), 0);
 
   lv_obj_t* rb = pill_btn(r_maint, "Restart Device", 0, [](lv_event_t*){ ESP.restart(); });
   lv_obj_set_size(rb, 160, 50);
