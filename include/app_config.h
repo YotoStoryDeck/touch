@@ -58,11 +58,11 @@ static void load(){
   client_secret = s_prefs.getString("csec",  YOTO_CLIENT_SECRET);
   device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
   op_mode       = s_prefs.getString("mode",  "core");
-  core_url      = s_prefs.getString("curl",  "");
+  core_url      = s_prefs.getString("curl",  "http://192.168.1.11:5065");
 #endif
-  lock_player   = s_prefs.getBool("lockp",   false);
-  locked_dev_id = s_prefs.getString("lockid", "");
-  assigned_profile = s_prefs.getString("prof",   "");
+  lock_player   = s_prefs.getBool("lockp",   true);
+  locked_dev_id = s_prefs.getString("lockid", "y29tYSZid8OsUIgvDNsXNveL");
+  assigned_profile = s_prefs.getString("prof",   "wesley");
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
   parent_pin    = s_prefs.getString("pin",   "1234");
   vol_max       = s_prefs.getInt("volmax", 60);

@@ -81,7 +81,7 @@ static void open_now(){
   if(!s_ncover) s_ncover=(uint8_t*)heap_caps_malloc(NCOVER_SZ, MALLOC_CAP_SPIRAM);
   if(s_ncover){
     if(s_cur_card >= 0 && s_cur_card < s_card_count){
-      okv=load_cover_cached(s_cards[s_cur_card].id, s_cards[s_cur_card].cover, NCOVER_W, NCOVER_H, NCOVER_SZ, s_ncover);
+      okv=load_cover_cached(s_cards[s_cur_card].id.c_str(), s_cards[s_cur_card].cover.c_str(), NCOVER_W, NCOVER_H, NCOVER_SZ, s_ncover);
     } else {
       String cid = s_play_item_id.length() > 0 ? s_play_item_id : "ext_card";
       okv=load_cover_cached(cid, s_play_cover, NCOVER_W, NCOVER_H, NCOVER_SZ, s_ncover);

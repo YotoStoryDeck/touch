@@ -168,7 +168,6 @@ void net_init_and_fetch(){
         status_hide();
         build_grid();
         lv_scr_load(s_scr_home);
-        lv_refr_now(lv_disp_get_default());
         load_thumbs();
         s_lib_ok = true;
       } else if(cfg::op_mode == "core" && core::s_profile_count > 0){

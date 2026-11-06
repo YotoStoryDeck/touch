@@ -129,14 +129,14 @@ static void open_detail(int i){
 
   // 1) Chapters: SD cache first — instant and offline. On a miss, open with an empty
   //    "loading" list and fetch live AFTER the screen is painted (slow path below).
-  bool have_ch = sd_chap_read(c.id);
-  if(!have_ch){ s_ch_count = 0; s_detail_title = c.title; }
+  bool have_ch = sd_chap_read(c.id.c_str());
+  if(!have_ch){ s_ch_count = 0; s_detail_title = c.title.c_str(); }
 
   // 2) Detail cover: SD cache first. On a miss, fall back to the grid thumb (already decoded
   //    in PSRAM) upscaled in place as an instant placeholder; the sharp cover loads below.
   bool cover_sd = false;
   if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
-  if(s_dcover) cover_sd = sd_cache_read(c.id, DCOVER_W, s_dcover, DCOVER_SZ);
+  if(s_dcover) cover_sd = sd_cache_read(c.id.c_str(), DCOVER_W, s_dcover, DCOVER_SZ, c.cover.c_str());
 
   lv_obj_t* scr = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0xFBF7F0), 0);
@@ -162,8 +162,8 @@ static void open_detail(int i){
   lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
   if(cover_sd){
     set_img(s_dcover_dsc, cover, s_dcover, DCOVER_W, DCOVER_H, DCOVER_SZ);
-  } else if(c.thumb && c.dsc.data){
-    lv_img_set_src(cover, &c.dsc);
+  } else if(c.pool_slot >= 0 && s_thumb_pool[c.pool_slot].card_idx == i && s_thumb_pool[c.pool_slot].buf){
+    lv_img_set_src(cover, &s_thumb_pool[c.pool_slot].dsc);
     lv_img_set_pivot(cover, THUMB_W/2, THUMB_H/2);
     lv_img_set_zoom(cover, (uint16_t)(256 * DCOVER_W / THUMB_W));
   }
@@ -212,7 +212,7 @@ static void open_detail(int i){
   lv_obj_set_style_text_color(title, lv_color_hex(0xE5352B), 0);
 
   lv_obj_t* sub = lv_label_create(right);
-  String sub_txt = c.author.length() ? c.author : (c.source == "abs" ? "Audiobookshelf" : "Yoto");
+  String sub_txt = c.author.length() ? c.author.c_str() : (c.is_abs() ? "Audiobookshelf" : "Yoto");
   lv_label_set_text(sub, sub_txt.c_str());
   lv_obj_set_style_text_font(sub, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(sub, lv_color_hex(0x7A7060), 0);
@@ -227,7 +227,7 @@ static void open_detail(int i){
   lv_obj_set_flex_align(sum_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(sum_row, LV_OBJ_FLAG_SCROLLABLE);
 
-  bool is_abs_book = (c.source == "abs");
+  bool is_abs_book = c.is_abs();
   lv_obj_t* src_badge = lv_label_create(sum_row);
   lv_label_set_text(src_badge, is_abs_book ? "Audiobookshelf" : "Yoto");
   lv_obj_set_style_text_font(src_badge, &lv_font_montserrat_14, 0);
@@ -331,14 +331,14 @@ static void open_detail(int i){
           s_ch_count = 1;
           s_ch[0].key = "01";
           s_ch[0].track_key = "01";
-          s_ch[0].title = card.title.length() ? card.title : "Full Audiobook";
+          s_ch[0].title = card.title.length() ? card.title.c_str() : "Full Audiobook";
           s_ch[0].dur = 1800;
           detail_set_summary(c->sum_lbl);
           detail_fill_chapters(c->list_box);
         }
       }
       if(c->need_cover && s_scr_detail == c->scr_target && s_dcover){
-        if(load_cover_cached(card.id, card.cover, DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover)){
+        if(load_cover_cached(card.id.c_str(), card.cover.c_str(), DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover)){
           lv_img_set_zoom(c->cover_img, 256);
           lv_img_set_pivot(c->cover_img, 0, 0);
           set_img(s_dcover_dsc, c->cover_img, s_dcover, DCOVER_W, DCOVER_H, DCOVER_SZ);

@@ -9,6 +9,8 @@
 #include "core_api.h"
 #include "hal_display.h"
 #include "app_log.h"
+#include <vector>
+#include <string>
 
 // Keep big JSON work OUT of scarce internal RAM (which the TLS handshake + LVGL draw buffer
 // fight over) by routing it to the idle 8MB PSRAM. Used for the raw response body AND the
@@ -19,33 +21,121 @@ struct PsramAllocator : ArduinoJson::Allocator {
   void* reallocate(void* p, size_t n) override{ return heap_caps_realloc(p, n, MALLOC_CAP_SPIRAM); }
 };
 
+template<typename T>
+struct PsramVectorAlloc {
+  typedef T value_type;
+  PsramVectorAlloc() noexcept = default;
+  template<typename U> PsramVectorAlloc(const PsramVectorAlloc<U>&) noexcept {}
+  T* allocate(std::size_t n) {
+    if(n == 0) return nullptr;
+    void* p = heap_caps_malloc(n * sizeof(T), MALLOC_CAP_SPIRAM);
+    if(!p) p = malloc(n * sizeof(T));
+    return static_cast<T*>(p);
+  }
+  void deallocate(T* p, std::size_t) noexcept {
+    free(p);
+  }
+  bool operator==(const PsramVectorAlloc&) const noexcept { return true; }
+  bool operator!=(const PsramVectorAlloc&) const noexcept { return false; }
+};
+
+struct PsramString : std::basic_string<char, std::char_traits<char>, PsramVectorAlloc<char>> {
+  using std::basic_string<char, std::char_traits<char>, PsramVectorAlloc<char>>::basic_string;
+  PsramString(const String& s) : std::basic_string<char, std::char_traits<char>, PsramVectorAlloc<char>>(s.c_str()) {}
+  PsramString(const char* s) : std::basic_string<char, std::char_traits<char>, PsramVectorAlloc<char>>(s ? s : "") {}
+  PsramString() : std::basic_string<char, std::char_traits<char>, PsramVectorAlloc<char>>() {}
+
+  PsramString& operator=(const String& s) {
+    this->assign(s.c_str());
+    return *this;
+  }
+  PsramString& operator=(const char* s) {
+    this->assign(s ? s : "");
+    return *this;
+  }
+
+  String str() const { return String(this->c_str()); }
+
+  bool operator==(const String& s) const { return strcmp(this->c_str(), s.c_str()) == 0; }
+  bool operator!=(const String& s) const { return strcmp(this->c_str(), s.c_str()) != 0; }
+  bool operator==(const char* s) const { return strcmp(this->c_str(), s ? s : "") == 0; }
+  bool operator!=(const char* s) const { return strcmp(this->c_str(), s ? s : "") != 0; }
+
+  bool startsWith(const char* prefix) const {
+    if(!prefix) return false;
+    size_t len = strlen(prefix);
+    return (this->length() >= len && strncmp(this->c_str(), prefix, len) == 0);
+  }
+  bool startsWith(const String& prefix) const { return startsWith(prefix.c_str()); }
+
+  bool equalsIgnoreCase(const PsramString& o) const {
+    return strcasecmp(this->c_str(), o.c_str()) == 0;
+  }
+  bool equalsIgnoreCase(const String& o) const {
+    return strcasecmp(this->c_str(), o.c_str()) == 0;
+  }
+  bool equalsIgnoreCase(const char* o) const {
+    return strcasecmp(this->c_str(), o ? o : "") == 0;
+  }
+
+  void trim() {
+    while(!this->empty() && (this->front() == ' ' || this->front() == '\t' || this->front() == '\r' || this->front() == '\n')) this->erase(this->begin());
+    while(!this->empty() && (this->back() == ' ' || this->back() == '\t' || this->back() == '\r' || this->back() == '\n')) this->pop_back();
+  }
+
+  float toFloat() const { return atof(this->c_str()); }
+
+  PsramString substring(size_t pos, size_t n = 0xFFFFFFFF) const {
+    if(pos >= this->length()) return PsramString();
+    return PsramString(this->substr(pos, n).c_str());
+  }
+};
+
+inline bool operator==(const String& s, const PsramString& ps) { return ps == s; }
+inline bool operator!=(const String& s, const PsramString& ps) { return ps != s; }
+
 // ---------------- app state ----------------
 #define THUMB_W   160
 #define THUMB_H   254                       // 160 * 1011/638 — 4-up grid, ~19mm tiles (bigger tap target)
-#define THUMB_SZ  (THUMB_W*THUMB_H*2)      // RGB565 bytes per cover (81280); ~4.0MB PSRAM for 49 covers
+#define THUMB_SZ  (THUMB_W*THUMB_H*2)      // RGB565 bytes per cover (81280)
 enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_ABS=2, TAB_YOTO=3 };
 static TabFilter s_active_tab = TAB_ALL;
 
-#define MAX_CARDS 64
+// Fixed Viewport Thumbnail Pool in PSRAM:
+// Exactly 24 active bitmap buffers (~1.95 MB PSRAM total) regardless of catalog size (243+ books).
+#define THUMB_POOL_SIZE 24
+
+struct ThumbSlot {
+  int          card_idx = -1;               // Index in s_cards currently holding this buffer
+  uint8_t*     buf      = nullptr;          // 81,280 byte PSRAM buffer
+  uint32_t     last_use = 0;                // Timestamp for LRU eviction
+  lv_img_dsc_t dsc{};                       // LVGL image descriptor
+};
+
+static ThumbSlot s_thumb_pool[THUMB_POOL_SIZE];
 
 struct Card {
-  String id; String title;
-  String author="";                        // book author / creator
-  String lp;                               // lastPlayedAt (direct-API path sorts on it)
-  String cover;                            // cover imageL URL (direct-API: fetch+decode from CDN)
-  String source="yoto";                    // "yoto" or "abs"
-  String series="";                        // primary series / collection name
-  float  sequence=-1.0f;                   // book sequence in series (-1.0f = none; >= 0.0f = valid e.g. 0.0 for #0-3)
-  String seq_display="";                   // e.g. "#0-3", "#1", or "1-3"
-  String extra_series[2];                  // up to 2 additional series/groups from series_list
-  float  extra_seq[2] = {-1.0f, -1.0f};
-  String extra_seq_disp[2];
-  int    extra_series_cnt=0;
-  bool   is_highlight=false;               // highlighted / pinned card
-  bool   daily=false;                      // synthetic "Yoto Daily" tile — one-tap, plays today
-  lv_obj_t* tile=nullptr;                  // the lv_img tile in the grid
-  uint8_t*  thumb=nullptr;                 // PSRAM RGB565 buffer (persists for image lifetime)
-  lv_img_dsc_t dsc{};                      // descriptor LVGL renders from
+  PsramString id;
+  PsramString title;
+  PsramString sort_title;
+  PsramString author;
+  PsramString cover;
+  PsramString lp;
+  uint8_t     source = 0;                  // 0 = yoto, 1 = abs
+  PsramString series;                      // primary series / collection name
+  float       sequence = -1.0f;            // book sequence in series (-1.0f = none; >= 0.0f = valid)
+  PsramString seq_display;                 // e.g. "#0-3", "#1", or "1-3"
+  PsramString extra_series[2];             // up to 2 additional series/groups from series_list
+  float       extra_seq[2] = {-1.0f, -1.0f};
+  PsramString extra_seq_disp[2];
+  int         extra_series_cnt = 0;
+  bool        is_highlight = false;        // highlighted / pinned card
+  bool        daily = false;               // synthetic "Yoto Daily" tile
+  lv_obj_t*   tile = nullptr;              // the lv_img tile in the grid
+  int         pool_slot = -1;              // Index into s_thumb_pool (-1 = lightweight placeholder)
+
+  bool is_abs() const { return source == 1; }
+  const char* source_name() const { return (source == 1) ? "abs" : "yoto"; }
 };
 
 // Yoto Daily isn't a library card — it's the player's "Button Play" card (3nC80), whose
@@ -54,8 +144,36 @@ struct Card {
 static const char* YOTO_DAILY_ID    = "3nC80";
 static const char* YOTO_DAILY_COVER =
   "https://card-content.yotoplay.com/yoto/pub/jC1GVU5Iwhl0yo5Lpcsn_OtXvp-5q2H2KwGAqeZR9ds";
-static Card s_cards[MAX_CARDS];
+
+static std::vector<Card, PsramVectorAlloc<Card>> s_cards;
 int s_card_count=0;
+
+inline void init_thumb_pool(){
+  for(int p = 0; p < THUMB_POOL_SIZE; p++){
+    if(!s_thumb_pool[p].buf){
+      s_thumb_pool[p].buf = (uint8_t*)heap_caps_malloc(THUMB_SZ, MALLOC_CAP_SPIRAM);
+      s_thumb_pool[p].dsc.header.always_zero = 0;
+      s_thumb_pool[p].dsc.header.w = THUMB_W;
+      s_thumb_pool[p].dsc.header.h = THUMB_H;
+      s_thumb_pool[p].dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
+      s_thumb_pool[p].dsc.data_size = THUMB_SZ;
+      s_thumb_pool[p].dsc.data = s_thumb_pool[p].buf;
+    }
+    s_thumb_pool[p].card_idx = -1;
+    s_thumb_pool[p].last_use = 0;
+  }
+}
+
+inline void clear_card_pool_slots(){
+  for(size_t i = 0; i < s_cards.size(); i++){
+    s_cards[i].tile = nullptr;
+    s_cards[i].pool_slot = -1;
+  }
+  for(int p = 0; p < THUMB_POOL_SIZE; p++){
+    s_thumb_pool[p].card_idx = -1;
+    s_thumb_pool[p].last_use = 0;
+  }
+}
 static lv_obj_t* s_status=nullptr;
 static lv_obj_t* s_status_box=nullptr;
 static lv_obj_t* s_barlabel=nullptr;        // idle-state hint / cover-load progress (left side)
@@ -189,17 +307,23 @@ static void status(const char* msg){
   lv_refr_now(lv_disp_get_default());
 }
 
-// Kiosk cleanTitle parity: strip leading 'The ', 'A ', 'An ' (case-insensitive) and lowercase
-static String clean_sort_title(const String& raw){
-  String s = raw;
-  s.trim();
-  String low = s;
-  low.toLowerCase();
-  if(low.startsWith("the "))      low = low.substring(4);
-  else if(low.startsWith("an "))  low = low.substring(3);
-  else if(low.startsWith("a "))   low = low.substring(2);
-  low.trim();
-  return low;
+// Kiosk cleanTitle parity: strip leading 'The ', 'A ', 'An ' (case-insensitive) and lowercase into PSRAM string
+static PsramString clean_sort_title(const char* raw){
+  if(!raw || !*raw) return PsramString();
+  const char* p = raw;
+  while(*p == ' ' || *p == '\t') p++;
+  if(strncasecmp(p, "the ", 4) == 0) p += 4;
+  else if(strncasecmp(p, "an ", 3) == 0) p += 3;
+  else if(strncasecmp(p, "a ", 2) == 0) p += 2;
+  while(*p == ' ' || *p == '\t') p++;
+  PsramString res(p);
+  for(size_t i = 0; i < res.length(); i++){
+    if(res[i] >= 'A' && res[i] <= 'Z') res[i] += 32;
+  }
+  return res;
+}
+static PsramString clean_sort_title(const String& raw){
+  return clean_sort_title(raw.c_str());
 }
 
 static void fmt_mmss(char* b, int s){ if(s<0)s=0; sprintf(b, "%d:%02d", s/60, s%60); }
@@ -307,15 +431,15 @@ inline void sync_active_player_playback(){
     if(matched < 0 && pi->now_playing.length() > 0){
       String np_low = pi->now_playing; np_low.toLowerCase();
       for(int i = 0; i < s_card_count; i++){
-        String tl = s_cards[i].title; tl.toLowerCase();
+        String tl = s_cards[i].title.c_str(); tl.toLowerCase();
         if(tl.length() > 0 && (tl.indexOf(np_low) >= 0 || np_low.indexOf(tl) >= 0)){ matched = i; break; }
       }
     }
     if(matched >= 0){
       s_play_card   = matched;
-      s_play_title  = pi->now_playing.length() > 0 ? pi->now_playing : s_cards[matched].title;
-      s_play_author = pi->author.length() > 0 ? pi->author : s_cards[matched].author;
-      if(s_play_cover.length() == 0) s_play_cover = s_cards[matched].cover;
+      s_play_title  = pi->now_playing.length() > 0 ? pi->now_playing : String(s_cards[matched].title.c_str());
+      s_play_author = pi->author.length() > 0 ? pi->author : String(s_cards[matched].author.c_str());
+      if(s_play_cover.length() == 0) s_play_cover = s_cards[matched].cover.c_str();
     } else {
       // Physical / retail card or media not in filtered catalog:
       // Set s_play_card to -1 so we NEVER falsely display card #0!
@@ -353,6 +477,8 @@ static void show_error(const char* title, const char* message, const char* actio
 void net_init_and_fetch();
 void build_grid();
 void load_thumbs();
+bool load_thumb_for_card(int card_idx, bool force_refr = false);
+void update_visible_thumbs(bool force_refr = false);
 bool fetch_library_core();
 static void decorate_tile(lv_obj_t* tile, int card_idx, bool show_seq);
 static void ensure_hotspot_active();

@@ -213,7 +213,7 @@ static void ota_begin(){
     int i = s_ota_web.hasArg("card") ? s_ota_web.arg("card").toInt() : 0;
     if(i < 0 || i >= s_card_count) i = 0;
     Card& c = s_cards[i];
-    out += ",\"id\":\"" + c.id + "\"";
+    out += String(",\"id\":\"") + c.id.c_str() + "\"";
     if(s_ota_web.arg("expire") == "1"){
       yoto::s_access = "expired-on-purpose";   // NOT persisted; next refresh overwrites
       out += ",\"forcedExpiry\":true";
@@ -223,7 +223,7 @@ static void ota_begin(){
       tlsarena::Guard tg;
       WiFiClientSecure cli; HTTPClient http;
       uint32_t t0 = millis();
-      apiCode = yoto::get(cli, http, "/card/" + c.id);
+      apiCode = yoto::get(cli, http, String("/card/") + c.id.c_str());
       if(apiCode == 200){ char* b = read_body_psram(http, blen); if(b) free(b); }
       if(apiCode > 0) http.end();
       apiMs = millis() - t0;
@@ -298,7 +298,7 @@ static void ota_begin(){
       bool ok = false;
       s_thumb_diag = "";
       uint32_t t0 = millis();
-      if(buf){ ok = fetch_cover(c.cover, DCOVER_W, DCOVER_H, buf); free(buf); }
+      if(buf){ ok = fetch_cover(c.cover.c_str(), DCOVER_W, DCOVER_H, buf); free(buf); }
       else s_thumb_diag = "psram alloc fail";
       out += ",\"cover\":" + String(ok ? 1 : 0) + ",\"coverDiag\":\"" + s_thumb_diag +
              "\",\"coverMs\":" + String(millis() - t0);

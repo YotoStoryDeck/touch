@@ -115,8 +115,7 @@ static int send_cmd(const char* name, const String& body){
       String child_id = (core::s_profile_count > 0 && core::s_active_profile_idx < core::s_profile_count)
                         ? core::s_profiles[core::s_active_profile_idx].id : String("default");
       int card_ref = (s_cur_card >= 0 && s_cur_card < s_card_count) ? s_cur_card : s_play_card;
-      String ctype = (card_ref >= 0 && card_ref < s_card_count && s_cards[card_ref].source.length() > 0)
-                     ? s_cards[card_ref].source : String("yoto");
+      String ctype = (card_ref >= 0 && card_ref < s_card_count && s_cards[card_ref].is_abs()) ? String("abs") : String("yoto");
       if(ctype.startsWith("yoto")) ctype = "yoto";
       return core::play_media(cfg::core_url, child_id, ctype, cid ? cid : "", cfg::device_id, chIdx,
                               ck ? String(ck) : String(""), tk ? String(tk) : String(""));
@@ -192,7 +191,7 @@ static void apply_live_state(){
   else if(lv.status == ymqtt::ST_PAUSED || lv.status == ymqtt::ST_STOPPED) s_playing = false;
 
   int idx = card_index_by_id(lv.cardId);
-  if(idx >= 0){ s_play_card = idx; s_play_title = s_cards[idx].title; }
+  if(idx >= 0){ s_play_card = idx; s_play_title = s_cards[idx].title.c_str(); }
   if(lv.chapterTitle[0]) s_play_chapter = lv.chapterTitle;
   if(lv.chapterKey[0]){ int k = atoi(lv.chapterKey) - 1; if(k >= 0) s_play_ch = k; }  // "01"->0
   if(lv.trackLength > 0) s_play_dur = lv.trackLength;
@@ -301,12 +300,12 @@ static void np_goto_chapter(int k){
   arm_sleep_timer_if_needed();
   s_cur_ch=k; s_pos=0; s_playing=true;
   s_play_card=s_cur_card; s_play_ch=k;                 // keep the mini-player in sync
-  s_play_author=s_cards[s_cur_card].author;
+  s_play_author=s_cards[s_cur_card].author.c_str();
   s_play_chapter=s_ch[k].title; s_play_dur=s_ch[k].dur;
   np_set_chapter_label(); np_set_playicon(); np_update_progress(); update_home_bar();
   lv_refr_now(lv_disp_get_default());
   String tk = s_ch[k].track_key.length() ? s_ch[k].track_key : s_ch[k].key;
-  send_cmd("play", String("{\"id\":\"")+s_cards[s_cur_card].id+"\",\"chapterIdx\":"+k+",\"chapterKey\":\""+s_ch[k].key+"\",\"trackKey\":\""+tk+"\"}");
+  send_cmd("play", String("{\"id\":\"")+s_cards[s_cur_card].id.c_str()+"\",\"chapterIdx\":"+k+",\"chapterKey\":\""+s_ch[k].key+"\",\"trackKey\":\""+tk+"\"}");
 }
 static void np_toggle(){
   s_playing = !s_playing;
@@ -429,7 +428,7 @@ static void play_from_confirmed(int chapterIdx){
     s_ch_count = 1;
     s_ch[0].key = "01";
     s_ch[0].track_key = "01";
-    s_ch[0].title = s_cards[s_cur_card].title.length() ? s_cards[s_cur_card].title : "Full Audiobook";
+    s_ch[0].title = s_cards[s_cur_card].title.length() ? s_cards[s_cur_card].title.c_str() : "Full Audiobook";
     s_ch[0].dur = 1800;
   }
 
@@ -442,11 +441,11 @@ static void play_from_confirmed(int chapterIdx){
   String payload;
   if(chapterIdx < 0){
     // Resume mode ('Play Book' button): omit chapterKey/trackKey and pass chapterIdx = -1 so Core/Bridge resumes saved progress
-    payload = String("{\"id\":\"") + s_cards[s_cur_card].id + "\",\"chapterIdx\":-1}";
+    payload = String("{\"id\":\"") + s_cards[s_cur_card].id.c_str() + "\",\"chapterIdx\":-1}";
   } else {
     if(chapterIdx >= s_ch_count) chapterIdx = 0;
     String tk = s_ch[chapterIdx].track_key.length() ? s_ch[chapterIdx].track_key : s_ch[chapterIdx].key;
-    payload = String("{\"id\":\"") + s_cards[s_cur_card].id
+    payload = String("{\"id\":\"") + s_cards[s_cur_card].id.c_str()
             + "\",\"chapterIdx\":" + chapterIdx
             + ",\"chapterKey\":\"" + s_ch[chapterIdx].key
             + "\",\"trackKey\":\"" + tk + "\"}";
@@ -459,8 +458,8 @@ static void play_from_confirmed(int chapterIdx){
     s_playing = true;
     s_pos = 0;
     s_play_card = s_cur_card;
-    s_play_title = s_detail_title.length() ? s_detail_title : s_cards[s_cur_card].title;
-    s_play_author = s_cards[s_cur_card].author;
+    s_play_title = s_detail_title.length() ? s_detail_title : String(s_cards[s_cur_card].title.c_str());
+    s_play_author = s_cards[s_cur_card].author.c_str();
     s_play_chapter = "Connecting to Player...";
     update_home_bar();
     open_now();
