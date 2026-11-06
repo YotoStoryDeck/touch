@@ -133,6 +133,7 @@ struct Card {
   bool        daily = false;               // synthetic "Yoto Daily" tile
   lv_obj_t*   tile = nullptr;              // the lv_img tile in the grid
   int         pool_slot = -1;              // Index into s_thumb_pool (-1 = lightweight placeholder)
+  uint32_t    stream_fail_t = 0;           // Cooldown timestamp on download failure
 
   bool is_abs() const { return source == 1; }
   const char* source_name() const { return (source == 1) ? "abs" : "yoto"; }

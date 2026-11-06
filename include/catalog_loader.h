@@ -552,92 +552,72 @@ static bool fetch_daily_track(const String& today, String& outKey, String& outTi
 
 
 // ---------------- background library warmer ----------------
-
 static int  s_pc_cursor = 0;     // next card to inspect
-
+static int  s_pc_pass   = 0;     // Pass 0 = Grid Thumbnails (highest priority); Pass 1 = Detail/Nowbar; Pass 2 = Chapters
 static int  s_pc_fail   = 0;     // consecutive failures on the current item (bounded, then skip)
-
 static bool s_pc_done   = false; // whole library warm — stop scanning until the next reboot
-
 #define PC_MIN_INTERNAL_BLOCK 12288
 
-
-
 static void precache_step(){
-
   if(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) < PC_MIN_INTERNAL_BLOCK) return;
+  if(s_card_count <= 0) return;
 
-  while(s_pc_cursor < s_card_count){
+  while(s_pc_pass < 3){
+    while(s_pc_cursor < s_card_count){
+      Card& c = s_cards[s_pc_cursor];
+      if(c.daily){ s_pc_cursor++; s_pc_fail = 0; continue; }
 
-    Card& c = s_cards[s_pc_cursor];
-
-    if(c.daily){ s_pc_cursor++; s_pc_fail = 0; continue; }
-
-
-
-    // 1) chapters -> {id}.chap
-
-    if(!SD.exists(sd_chap_path(c.id.c_str()))){
-
-      static Chapter sv[MAX_CH];
-
-      int svc = s_ch_count; String svt = s_detail_title;
-
-      for(int k=0;k<svc;k++) sv[k] = s_ch[k];
-
-      bool ok = fetch_card_detail(s_pc_cursor);
-
-      for(int k=0;k<svc;k++){ s_ch[k] = sv[k]; sv[k].key = String(); sv[k].track_key = String(); sv[k].title = String(); }
-
-      s_ch_count = svc; s_detail_title = svt;
-
-      if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }
-
-      return;
-
+      if(s_pc_pass == 0){
+        // PASS 0: Grid thumbnail covers (160x254) -> {id}_160.565
+        // Priority #1 so the child sees all covers when scrolling the catalog!
+        if(!sd_cache_exists(c.id.c_str(), THUMB_W, c.cover.c_str())){
+          if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
+          bool ok = s_dcover && load_cover_cached(c.id.c_str(), c.cover.c_str(), THUMB_W, THUMB_H, THUMB_SZ, s_dcover);
+          if(!ok && ++s_pc_fail < 2){
+            return;
+          }
+          s_pc_cursor++; s_pc_fail = 0;
+          return;
+        }
+      } else if(s_pc_pass == 1){
+        // PASS 1: Detail-size (210x333) and Now-Playing (170x170) covers
+        if(!sd_cache_exists(c.id.c_str(), DCOVER_W, c.cover.c_str())){
+          if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
+          bool ok = s_dcover && load_cover_cached(c.id.c_str(), c.cover.c_str(), DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover);
+          if(!ok && ++s_pc_fail < 2) return;
+          s_pc_cursor++; s_pc_fail = 0;
+          return;
+        }
+        if(!sd_cache_exists(c.id.c_str(), NCOVER_W, c.cover.c_str())){
+          if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
+          bool ok = s_dcover && load_cover_cached(c.id.c_str(), c.cover.c_str(), NCOVER_W, NCOVER_H, NCOVER_SZ, s_dcover);
+          if(!ok && ++s_pc_fail < 2) return;
+          s_pc_cursor++; s_pc_fail = 0;
+          return;
+        }
+      } else if(s_pc_pass == 2){
+        // PASS 2: Chapter lists -> {id}.chap
+        if(!SD.exists(sd_chap_path(c.id.c_str()))){
+          static Chapter sv[MAX_CH];
+          int svc = s_ch_count; String svt = s_detail_title;
+          for(int k=0;k<svc;k++) sv[k] = s_ch[k];
+          bool ok = fetch_card_detail(s_pc_cursor);
+          for(int k=0;k<svc;k++){ s_ch[k] = sv[k]; sv[k].key = String(); sv[k].track_key = String(); sv[k].title = String(); }
+          s_ch_count = svc; s_detail_title = svt;
+          if(!ok && ++s_pc_fail < 2) return;
+          s_pc_cursor++; s_pc_fail = 0;
+          return;
+        }
+      }
+      s_pc_cursor++;
+      s_pc_fail = 0;
     }
-
-    // 1b) grid thumbnail cover -> {id}_160.565
-    if(!sd_cache_exists(c.id.c_str(), THUMB_W, c.cover.c_str())){
-      if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
-      bool ok = s_dcover && load_cover_cached(c.id.c_str(), c.cover.c_str(), THUMB_W, THUMB_H, THUMB_SZ, s_dcover);
-      if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }
-      return;
-    }
-
-    // 2) detail-size cover -> {id}_210.565
-
-    if(!sd_cache_exists(c.id.c_str(), DCOVER_W, c.cover.c_str())){
-
-      if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
-
-      bool ok = s_dcover && load_cover_cached(c.id.c_str(), c.cover.c_str(), DCOVER_W, DCOVER_H, DCOVER_SZ, s_dcover);
-
-      if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }
-
-      return;
-
-    }
-
-    // 3) now-playing cover -> {id}_170.565
-
-    if(!sd_cache_exists(c.id.c_str(), NCOVER_W, c.cover.c_str())){
-
-      if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
-
-      bool ok = s_dcover && load_cover_cached(c.id.c_str(), c.cover.c_str(), NCOVER_W, NCOVER_H, NCOVER_SZ, s_dcover);
-
-      if(!ok && ++s_pc_fail >= 3){ s_pc_cursor++; s_pc_fail = 0; }
-
-      return;
-
-    }
-
-    s_pc_cursor++; s_pc_fail = 0;
-
+    // Completed a pass through all cards: proceed to next pass
+    s_pc_pass++;
+    s_pc_cursor = 0;
+    s_pc_fail = 0;
+    log_msg("[CACHE] Precache pass %d completed across %d items", s_pc_pass, s_card_count);
   }
-
   s_pc_done = true;
-
 }
 

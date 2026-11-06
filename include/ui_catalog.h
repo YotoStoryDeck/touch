@@ -158,6 +158,7 @@ static int acquire_thumb_slot(int card_idx){
       if(s_cards[old_idx].tile && lv_obj_is_valid(s_cards[old_idx].tile)){
         lv_obj_set_style_bg_img_src(s_cards[old_idx].tile, NULL, 0);
         decorate_tile(s_cards[old_idx].tile, old_idx, s_active_tab == TAB_SERIES);
+        lv_obj_invalidate(s_cards[old_idx].tile);
       }
     }
     s_thumb_pool[best_slot].card_idx = -1;
@@ -193,7 +194,7 @@ bool load_thumb_for_card(int card_idx, bool force_refr){
   if(c.tile && lv_obj_is_valid(c.tile)){
     lv_obj_set_style_bg_img_src(c.tile, &s_thumb_pool[slot].dsc, 0);
     decorate_tile(c.tile, card_idx, s_active_tab == TAB_SERIES);
-    if(force_refr) lv_obj_invalidate(c.tile);
+    lv_obj_invalidate(c.tile);
   }
 
   return true;
@@ -210,6 +211,44 @@ void update_visible_thumbs(bool force_refr){
       }
     }
   }
+}
+
+// On-demand visible cover streaming:
+// When scrolling lands on tiles that are not yet cached on MicroSD, stream their 160x254
+// thumbnail covers over WiFi immediately so the placeholders turn into covers on the fly.
+inline bool stream_visible_uncached_thumb(){
+  if(!s_grid || s_card_count <= 0) return false;
+  lv_obj_t* act = lv_scr_act();
+  if(act != s_scr_home) return false;
+
+  for(int i = 0; i < s_card_count; i++){
+    if(s_cards[i].tile && is_tile_visible(s_cards[i].tile)){
+      if(s_cards[i].pool_slot >= 0) continue;
+
+      // If it exists on SD, load it immediately into an LRU PSRAM slot
+      if(sd_cache_exists(s_cards[i].id.c_str(), THUMB_W, s_cards[i].cover.c_str())){
+        if(load_thumb_for_card(i, true)) return true;
+      }
+
+      // Check failure backoff (skip cards that failed within 20 seconds)
+      if(s_cards[i].stream_fail_t > 0 && (millis() - s_cards[i].stream_fail_t < 20000)){
+        continue;
+      }
+
+      // Visible tile is missing its cover on SD: fetch it over WiFi, cache to SD, and load!
+      if(s_cards[i].cover.length() > 0){
+        if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
+        if(s_dcover && load_cover_cached(s_cards[i].id.c_str(), s_cards[i].cover.c_str(), THUMB_W, THUMB_H, THUMB_SZ, s_dcover)){
+          load_thumb_for_card(i, true);
+          log_msg("[STREAM] Cached & loaded cover for card %d: '%s'", i, s_cards[i].title.c_str());
+          return true;
+        } else {
+          s_cards[i].stream_fail_t = millis();
+        }
+      }
+    }
+  }
+  return false;
 }
 
 static lv_obj_t* create_card_tile(lv_obj_t* parent, int i, bool show_seq){
@@ -550,13 +589,7 @@ void build_grid(){
   lv_obj_add_event_cb(cont, [](lv_event_t* e){
     lv_event_code_t code = lv_event_get_code(e);
     if(code == LV_EVENT_SCROLL || code == LV_EVENT_SCROLL_END){
-      update_visible_thumbs(false);
-    }
-  }, LV_EVENT_ALL, NULL);
-  lv_obj_add_event_cb(cont, [](lv_event_t* e){
-    lv_event_code_t code = lv_event_get_code(e);
-    if(code == LV_EVENT_SCROLL || code == LV_EVENT_SCROLL_END){
-      update_visible_thumbs(false);
+      update_visible_thumbs(true);
     }
   }, LV_EVENT_ALL, NULL);
 

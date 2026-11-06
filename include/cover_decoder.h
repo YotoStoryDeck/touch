@@ -76,7 +76,8 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
     HTTPClient http;
     bool begin_ok = url.startsWith("https://") ? http.begin(scli, url) : http.begin(pcli, url);
     if(!begin_ok){ s_thumb_diag = "begin fail heap=" + String(ESP.getFreeHeap()); return false; }
-    http.setTimeout(2500);
+    bool is_core = (url.indexOf("/api/thumb") >= 0);
+    http.setTimeout(is_core ? 5000 : 3500);
     int code = http.GET();
     if(code != 200){ s_thumb_diag = "HTTP " + String(code) + " heap=" + String(ESP.getFreeHeap()); http.end(); return false; }
     int len = http.getSize();
@@ -175,12 +176,11 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
 // get their own cached size.
 static bool load_cover_cached(const String& id, const String& coverUrl, int W, int H, size_t sz, uint8_t* buf){
   if(sd_cache_read(id, W, buf, sz, coverUrl)) return true;
-  // Retry the CDN fetch a few times — like the API GET, the TLS handshake is flaky under the
-  // memory pressure of the concurrent MQTT session, and one success caches the cover for good.
   bool ok = false;
-  for(int a = 0; a < 3 && !ok; a++){
+  int attempts = (coverUrl.indexOf("/api/thumb") >= 0) ? 1 : 2;
+  for(int a = 0; a < attempts && !ok; a++){
     ok = fetch_cover(coverUrl, W, H, buf);
-    if(!ok) delay(350);
+    if(!ok && a + 1 < attempts) delay(100);
   }
   if(ok) sd_cache_write(id, W, buf, sz, coverUrl);
   return ok;

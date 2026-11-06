@@ -323,6 +323,14 @@ void loop(){
     thumb_load_step();
   }
 
+  // Active Viewport On-Demand Cover Streamer:
+  // When scrolling lands on tiles whose covers are missing from MicroSD, stream them on the fly
+  static uint32_t s_stream_t = 0;
+  if(s_lib_ok && s_sd_ok && (millis() - s_stream_t > 120) && heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 16000){
+    stream_visible_uncached_thumb();
+    s_stream_t = millis();
+  }
+
   // 4-Hour Deep Idle Catalog & Profile Refresh Watchdog (only runs during Screensaver or deep idle > 60s)
   static uint32_t s_last_catalog_refresh_t = millis();
   const uint32_t FOUR_HOURS_MS = 4UL * 60UL * 60UL * 1000UL;

@@ -57,12 +57,20 @@ inline String sd_cache_path(const String& id, int W){
   return String(SD_DIR) + "/" + id + "_" + W + ".565";
 }
 
+inline size_t sd_expected_cover_size(int W){
+  if(W == 160) return 81280;   // THUMB_W * THUMB_H * 2 (160 * 254 * 2)
+  if(W == 210) return 139860;  // DCOVER_W * DCOVER_H * 2 (210 * 333 * 2)
+  if(W == 170) return 91800;   // NCOVER_W * NCOVER_H * 2 (170 * 270 * 2)
+  return (size_t)W * (size_t)(W * 1011 / 638) * 2;
+}
+
 inline bool sd_cache_exists(const String& id, int W, const String& coverUrl = ""){
   if(!s_sd_ok) return false;
   File f = SD.open(sd_cache_path(id, W), FILE_READ);
   if(!f) return false;
   size_t fsz = (size_t)f.size();
-  if(coverUrl.length() > 0 && fsz >= 4 && (fsz & 3) == 4){
+  size_t want = sd_expected_cover_size(W);
+  if(fsz == want + 4 && coverUrl.length() > 0){
     // File has a 4-byte trailing URL hash footer: verify it matches current coverUrl
     uint32_t stored_h = 0;
     f.seek(fsz - 4);
@@ -71,7 +79,7 @@ inline bool sd_cache_exists(const String& id, int W, const String& coverUrl = ""
     return r_ok && (stored_h == sd_cover_url_hash(coverUrl));
   }
   f.close();
-  return fsz > 0;
+  return (fsz == want || fsz == want + 4 || fsz > 0);
 }
 
 inline bool sd_cache_read(const String& id, int W, uint8_t* buf, size_t want, const String& coverUrl = ""){
