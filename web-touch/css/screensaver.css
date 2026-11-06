@@ -13,12 +13,6 @@
   z-index: 1000;
   cursor: pointer;
   user-select: none;
-  animation: saverFadeIn 0.35s ease-out;
-}
-
-@keyframes saverFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 .saver-container {

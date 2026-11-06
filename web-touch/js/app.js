@@ -986,9 +986,11 @@ Are you sure you want to start audio playback on this remote player?`);
     this._sleepTicker = setInterval(() => {
       // Check inactivity for screensaver transition
       this.checkInactivity();
-      // If screensaver is actively displaying, re-render every second to tick the clock/colors
+      // If screensaver is actively displaying, update clock in-place (no full DOM wipe or flashing)
       if (state.screen === 'screensaver') {
-        this.render();
+        if (!ScreensaverScreen.tick()) {
+          this.render();
+        }
       }
       const isPlaying = Boolean(state.isPlaying || state.activeDevice?.is_playing);
       if (!isPlaying) {

@@ -109,6 +109,85 @@ export const ScreensaverScreen = {
   /**
    * Main Render function for Screensaver
    */
+  _lastTimeKey: null,
+  _lastColor: null,
+  _lastSleepMin: null,
+
+  /**
+   * Smooth in-place clock ticker:
+   * Updates digit segments, colors, and sleep badges without re-creating DOM or flashing.
+   */
+  tick() {
+    const el = document.getElementById('screensaverScreen');
+    if (!el) return false;
+
+    const { color, now } = this.getColorInfo();
+    const minutes = now.getMinutes();
+    const hours = now.getHours();
+    const timeKey = `${hours}:${minutes}`;
+    const sleepMinsLeft = state.sleepTimerRemainingSec > 0 ? Math.ceil(state.sleepTimerRemainingSec / 60) : 0;
+
+    // 1. Update color custom property smoothly in-place
+    if (this._lastColor !== color) {
+      el.style.setProperty('--saver-col', color);
+      this._lastColor = color;
+    }
+
+    // 2. Update sleep badge in-place
+    if (this._lastSleepMin !== sleepMinsLeft) {
+      this._lastSleepMin = sleepMinsLeft;
+      let badgeEl = el.querySelector('.saver-sleep-badge');
+      if (sleepMinsLeft > 0) {
+        if (!badgeEl) {
+          badgeEl = document.createElement('div');
+          badgeEl.className = 'saver-sleep-badge';
+          el.prepend(badgeEl);
+        }
+        badgeEl.innerHTML = `<span>🌙</span><span>Sleep timer: ${sleepMinsLeft}m</span>`;
+      } else if (badgeEl) {
+        badgeEl.remove();
+      }
+    }
+
+    // 3. If minute hasn't changed, skip digit rebuilding completely!
+    if (this._lastTimeKey === timeKey) {
+      return true;
+    }
+    this._lastTimeKey = timeKey;
+
+    // 4. Update digits in-place
+    const container = el.querySelector('.saver-container');
+    if (container) {
+      const sizeIdx = Math.max(0, Math.min(2, state.parentSettings.clockSize ?? 2));
+      const H = DIG_HEIGHTS[sizeIdx];
+      const t = Math.max(4, Math.floor(H / 8));
+      const W = Math.floor(H / 2);
+      const gap = Math.floor(H / 16);
+      const vlen = Math.floor((H - 3 * t) / 2);
+
+      const h12 = ((hours + 11) % 12) + 1;
+      const d0 = h12 >= 10 ? 1 : -2;
+      const d1 = h12 % 10;
+      const d2 = Math.floor(minutes / 10);
+      const d3 = minutes % 10;
+
+      container.innerHTML = `
+        ${this.renderDigit(d0, W, H, t, vlen)}
+        ${this.renderDigit(d1, W, H, t, vlen)}
+
+        <!-- Colon -->
+        <div class="saver-colon" style="width:${t}px; height:${H}px; margin: 0 ${gap / 2}px;">
+          <div class="saver-dot" style="width:${t}px; height:${t}px; margin-top:${Math.floor(H / 3 - t / 2)}px;"></div>
+          <div class="saver-dot" style="width:${t}px; height:${t}px; margin-bottom:${Math.floor(H / 3 - t / 2)}px;"></div>
+        </div>
+
+        ${this.renderDigit(d2, W, H, t, vlen)}
+        ${this.renderDigit(d3, W, H, t, vlen)}
+      `;
+    }
+    return true;
+  },
+
   render() {
     const { color, now } = this.getColorInfo();
     const sizeIdx = Math.max(0, Math.min(2, state.parentSettings.clockSize ?? 2));
