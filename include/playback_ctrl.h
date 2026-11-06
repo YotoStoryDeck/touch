@@ -121,7 +121,8 @@ static int send_cmd(const char* name, const String& body){
       return core::play_media(cfg::core_url, child_id, ctype, cid ? cid : "", cfg::device_id, chIdx,
                               ck ? String(ck) : String(""), tk ? String(tk) : String(""));
     } else if(nm == "volume"){
-      int v = (int)(in["volume"] | 30); if(v < 0) v = 0; if(v > cfg::vol_max) v = cfg::vol_max;
+      int vmax = get_active_player_vol_max();
+      int v = (int)(in["volume"] | 30); if(v < 0) v = 0; if(v > vmax) v = vmax;
       return core::player_control(cfg::core_url, cfg::device_id, "volume", v);
     } else {
       return core::player_control(cfg::core_url, cfg::device_id, nm.c_str());
@@ -316,7 +317,8 @@ static void np_toggle(){
 void np_next(){ if(s_cur_ch < s_ch_count-1) np_goto_chapter(s_cur_ch+1); }
 void np_prev(){ if(s_cur_ch > 0)           np_goto_chapter(s_cur_ch-1); }
 void np_volume(int v){
-  if(v < 0) v = 0; if(v > cfg::vol_max) v = cfg::vol_max;
+  int vmax = get_active_player_vol_max();
+  if(v < 0) v = 0; if(v > vmax) v = vmax;
   s_vol = v;
   queue_cmd("volume", v);
 }

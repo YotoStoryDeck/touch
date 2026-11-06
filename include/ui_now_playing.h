@@ -9,6 +9,13 @@ void np_next();
 void np_prev();
 
 static void np_update_progress(){
+  if(s_np_vol_slider){
+    int vmax = get_active_player_vol_max();
+    lv_slider_set_range(s_np_vol_slider, 0, vmax);
+    if(!lv_obj_has_state(s_np_vol_slider, LV_STATE_EDITED) && !lv_obj_has_state(s_np_vol_slider, LV_STATE_FOCUSED)){
+      lv_slider_set_value(s_np_vol_slider, s_vol > vmax ? vmax : s_vol, LV_ANIM_OFF);
+    }
+  }
   if(!s_np_barfill) return;
   int dur = s_play_dur;
   int pct = dur>0 ? (int)(100L*s_pos/dur) : 0;
@@ -73,7 +80,12 @@ static void open_now(){
   bool okv=false;
   if(!s_ncover) s_ncover=(uint8_t*)heap_caps_malloc(NCOVER_SZ, MALLOC_CAP_SPIRAM);
   if(s_ncover){
-    okv=load_cover_cached(s_cards[s_cur_card].id, s_cards[s_cur_card].cover, NCOVER_W, NCOVER_H, NCOVER_SZ, s_ncover);
+    if(s_cur_card >= 0 && s_cur_card < s_card_count){
+      okv=load_cover_cached(s_cards[s_cur_card].id, s_cards[s_cur_card].cover, NCOVER_W, NCOVER_H, NCOVER_SZ, s_ncover);
+    } else {
+      String cid = s_play_item_id.length() > 0 ? s_play_item_id : "ext_card";
+      okv=load_cover_cached(cid, s_play_cover, NCOVER_W, NCOVER_H, NCOVER_SZ, s_ncover);
+    }
   }
 
   lv_obj_t* scr=lv_obj_create(NULL);
@@ -124,7 +136,7 @@ static void open_now(){
   lv_obj_t* tt=lv_label_create(scr);
   lv_label_set_long_mode(tt, LV_LABEL_LONG_DOT);
   lv_obj_set_width(tt, iw); lv_obj_set_pos(tt, ix, 124);
-  lv_label_set_text(tt, s_detail_title.c_str());
+  lv_label_set_text(tt, s_detail_title.length() > 0 ? s_detail_title.c_str() : s_play_title.c_str());
   lv_obj_set_style_text_font(tt, &lv_font_montserrat_28, 0);
   lv_obj_set_style_text_color(tt, lv_color_hex(0xFFFFFF), 0);
   lv_obj_add_flag(tt, LV_OBJ_FLAG_CLICKABLE);
@@ -204,8 +216,10 @@ static void open_now(){
   lv_obj_set_size(slider, 260, 16); lv_obj_set_pos(slider, ix+44, cy+112);
   // the parent-set cap IS the top of the slider — full-right now means "as loud as allowed",
   // instead of showing 100 while the command silently clamps to the cap
-  lv_slider_set_range(slider, 0, cfg::vol_max);
-  lv_slider_set_value(slider, s_vol > cfg::vol_max ? cfg::vol_max : s_vol, LV_ANIM_OFF);
+  int vmax = get_active_player_vol_max();
+  lv_slider_set_range(slider, 0, vmax);
+  lv_slider_set_value(slider, s_vol > vmax ? vmax : s_vol, LV_ANIM_OFF);
+  s_np_vol_slider = slider;
   lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(slider, LV_OPA_40, LV_PART_MAIN);
   lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);

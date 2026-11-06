@@ -29,6 +29,7 @@ struct PlayerInfo {
   int    duration      = 0;
   int    volume        = 50;
   int    volume_max    = 100;
+  String cover_url     = "";
 };
 
 #define MAX_PROF_PLAYERS 8
@@ -349,6 +350,11 @@ inline bool fetch_config_and_profiles(const String& base_url, bool prune_avatars
       pi.duration      = (int)(pl["duration"] | 0);
       pi.volume        = (int)(pl["volume"] | 50);
       pi.volume_max    = (int)(pl["volume_max"] | 100);
+      String curl      = (const char*)(pl["cover_url"] | "");
+      if(curl.startsWith("/")){
+        curl = base_url + curl;
+      }
+      pi.cover_url     = curl;
     }
     if(pr.player_count == 0 && pr.default_player_id.length() > 0){
       PlayerInfo& pi = pr.players[pr.player_count++];

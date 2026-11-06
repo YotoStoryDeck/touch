@@ -105,6 +105,9 @@ static lv_obj_t* s_np_trem=nullptr;
 static lv_obj_t* s_np_playicon=nullptr;
 static lv_obj_t* s_np_chapter=nullptr;
 static lv_obj_t* s_np_sleep=nullptr;        // "Zz 23m" sleep-timer chip on the now screen
+static lv_obj_t* s_np_vol_slider=nullptr;   // active volume slider widget on now-playing
+static String s_play_cover="";              // live cover URL for currently active media / external cards
+static String s_play_item_id="";            // item/card ID for active media
 static int  s_play_dur=0;                   // duration (s) of the chapter actually playing
 
 // bedtime sleep timer: wall-clock seconds until we auto-stop the player (0 = off)
@@ -247,7 +250,7 @@ inline String get_active_player_name(){
 }
 
 inline void go_home(){
-  s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=nullptr;
+  s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=s_np_vol_slider=nullptr;
   s_set_sleep_lbl=nullptr;
   s_detail_play_lbl=nullptr;
   s_detail_bar=nullptr;
@@ -269,18 +272,34 @@ static String s_thumb_first_err = "";
 
 // Kiosk App.syncActiveDevicePlayback() parity:
 // Binds the active target player's live playback state from Core to the Now Playing Mini-Bar and state vars
+inline int get_active_player_vol_max(){
+  const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
+  if(pi && pi->volume_max > 0){
+    return min(pi->volume_max, cfg::vol_max);
+  }
+  return cfg::vol_max;
+}
+
 inline void sync_active_player_playback(){
   if(cfg::op_mode != "core") return;
   // Strictly bind to the controller's assigned target player (cfg::device_id)
   const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
   if(!pi) return;
+  int vmax = get_active_player_vol_max();
   if(pi->volume > 0){
-    int vmax = pi->volume_max > 0 ? pi->volume_max : cfg::vol_max;
     s_vol = pi->volume < vmax ? pi->volume : vmax;
+  }
+  if(s_np_vol_slider){
+    lv_slider_set_range(s_np_vol_slider, 0, vmax);
+    if(!lv_obj_has_state(s_np_vol_slider, LV_STATE_EDITED) && !lv_obj_has_state(s_np_vol_slider, LV_STATE_FOCUSED)){
+      lv_slider_set_value(s_np_vol_slider, s_vol > vmax ? vmax : s_vol, LV_ANIM_OFF);
+    }
   }
   bool has_media = (pi->is_playing || pi->has_card || pi->item_id.length() > 0 || pi->now_playing.length() > 0);
   if(has_media){
     s_playing = pi->is_playing;
+    s_play_item_id = pi->item_id;
+    s_play_cover = pi->cover_url;
     int matched = -1;
     for(int i = 0; i < s_card_count; i++){
       if(pi->item_id.length() > 0 && s_cards[i].id == pi->item_id){ matched = i; break; }
@@ -296,9 +315,11 @@ inline void sync_active_player_playback(){
       s_play_card   = matched;
       s_play_title  = pi->now_playing.length() > 0 ? pi->now_playing : s_cards[matched].title;
       s_play_author = pi->author.length() > 0 ? pi->author : s_cards[matched].author;
-    } else if(s_card_count > 0){
-      // External card not in filtered list: still show on mini-bar using index 0 as anchor
-      if(s_play_card < 0) s_play_card = 0;
+      if(s_play_cover.length() == 0) s_play_cover = s_cards[matched].cover;
+    } else {
+      // Physical / retail card or media not in filtered catalog:
+      // Set s_play_card to -1 so we NEVER falsely display card #0!
+      s_play_card   = -1;
       s_play_title  = pi->now_playing.length() > 0 ? pi->now_playing : String("Playing Track");
       s_play_author = pi->author;
     }
@@ -312,6 +333,8 @@ inline void sync_active_player_playback(){
     s_play_title   = "";
     s_play_author  = "";
     s_play_chapter = "";
+    s_play_cover   = "";
+    s_play_item_id = "";
   }
 }
 
