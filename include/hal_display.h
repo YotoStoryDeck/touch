@@ -241,11 +241,11 @@ static int rgb_panel_init(){
   esp_lcd_rgb_panel_config_t cfg={};
   cfg.clk_src=LCD_CLK_SRC_DEFAULT;
   cfg.timings.pclk_hz=16*1000*1000; cfg.timings.h_res=LCD_H_RES; cfg.timings.v_res=LCD_V_RES;
-  cfg.timings.hsync_pulse_width=4; cfg.timings.hsync_back_porch=40; cfg.timings.hsync_front_porch=8;
+  cfg.timings.hsync_pulse_width=4; cfg.timings.hsync_back_porch=30; cfg.timings.hsync_front_porch=8;
   cfg.timings.vsync_pulse_width=4; cfg.timings.vsync_back_porch=8; cfg.timings.vsync_front_porch=8;
   cfg.timings.flags.pclk_active_neg=1;
   cfg.data_width=16; cfg.bits_per_pixel=16; cfg.num_fbs=1;
-  cfg.bounce_buffer_size_px=LCD_H_RES*24;
+  cfg.bounce_buffer_size_px=LCD_H_RES*10;
   cfg.dma_burst_size=64;
   cfg.flags.bb_invalidate_cache=1;
   cfg.hsync_gpio_num=46; cfg.vsync_gpio_num=3; cfg.de_gpio_num=5; cfg.pclk_gpio_num=7; cfg.disp_gpio_num=-1;
@@ -274,7 +274,7 @@ inline const uint16_t* hal_get_framebuffer(){
 }
 
 // ---------------- LVGL glue ----------------
-#define DRAW_LINES 24
+#define DRAW_LINES 16
 static lv_disp_draw_buf_t s_draw_buf;
 static lv_color_t* s_buf1=nullptr;
 #ifdef WOKWI_SIMULATION
@@ -314,7 +314,7 @@ static void touch_cb(lv_indev_drv_t* drv, lv_indev_data_t* data){
   if(n>0 && x>=0 && y>=0 && x<LCD_H_RES && y<LCD_V_RES){ s_lx=x; s_ly=y; s_tstate=LV_INDEV_STATE_PR; s_tlast=millis(); s_touch_samples++; }
   else if(n==0) s_tstate=LV_INDEV_STATE_REL;             // genuine lift
   else {
-    if(s_tstate==LV_INDEV_STATE_PR && millis()-s_tlast > 350) s_tstate=LV_INDEV_STATE_REL;
+    if(s_tstate==LV_INDEV_STATE_PR && millis()-s_tlast > 100) s_tstate=LV_INDEV_STATE_REL;
   }
   data->state=s_tstate;
   data->point.x=s_lx; data->point.y=s_ly;
