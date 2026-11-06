@@ -271,21 +271,8 @@ static String s_thumb_first_err = "";
 // Binds the active target player's live playback state from Core to the Now Playing Mini-Bar and state vars
 inline void sync_active_player_playback(){
   if(cfg::op_mode != "core") return;
+  // Strictly bind to the controller's assigned target player (cfg::device_id)
   const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
-  // Auto-Follow Active Household Player:
-  // If configured player is offline or not playing, automatically reflect an active playing player in the child's profile
-  if(!pi || (!pi->is_playing && !pi->has_card) || !pi->online){
-    int prof_idx = core::s_active_profile_idx;
-    if(prof_idx >= 0 && prof_idx < core::s_profile_count){
-      const auto& pr = core::s_profiles[prof_idx];
-      for(int k = 0; k < pr.player_count; k++){
-        if(pr.players[k].is_playing){
-          pi = &pr.players[k];
-          break;
-        }
-      }
-    }
-  }
   if(!pi) return;
   if(pi->volume > 0){
     int vmax = pi->volume_max > 0 ? pi->volume_max : cfg::vol_max;

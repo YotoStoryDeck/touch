@@ -807,6 +807,21 @@ void open_settings(){
   lv_obj_set_style_text_font(mode_badge, &lv_font_montserrat_18, 0);
   lv_obj_set_style_text_color(mode_badge, lv_color_hex(is_core ? 0x2563EB : 0xEA580C), 0);
 
+  // Re-pair Core button placed next to Operational Mode, only visible in Core mode
+  if(is_core){
+    lv_obj_t* rp = pill_btn(r_mode, "Re-pair Core", 0, [](lv_event_t*){
+      core::s_is_approved = false;
+      s_lib_ok = false;
+      s_set_sleep_lbl = nullptr;
+      if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings = nullptr; }
+      s_scr_prev = nullptr;
+      net_init_and_fetch();
+    });
+    lv_obj_set_size(rp, 150, 44);
+    lv_obj_set_style_bg_color(rp, lv_color_hex(0xF3ECE0), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(rp, 0), lv_color_hex(0x2563EB), 0);
+  }
+
   lv_obj_t* mode_hint = lv_label_create(p1);
   String web_url = String("http://") + (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("192.168.4.1")) + "/settings";
   lv_label_set_text_fmt(mode_hint,
@@ -921,17 +936,7 @@ void open_settings(){
     lv_obj_set_size(hs, 160, 50);
   }
 
-  if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
-    lv_obj_t* rp = pill_btn(r_maint, "Re-pair Core", 0, [](lv_event_t*){
-      core::s_is_approved = false;
-      s_lib_ok = false;
-      s_set_sleep_lbl = nullptr;
-      if(s_scr_settings){ lv_obj_del_async(s_scr_settings); s_scr_settings = nullptr; }
-      s_scr_prev = nullptr;
-      net_init_and_fetch();
-    });
-    lv_obj_set_size(rp, 160, 50);
-  }
+
 
   if(s_sd_ok){
     lv_obj_t* clr = pill_btn(r_maint, "Purge SD Cache", 0, [](lv_event_t*){
