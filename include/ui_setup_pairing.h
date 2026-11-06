@@ -177,6 +177,7 @@ static void show_error(const char* title, const char* message, const char* actio
 static lv_obj_t* s_pairing_status_lbl = nullptr;
 
 static void show_pairing_screen(const String& core_url, const String& status_msg){
+  status_hide();
   if(s_scr_pairing){
     if(s_pairing_status_lbl) lv_label_set_text(s_pairing_status_lbl, status_msg.c_str());
     return;

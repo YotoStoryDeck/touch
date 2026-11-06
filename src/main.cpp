@@ -79,6 +79,7 @@ void net_init_and_fetch(){
       status("Checking StoryDeck Core registration...");
       String err;
       bool reg_ok = core::register_device(cfg::core_url, err);
+      status_hide();
       if(!reg_ok){
         log_msg("[CORE] Registration status: %s (registered=%d approved=%d)", err.c_str(), (int)core::s_is_registered, (int)core::s_is_approved);
         // Show dedicated Pairing Screen and start 10s poll timer
@@ -189,6 +190,7 @@ void net_init_and_fetch(){
 static void net_retry_cb(lv_timer_t* t){
   if(s_lib_ok){ lv_timer_del(t); return; }
   if(s_safe_mode) return;                   // wait for a manual Retry
+  if(s_scr_pairing) return;                 // pairing screen has its own background poller
   static bool s_retrying = false;
   if(s_retrying) return;
   s_retrying = true;
@@ -286,7 +288,8 @@ void setup(){
   ota_begin();
   if(WiFi.status() == WL_CONNECTED && cfg::op_mode == "core"){
     if(!core::ping(cfg::core_url)){
-      if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
+      if(core::ping("http://192.168.1.11:5065")) cfg::core_url = "http://192.168.1.11:5065";
+      else if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
       else if(core::ping("http://host.wokwi.internal:5065")) cfg::core_url = "http://host.wokwi.internal:5065";
     }
   }
