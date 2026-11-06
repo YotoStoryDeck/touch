@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E5352B"/>
+      <stop offset="100%" stop-color="#C52319"/>
+    </linearGradient>
+  </defs>
+  <!-- Background Rounded Rect -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Yoto / StoryDeck Card Outline in Center -->
+  <rect x="146" y="96" width="220" height="320" rx="28" fill="#FBF7F0" stroke="#E7E0D2" stroke-width="8"/>
+  
+  <!-- Sound Waves / Speaker Graphic on Card -->
+  <circle cx="256" cy="226" r="38" fill="#E5352B"/>
+  <path d="M 238 214 L 238 238 L 258 226 Z" fill="#FFFFFF"/>
+  <path d="M 314 196 A 48 48 0 0 1 314 256" fill="none" stroke="#E5352B" stroke-width="12" stroke-linecap="round"/>
+  <path d="M 336 178 A 78 78 0 0 1 336 274" fill="none" stroke="#E5352B" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- Card Bottom Accent Strip -->
+  <rect x="176" y="360" width="160" height="18" rx="9" fill="#E7E0D2"/>
+</svg>

@@ -1,0 +1,19 @@
+{
+  "name": "StoryDeck Touch",
+  "short_name": "StoryDeck",
+  "description": "StoryDeck Touch Web Kiosk",
+  "start_url": "/kiosk/",
+  "scope": "/kiosk/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#FBF7F0",
+  "theme_color": "#E5352B",
+  "icons": [
+    {
+      "src": "/kiosk/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
