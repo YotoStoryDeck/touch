@@ -38,6 +38,7 @@ static void* tls_psram_calloc(size_t n, size_t size){
 }
 
 // Core & Hardware Modules
+#include "app_log.h"
 #include "secrets.h"
 #include "app_config.h"
 #include "yoto_api.h"
@@ -65,6 +66,7 @@ static void* tls_psram_calloc(size_t n, size_t size){
 void net_init_and_fetch(){
   if(!s_net_ready){
     configTzTime(cfg::tz.c_str(), "pool.ntp.org", "time.nist.gov");   // screensaver clock
+    log_msg("[NTP] Clock configured with TZ '%s'", cfg::tz.c_str());
     if(cfg::op_mode != "core"){
       yoto::refresh();                        // mint a fresh access token before the first call
     }
@@ -78,7 +80,7 @@ void net_init_and_fetch(){
       String err;
       bool reg_ok = core::register_device(cfg::core_url, err);
       if(!reg_ok){
-        Serial.printf("[CORE] Registration status: %s (registered=%d approved=%d)\n", err.c_str(), (int)core::s_is_registered, (int)core::s_is_approved);
+        log_msg("[CORE] Registration status: %s (registered=%d approved=%d)", err.c_str(), (int)core::s_is_registered, (int)core::s_is_approved);
         // Show dedicated Pairing Screen and start 10s poll timer
         show_pairing_screen(cfg::core_url, err);
         if(!s_pairing_timer){
@@ -298,6 +300,7 @@ void setup(){
                "Open Settings to check WiFi / Core URL, then tap Retry. OTA updates still work.");
   } else if(WiFi.status()==WL_CONNECTED){
     status((String("WiFi OK: ") + WiFi.localIP().toString() + "\nFetching library...").c_str());
+    log_msg("[WIFI] Connected: IP %s (RSSI %d dBm)", WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
     net_init_and_fetch();
     // (on fetch failure, status() already shows the reason; the retry timer keeps trying)
   } else {
@@ -340,10 +343,15 @@ void loop(){
     }
   }
 
-  // Periodic live player status sync in Core mode (every 15s during lull when user isn't actively interacting)
+  // Periodic live player status sync in Core mode:
+  // - Every 3s while viewing Now Playing screen (bypasses inactivity lockout for real-time updates)
+  // - Every 15s during lull when user is on home screen/idle (>4000ms idle)
   static uint32_t s_core_sync_t = 0;
+  bool on_now_screen = (s_scr_now && lv_scr_act() == s_scr_now);
+  uint32_t sync_interval = on_now_screen ? 3000 : 15000;
+  bool screen_gate = on_now_screen || (lv_disp_get_inactive_time(NULL) > 4000);
   if(s_lib_ok && !s_thumbs_loading && cfg::op_mode == "core" && cfg::core_url.length() > 0 &&
-     millis() - s_core_sync_t > 15000 && lv_disp_get_inactive_time(NULL) > 4000 &&
+     millis() - s_core_sync_t > sync_interval && screen_gate &&
      heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 16000){
     s_core_sync_t = millis();
     int saved_prof = core::s_active_profile_idx;

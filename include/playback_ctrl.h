@@ -221,7 +221,7 @@ static void tick_cb(lv_timer_t*){
       // the real player rolls into the next chapter by itself — mirror it optimistically.
       // (we only know the chapter list while the browsed card IS the playing card;
       //  otherwise hold at 100% like before.)
-      if(s_cur_card == s_play_card && s_play_ch >= 0 && s_play_ch < s_ch_count-1){
+      if(cfg::op_mode != "core" && s_cur_card == s_play_card && s_play_ch >= 0 && s_play_ch < s_ch_count-1){
         s_play_ch++; s_cur_ch = s_play_ch; s_pos = 0;
         s_play_chapter = s_ch[s_play_ch].title;
         s_play_dur     = s_ch[s_play_ch].dur;
@@ -453,24 +453,25 @@ static void play_from_confirmed(int chapterIdx){
 
   if(code >= 200 && code < 300){
     arm_sleep_timer_if_needed();
-    int resolved_ch = chapterIdx;
-    if(resolved_ch < 0){
-      resolved_ch = (core::s_last_play_resp_ch >= 0 && core::s_last_play_resp_ch < s_ch_count) ? core::s_last_play_resp_ch : 0;
-    }
-    s_cur_ch = resolved_ch;
-    s_pos = (chapterIdx < 0 && core::s_last_play_resp_pos > 0) ? core::s_last_play_resp_pos : 0;
+    // Do NOT autoresolve the book/chapter. Wait for the player to send an authoritative update.
     s_playing = true;
-    s_play_card = s_cur_card; s_play_ch = resolved_ch;
+    s_pos = 0;
+    s_play_card = s_cur_card;
     s_play_title = s_detail_title.length() ? s_detail_title : s_cards[s_cur_card].title;
     s_play_author = s_cards[s_cur_card].author;
-    s_play_chapter = (chapterIdx < 0 && core::s_last_play_resp_ch_title.length() > 0)
-                     ? core::s_last_play_resp_ch_title
-                     : s_ch[resolved_ch].title;
-    s_play_dur = s_ch[resolved_ch].dur > 0 ? s_ch[resolved_ch].dur : 1800;
+    s_play_chapter = "Connecting to Player...";
     update_home_bar();
     open_now();
     lv_refr_now(lv_disp_get_default());
     if(s_scr_now) confetti(s_scr_now);
+
+    // Immediately trigger a status sync so the player's true track/chapter arrives ASAP
+    if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+      core::fetch_config_and_profiles(cfg::core_url, false);
+      sync_active_player_playback();
+      np_set_chapter_label(); np_set_playicon(); np_update_progress();
+      update_home_bar();
+    }
   } else {
     Serial.printf("[PLAY] Failed to start playback on player %s (HTTP %d)\n", cfg::device_id.c_str(), code);
     if(s_detail_play_lbl){

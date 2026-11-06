@@ -443,12 +443,35 @@ cv.addEventListener('pointercancel', e => { isDown = false; sendTouch(0, 0, fals
 
     // Live debug logger: /api/logs (JSON) & /logs (HTML live stream)
   s_ota_web.on("/api/logs", HTTP_GET, [](){
-    String json = "{\"total\":" + String(s_log_total) + ",\"entries\":[";
+    time_t now_epoch = time(nullptr);
+    uint32_t now_ms = millis();
+    bool ntp_synced = (now_epoch > 100000000);
+
+    String json;
+    json.reserve(256 + s_log_total * 140);
+    json = "{\"total\":" + String(s_log_total) + ",\"synced\":" + (ntp_synced ? "true" : "false") + ",\"entries\":[";
     int start = (s_log_total < MAX_LOG_ENTRIES) ? 0 : s_log_head;
     for(int i = 0; i < s_log_total; i++){
       int idx = (start + i) % MAX_LOG_ENTRIES;
       if(i > 0) json += ",";
-      json += "{\"t\":" + String(s_log_ring[idx].ms) + ",\"msg\":\"";
+
+      time_t ent_epoch = s_log_ring[idx].epoch;
+      if(ntp_synced && (ent_epoch <= 100000000)){
+        int32_t diff_sec = (int32_t)((now_ms - s_log_ring[idx].ms) / 1000);
+        ent_epoch = (now_epoch > diff_sec) ? (now_epoch - diff_sec) : 0;
+      }
+
+      char time_str[32] = "";
+      if(ent_epoch > 100000000){
+        struct tm tm_val;
+        localtime_r(&ent_epoch, &tm_val);
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_val);
+      }
+
+      json += "{\"t\":" + String(s_log_ring[idx].ms) +
+              ",\"epoch\":" + String((unsigned long)ent_epoch) +
+              ",\"time\":\"" + String(time_str) +
+              "\",\"msg\":\"";
       for(const char* p = s_log_ring[idx].msg; *p; p++){
         if(*p == '"') json += "\\\"";
         else if(*p == '\\') json += "\\\\";
@@ -476,7 +499,7 @@ cv.addEventListener('pointercancel', e => { isDown = false; sendTouch(0, 0, fals
   .badge { background:#27272A; color:#A1A1AA; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; }
   .log-box { display:flex; flex-direction:column; gap:4px; }
   .entry { display:flex; gap:12px; border-bottom:1px solid rgba(255,255,255,0.03); padding:4px 0; }
-  .time { color:#71717A; font-weight:600; min-width:85px; flex-shrink:0; }
+  .time { color:#A1A1AA; font-weight:600; min-width:155px; flex-shrink:0; letter-spacing:-0.2px; }
   .msg { color:#E4E4E7; word-break:break-all; }
   .tag-core { color:#38BDF8; font-weight:700; }
   .tag-sd { color:#FBBF24; font-weight:700; }
@@ -504,19 +527,31 @@ async function fetchLogs(){
     const res = await fetch('/api/logs?t=' + Date.now());
     if(!res.ok) return;
     const data = await res.json();
-    document.getElementById('count').textContent = data.entries.length + ' entries';
+    document.getElementById('count').textContent = data.entries.length + ' entries' + (data.synced ? ' (NTP synced)' : '');
     const box = document.getElementById('logBox');
     box.innerHTML = '';
     data.entries.forEach(e => {
       const row = document.createElement('div');
       row.className = 'entry';
-      const sec = (e.t / 1000).toFixed(2) + 's';
+      const upSec = (e.t / 1000).toFixed(2) + 's';
+      let timeHtml = '';
+      if(e.time && e.time.length > 0) {
+        timeHtml = `<span class="time" title="Uptime: ${upSec} | Epoch: ${e.epoch}">${e.time}</span>`;
+      } else {
+        timeHtml = `<span class="time" title="NTP pending (boot +${upSec})">+${upSec}</span>`;
+      }
       let formatted = e.msg
         .replace(/\[CORE\]/g, '<span class="tag-core">[CORE]</span>')
         .replace(/\[SD\]/g, '<span class="tag-sd">[SD]</span>')
         .replace(/\[CACHE\]/g, '<span class="tag-cache">[CACHE]</span>')
+        .replace(/\[WATCHDOG\]/g, '<span class="tag-cache">[WATCHDOG]</span>')
+        .replace(/\[USER\]/g, '<span class="tag-core">[USER]</span>')
+        .replace(/\[PLAY\]/g, '<span class="tag-core">[PLAY]</span>')
+        .replace(/\[CTRL\]/g, '<span class="tag-core">[CTRL]</span>')
+        .replace(/\[WIFI\]/g, '<span class="tag-sd">[WIFI]</span>')
+        .replace(/\[NTP\]/g, '<span class="tag-cache">[NTP]</span>')
         .replace(/\[ERR\]|fail|error/gi, '<span class="tag-err">$&</span>');
-      row.innerHTML = `<span class="time">${sec}</span><span class="msg">${formatted}</span>`;
+      row.innerHTML = `${timeHtml}<span class="msg">${formatted}</span>`;
       box.appendChild(row);
     });
     if(document.getElementById('autoScroll').checked){

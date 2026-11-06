@@ -801,30 +801,17 @@ void open_settings(){
 
   set_section(p1, "Operational Mode");
   lv_obj_t* r_mode = set_row(p1);
-  lv_obj_t* b_mcore = pill_btn(r_mode, "Core Managed", 0, [](lv_event_t*){
-    if(cfg::op_mode != "core"){
-      cfg::op_mode = "core";
-      cfg::save();
-      s_lib_ok = false;
-    }
-    open_settings();
-  }, cfg::op_mode == "core");
-  lv_obj_set_size(b_mcore, 160, 50);
-
-  lv_obj_t* b_mstand = pill_btn(r_mode, "Standalone Cloud", 1, [](lv_event_t*){
-    if(cfg::op_mode != "standalone"){
-      cfg::op_mode = "standalone";
-      cfg::save();
-      s_lib_ok = false;
-    }
-    open_settings();
-  }, cfg::op_mode != "core");
-  lv_obj_set_size(b_mstand, 175, 50);
+  bool is_core = (cfg::op_mode == "core");
+  lv_obj_t* mode_badge = lv_label_create(r_mode);
+  lv_label_set_text_fmt(mode_badge, "%s Mode", is_core ? "StoryDeck Core Managed" : "Standalone Cloud");
+  lv_obj_set_style_text_font(mode_badge, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(mode_badge, lv_color_hex(is_core ? 0x2563EB : 0xEA580C), 0);
 
   lv_obj_t* mode_hint = lv_label_create(p1);
-  lv_label_set_text(mode_hint, cfg::op_mode == "core"
-    ? "Core Managed: Hub-assisted single child library, ABS audiobooks & local proxy."
-    : "Standalone: Direct connection to Yoto Cloud without requiring a local Core server.");
+  String web_url = String("http://") + (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("192.168.4.1")) + "/settings";
+  lv_label_set_text_fmt(mode_hint,
+    "Operational mode is managed via Web Settings (%s).\nChanging modes requires hub or developer OAuth credentials.",
+    web_url.c_str());
   lv_obj_set_style_text_font(mode_hint, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(mode_hint, lv_color_hex(0x7A7060), 0);
 
@@ -927,8 +914,12 @@ void open_settings(){
   lv_obj_set_size(rb, 160, 50);
   lv_obj_set_style_text_color(lv_obj_get_child(rb, 0), lv_color_hex(0xE5352B), 0);
 
-  lv_obj_t* hs = pill_btn(r_maint, "Start Hotspot", 0, start_hotspot_cb);
-  lv_obj_set_size(hs, 160, 50);
+  // Hotspot is only needed during initial setup or if disconnected from accessible WiFi
+  bool has_valid_wifi = (WiFi.status() == WL_CONNECTED && WiFi.localIP()[0] != 0);
+  if(!has_valid_wifi){
+    lv_obj_t* hs = pill_btn(r_maint, "Start Hotspot", 0, start_hotspot_cb);
+    lv_obj_set_size(hs, 160, 50);
+  }
 
   if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
     lv_obj_t* rp = pill_btn(r_maint, "Re-pair Core", 0, [](lv_event_t*){

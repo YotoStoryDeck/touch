@@ -8,6 +8,7 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "app_config.h"
+#include "app_log.h"
 
 inline int sd_prune_stale_avatars(const String* valid_keys, int key_count);
 
@@ -532,8 +533,7 @@ inline int play_media(const String& base_url, const String& child_id, const Stri
     int code = http.POST(payload);
     String resp = (code > 0) ? http.getString() : "";
     http.end();
-    Serial.printf("[PLAY] POST /api/play attempt=%d payload=%s -> HTTP %d resp=%s\n",
-                  attempt + 1, payload.c_str(), code, resp.c_str());
+    log_msg("[PLAY] POST /api/play att=%d code=%d pl=%s resp=%s", attempt + 1, code, payload.c_str(), resp.c_str());
 
     if((code == 401 || code == 403) && attempt == 0){
       continue; // re-authenticate once and retry
@@ -586,8 +586,7 @@ inline int player_control(const String& base_url, const String& device_id, const
     int code = http.POST(payload);
     String resp = (code > 0) ? http.getString() : "";
     http.end();
-    Serial.printf("[CTRL] POST /api/player/control attempt=%d payload=%s -> HTTP %d resp=%s\n",
-                  attempt + 1, payload.c_str(), code, resp.c_str());
+    log_msg("[CTRL] POST /api/player/control att=%d code=%d pl=%s resp=%s", attempt + 1, code, payload.c_str(), resp.c_str());
 
     if((code == 401 || code == 403) && attempt == 0){
       continue;
