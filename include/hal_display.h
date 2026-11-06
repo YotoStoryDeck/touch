@@ -245,7 +245,7 @@ static int rgb_panel_init(){
   cfg.timings.vsync_pulse_width=4; cfg.timings.vsync_back_porch=8; cfg.timings.vsync_front_porch=8;
   cfg.timings.flags.pclk_active_neg=1;
   cfg.data_width=16; cfg.bits_per_pixel=16; cfg.num_fbs=1;
-  cfg.bounce_buffer_size_px=LCD_H_RES*12;
+  cfg.bounce_buffer_size_px=LCD_H_RES*24;
   cfg.dma_burst_size=64;
   cfg.flags.bb_invalidate_cache=1;
   cfg.hsync_gpio_num=46; cfg.vsync_gpio_num=3; cfg.de_gpio_num=5; cfg.pclk_gpio_num=7; cfg.disp_gpio_num=-1;
@@ -314,7 +314,7 @@ static void touch_cb(lv_indev_drv_t* drv, lv_indev_data_t* data){
   if(n>0 && x>=0 && y>=0 && x<LCD_H_RES && y<LCD_V_RES){ s_lx=x; s_ly=y; s_tstate=LV_INDEV_STATE_PR; s_tlast=millis(); s_touch_samples++; }
   else if(n==0) s_tstate=LV_INDEV_STATE_REL;             // genuine lift
   else {
-    if(s_tstate==LV_INDEV_STATE_PR && millis()-s_tlast > 100) s_tstate=LV_INDEV_STATE_REL;
+    if(s_tstate==LV_INDEV_STATE_PR && millis()-s_tlast > 350) s_tstate=LV_INDEV_STATE_REL;
   }
   data->state=s_tstate;
   data->point.x=s_lx; data->point.y=s_ly;

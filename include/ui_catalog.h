@@ -213,10 +213,18 @@ void update_visible_thumbs(bool force_refr){
   }
 }
 
+// User interaction detector: Returns true if user touched recently or grid is in motion
+inline bool is_ui_interacting(){
+  if(s_grid && lv_obj_is_scrolling(s_grid)) return true;
+  if(lv_disp_get_inactive_time(NULL) < 1500) return true;
+  return false;
+}
+
 // On-demand visible cover streaming:
 // When scrolling lands on tiles that are not yet cached on MicroSD, stream their 160x254
-// thumbnail covers over WiFi immediately so the placeholders turn into covers on the fly.
+// thumbnail covers over WiFi peacefully when idle so placeholders turn into covers without UI lag.
 inline bool stream_visible_uncached_thumb(){
+  if(is_ui_interacting()) return false;
   if(!s_grid || s_card_count <= 0) return false;
   lv_obj_t* act = lv_scr_act();
   if(act != s_scr_home) return false;
@@ -588,8 +596,14 @@ void build_grid(){
   lv_obj_set_scroll_dir(cont, LV_DIR_VER);
   lv_obj_add_event_cb(cont, [](lv_event_t* e){
     lv_event_code_t code = lv_event_get_code(e);
-    if(code == LV_EVENT_SCROLL || code == LV_EVENT_SCROLL_END){
+    if(code == LV_EVENT_SCROLL_END){
       update_visible_thumbs(true);
+    } else if(code == LV_EVENT_SCROLL){
+      static uint32_t s_last_sc = 0;
+      if(millis() - s_last_sc > 300){
+        update_visible_thumbs(false);
+        s_last_sc = millis();
+      }
     }
   }, LV_EVENT_ALL, NULL);
 
