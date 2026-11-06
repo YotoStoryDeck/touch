@@ -414,11 +414,11 @@
           Select Release Channel:
         </label>
         <div class="channel-tabs">
-          <button id="tab-prerelease" class="channel-tab active" onclick="setChannel('prerelease')">
-            <span>🧪</span> Pre-Release / Beta
-          </button>
-          <button id="tab-stable" class="channel-tab" onclick="setChannel('stable')">
+          <button id="tab-stable" class="channel-tab active" onclick="setChannel('stable')">
             <span>🟢</span> Stable Release
+          </button>
+          <button id="tab-prerelease" class="channel-tab" onclick="setChannel('prerelease')">
+            <span>🧪</span> Pre-Release / Beta
           </button>
         </div>
       </div>
@@ -428,11 +428,11 @@
         <div class="version-info">
           <span style="font-size: 14px; font-weight: 600;">Selected Version:</span>
           <span id="version-display" class="version-tag">Loading...</span>
-          <span id="channel-badge" class="status-badge prerelease">Pre-Release</span>
+          <span id="channel-badge" class="status-badge stable">Stable Release</span>
           <a id="release-link" class="release-link" href="https://github.com/YotoStoryDeck/touch/releases" target="_blank">View Release Notes ↗</a>
         </div>
         <div id="channel-desc" style="font-size: 13px; color: var(--text-muted);">
-          Latest release candidate build
+          Latest validated build for daily bedside use
         </div>
       </div>
 
@@ -443,7 +443,7 @@
 
         <!-- Dynamic Container for ESP Web Tools install element -->
         <div id="flasher-container">
-          <esp-web-install-button manifest="manifest-prerelease.json">
+          <esp-web-install-button manifest="manifest-stable.json">
             <button slot="activate" class="btn-install">
               <span>⚡</span> Connect & Install StoryDeck Touch
             </button>
@@ -584,7 +584,7 @@ pio run -e waveshare-s3-43b -t upload</pre>
   </div>
 
   <script>
-    let currentChannel = 'prerelease';
+    let currentChannel = 'stable';
     const channelData = {
       prerelease: { version: 'Loading...', manifest: 'manifest-prerelease.json' },
       stable: { version: 'Loading...', manifest: 'manifest-stable.json' }
