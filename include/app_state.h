@@ -400,9 +400,9 @@ static String s_thumb_first_err = "";
 inline int get_active_player_vol_max(){
   const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
   if(pi && pi->volume_max > 0){
-    return min(pi->volume_max, cfg::vol_max);
+    return pi->volume_max;
   }
-  return cfg::vol_max;
+  return 100;
 }
 
 inline void sync_active_player_playback(){

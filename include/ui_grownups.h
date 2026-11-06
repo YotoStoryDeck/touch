@@ -34,7 +34,6 @@ static void sync_settings_if_core(){
 }
 
 // ---------------- grown-ups settings screen ----------------
-static lv_obj_t* s_set_vol_lbl=nullptr;
 static lv_obj_t* s_set_saver_lbl=nullptr;
 static lv_obj_t* s_set_wake_lbl=nullptr;
 static lv_obj_t* s_set_night_lbl=nullptr;
@@ -133,14 +132,6 @@ static void set_size_cb(lv_event_t* e){
   cfg::save();                               // applies the next time the clock comes on
   sync_settings_if_core();
   open_settings();
-}
-static void set_vol_drag_cb(lv_event_t* e){   // live readout while dragging
-  if(s_set_vol_lbl) lv_label_set_text_fmt(s_set_vol_lbl, "%d", lv_slider_get_value(lv_event_get_target(e)));
-}
-static void set_vol_done_cb(lv_event_t* e){   // persist + apply on release
-  int v = lv_slider_get_value(lv_event_get_target(e));
-  cfg::vol_max = v; cfg::save();
-  if(s_vol > v) np_volume(v);                 // pull the live volume under the new cap
 }
 
 // ---------------- Parent PIN Keypad Modal (pin.js 3-step parity) ----------------
@@ -834,23 +825,6 @@ void open_settings(){
   // TAB 2: 💡 DISPLAY / DIM
   // ==========================================
   lv_obj_t* p2 = s_gu_tab_panels[2];
-
-  set_section(p2, "Volume limit  (maximum ear-safe cap)");
-  lv_obj_t* r_vol = set_row(p2);
-  lv_obj_set_style_pad_all(r_vol, 6, 0);
-  lv_obj_t* vs = lv_slider_create(r_vol);
-  lv_obj_set_size(vs, 500, 18);
-  lv_slider_set_range(vs, 10, 100);
-  lv_slider_set_value(vs, cfg::vol_max, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(vs, lv_color_hex(0xE5352B), LV_PART_KNOB);
-  lv_obj_set_style_pad_all(vs, 10, LV_PART_KNOB);
-  lv_obj_add_event_cb(vs, set_vol_drag_cb, LV_EVENT_VALUE_CHANGED, NULL);
-  lv_obj_add_event_cb(vs, set_vol_done_cb, LV_EVENT_RELEASED, NULL);
-  s_set_vol_lbl = lv_label_create(r_vol);
-  lv_label_set_text_fmt(s_set_vol_lbl, "%d", cfg::vol_max);
-  lv_obj_set_style_text_font(s_set_vol_lbl, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(s_set_vol_lbl, lv_color_hex(0x23303A), 0);
 
   set_section(p2, "Night clock inactivity timeout");
   lv_obj_t* r_saver = set_row(p2);

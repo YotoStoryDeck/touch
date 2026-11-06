@@ -25,7 +25,6 @@ static String assigned_profile = ""; // Assigned child profile ID (Core mode)
 static bool   lock_player   = false; // Lock audio output to specific player vs profile roaming
 static String locked_dev_id = "";    // Locked player ID
 // ---- parent knobs (on-device settings screen) ----
-static int    vol_max      = 60;    // hard volume cap for little ears
 static int    sleep_min    = 0;     // sleep timer preset minutes (0 = Off / Continuous, 15, 30, 45, 60)
 static bool   sleep_bedtime= true;  // true = Bedtime Hours Only ("bedtime"), false = All the Time ("always")
 static bool   block_remote = true;  // true = Block Away Players, false = Allow / Prompt
@@ -65,7 +64,6 @@ static void load(){
   assigned_profile = s_prefs.getString("prof",   "wesley");
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
   parent_pin    = s_prefs.getString("pin",   "1234");
-  vol_max       = s_prefs.getInt("volmax", 60);
   sleep_min     = s_prefs.getInt("slpmin", 0);
   sleep_bedtime = s_prefs.getBool("slpbed", true);
   block_remote  = s_prefs.getBool("blkrem", true);
@@ -91,7 +89,6 @@ static void save(){
   s_prefs.putString("prof",   assigned_profile);
   s_prefs.putString("tz",    tz);
   s_prefs.putString("pin",   parent_pin);
-  s_prefs.putInt("volmax", vol_max);
   s_prefs.putInt("slpmin", sleep_min);
   s_prefs.putBool("slpbed", sleep_bedtime);
   s_prefs.putBool("blkrem", block_remote);

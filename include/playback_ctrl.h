@@ -151,7 +151,8 @@ static int send_cmd(const char* name, const String& body){
   } else if(nm == "pause" || nm == "resume" || nm == "stop"){
     cmd = "card/" + nm;
   } else if(nm == "volume"){
-    int v = (int)(in["volume"] | 30); if(v < 0) v = 0; if(v > cfg::vol_max) v = cfg::vol_max;
+    int vmax = get_active_player_vol_max();
+    int v = (int)(in["volume"] | 30); if(v < 0) v = 0; if(v > vmax) v = vmax;
     cmd = "volume/set";
     JsonDocument p; p["volume"] = v; serializeJson(p, payload);
   } else {
