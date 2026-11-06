@@ -14,11 +14,43 @@ static void tile_cb(lv_event_t* e){
 }
 
 
+static bool is_played_past_7_days(const PsramString& lp){
+  if(lp.empty()) return false;
+  time_t now = time(nullptr);
+  if(now > 1700000000){
+    time_t cutoff = now - (7 * 86400);
+    if(lp.length() >= 10 && lp[4] == '-' && lp[7] == '-'){
+      struct tm tm_lp = {};
+      tm_lp.tm_year = atoi(lp.substr(0, 4).c_str()) - 1900;
+      tm_lp.tm_mon  = atoi(lp.substr(5, 2).c_str()) - 1;
+      tm_lp.tm_mday = atoi(lp.substr(8, 2).c_str());
+      if(lp.length() >= 19 && (lp[10] == 'T' || lp[10] == ' ')){
+        tm_lp.tm_hour = atoi(lp.substr(11, 2).c_str());
+        tm_lp.tm_min  = atoi(lp.substr(14, 2).c_str());
+        tm_lp.tm_sec  = atoi(lp.substr(17, 2).c_str());
+      }
+      time_t lp_epoch = mktime(&tm_lp);
+      return (lp_epoch >= cutoff);
+    }
+    struct tm tm_cut;
+    gmtime_r(&cutoff, &tm_cut);
+    char cutoff_date[12];
+    strftime(cutoff_date, sizeof(cutoff_date), "%Y-%m-%d", &tm_cut);
+    return (lp.substr(0, 10) >= cutoff_date);
+  }
+  return true;
+}
+
 static bool card_matches_active_tab(const Card& c){
   if(s_active_tab == TAB_ALL) return true;
+  if(s_active_tab == TAB_SERIES) return (c.series.length() > 0);
+  if(s_active_tab == TAB_RECENT){
+    if(c.daily) return true;
+    if(c.is_highlight) return true;
+    return is_played_past_7_days(c.lp);
+  }
   if(s_active_tab == TAB_YOTO) return (!c.is_abs() || c.daily);
   if(s_active_tab == TAB_ABS)  return c.is_abs();
-  if(s_active_tab == TAB_SERIES) return (c.series.length() > 0);
   return true;
 }
 
@@ -29,11 +61,12 @@ static void populate_grid(); // fwd
 
 static void tab_btn_cb(lv_event_t* e){
   int tab = (int)(intptr_t)lv_event_get_user_data(e);
-  if(tab < 0 || tab > 1) return;
+  if(tab < 0 || tab > 2) return;
   s_selected_series_filter = "";
-  Serial.printf("[TAB] Switched catalog tab to %d (%s)\n", tab, tab == 1 ? "Series" : "All");
+  const char* tname = (tab == 1) ? "Series" : (tab == 2 ? "Recently Played" : "Catalog");
+  Serial.printf("[TAB] Switched catalog tab to %d (%s)\n", tab, tname);
   s_active_tab = (TabFilter)tab;
-  for(int i = 0; i < 2; i++){
+  for(int i = 0; i < 3; i++){
     lv_obj_t* b = s_tab_btns[i];
     if(!b) continue;
     bool sel = (i == tab);
@@ -238,7 +271,7 @@ void update_visible_thumbs(bool force_refr){
   for(int i = 0; i < s_card_count; i++){
     if(s_cards[i].tile && is_tile_visible(s_cards[i].tile)){
       if(s_cards[i].pool_slot < 0){
-        load_thumb_for_card(i, force_refr);
+        if(load_thumb_for_card(i, force_refr)) yield();
       } else {
         s_thumb_pool[s_cards[i].pool_slot].last_use = millis();
       }
@@ -594,20 +627,44 @@ static void populate_grid(){
     return;
   }
 
-  // Flat Grid View (TAB_ALL, TAB_ABS, TAB_YOTO)
+  // Flat Grid View (TAB_ALL / Catalog, TAB_RECENT, TAB_ABS, TAB_YOTO)
   lv_obj_set_flex_flow(s_grid, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_set_flex_align(s_grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-  int shown = 0;
+  static std::vector<int, PsramVectorAlloc<int>> grid_indices;
+  grid_indices.clear();
   for(int i = 0; i < s_card_count; i++){
-    if(!card_matches_active_tab(s_cards[i])) continue;
+    if(card_matches_active_tab(s_cards[i])) grid_indices.push_back(i);
+  }
+
+  if(s_active_tab == TAB_RECENT){
+    std::sort(grid_indices.begin(), grid_indices.end(), [](int ia, int ib){
+      const Card& a = s_cards[ia];
+      const Card& b = s_cards[ib];
+      if(a.daily != b.daily) return a.daily;
+      bool a_lp = is_played_past_7_days(a.lp);
+      bool b_lp = is_played_past_7_days(b.lp);
+      if(a_lp && b_lp) return a.lp > b.lp; // newest played first
+      if(a_lp != b_lp) return a_lp;        // played items before non-played highlights
+      if(a.is_highlight != b.is_highlight) return a.is_highlight;
+      return a.sort_title < b.sort_title;
+    });
+  }
+
+  int shown = 0;
+  for(size_t gi = 0; gi < grid_indices.size(); gi++){
+    int i = grid_indices[gi];
     create_card_tile(s_grid, i, false);
     shown++;
     if((shown & 31) == 0) yield();
   }
   if(shown == 0){
     lv_obj_t* empty = lv_label_create(s_grid);
-    lv_label_set_text(empty, "No audiobooks found in this category.");
+    if(s_active_tab == TAB_RECENT){
+      lv_label_set_text(empty, "No audiobooks played in the past 7 days.");
+    } else {
+      lv_label_set_text(empty, "No audiobooks found in this category.");
+    }
     lv_obj_set_width(empty, LCD_H_RES - 40);
     lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(empty, &lv_font_montserrat_20, 0);
@@ -631,7 +688,7 @@ void build_grid(){
 
   // Top Tab Navigation Bar (Direct flat children of nav for 100% reliable LVGL touch hit-testing)
   // Left: [Profile Pill + Target Player Pill], Right: [All, Series, Gear]
-  if((int)s_active_tab > 1) s_active_tab = TAB_ALL;
+  if((int)s_active_tab > 2) s_active_tab = TAB_ALL;
 
   lv_obj_t* nav = lv_obj_create(scr);
   lv_obj_set_size(nav, LCD_H_RES, 48);
@@ -675,11 +732,11 @@ void build_grid(){
   lv_obj_clear_flag(dname, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_align(dname, LV_ALIGN_LEFT_MID, 32, 0);
 
-  // 3. Right: Category Pills (All + Series) + Grown-Ups Settings Gear Button
-  static const char* tab_names[2]  = {"All", "Series"};
-  static const int   tab_widths[2] = {96, 106};
-  static const int   tab_xs[2]     = {534, 638};
-  for(int t = 0; t < 2; t++){
+  // 3. Right: Category Pills (Catalog + Series + Recently Played) + Grown-Ups Settings Gear Button
+  static const char* tab_names[3]  = {"Catalog", "Series", "Recently Played"};
+  static const int   tab_widths[3] = {96, 82, 164};
+  static const int   tab_xs[3]     = {386, 490, 580};
+  for(int t = 0; t < 3; t++){
     lv_obj_t* tb = lv_btn_create(nav);
     s_tab_btns[t] = tb;
     lv_obj_set_size(tb, tab_widths[t], 38);

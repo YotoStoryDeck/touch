@@ -87,17 +87,19 @@ static char* read_body_psram(HTTPClient& http, size_t& outLen){
 
 
 // Add single card from Core catalog (preserving multiple series_list memberships for Kiosk parity; NO LIMIT)
-static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list){
+static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list, const String& lp, bool has_phys){
   Card c;
   c.id               = id.c_str();
   c.title            = title.c_str();
   c.sort_title       = clean_sort_title(title.c_str());
   c.author           = author.c_str();
   c.cover            = cover.c_str();
+  c.lp               = lp.c_str();
   c.source           = (src == "abs") ? 1 : 0;
   c.series           = series.c_str();
   c.sequence         = seq;
   c.seq_display      = seq_disp.c_str();
+  c.has_physical     = has_phys;
   c.extra_series_cnt = 0;
   if(!series_list.isNull() && series_list.size() > 1){
     for(size_t si = 1; si < series_list.size() && c.extra_series_cnt < 2; si++){

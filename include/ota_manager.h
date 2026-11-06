@@ -104,7 +104,7 @@ static void ota_begin(){
     snprintf(b, sizeof(b),
       "{\"bouncePx\":%d,\"pclkHz\":%d,\"fbInPsram\":1,\"numFbs\":1,\"drawLines\":%d,"
       "\"stressMsLeft\":%d,\"freeSpiram\":%u,\"largestSpiram\":%u,\"freeInternal\":%u}",
-      LCD_H_RES*10, 16*1000*1000, DRAW_LINES, (int)left,
+      LCD_H_RES*20, 14*1000*1000, DRAW_LINES, (int)left,
       (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
       (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
       (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));

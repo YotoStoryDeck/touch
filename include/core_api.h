@@ -604,7 +604,7 @@ inline int player_control(const String& base_url, const String& device_id, const
 
 // 6. Fetch Child Catalog (ABS + Yoto merged via Core hub)
 inline bool fetch_catalog(const String& base_url, const String& child_id,
-  void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list)){
+  void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list, const String& lp, bool has_phys)){
   if(base_url.length() == 0 || child_id.length() == 0) return false;
 
   auto fetch_src = [&](const String& path, const String& src_name){
@@ -634,6 +634,9 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
     f0["sequence"] = true;
     f0["sequence_display"] = true;
     f0["is_highlight"] = true;
+    f0["has_physical"] = true;
+    f0["last_played_at"] = true;
+    f0["lastPlayedAt"] = true;
     f0["series_list"][0]["name"] = true;
     f0["series_list"][0]["sequence"] = true;
     f0["series_list"][0]["sequence_display"] = true;
@@ -678,7 +681,9 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
       if(item_src.startsWith("yoto")) item_src = "yoto";
       else if(item_src == "abs") item_src = "abs";
       else item_src = src_name;
-      card_cb(id, title, author, cover, item_src, series, seq, seq_disp, is_hl, sl);
+      String lp = (const char*)(item["last_played_at"] | item["lastPlayedAt"] | "");
+      bool has_phys = (bool)(item["has_physical"] | false);
+      card_cb(id, title, author, cover, item_src, series, seq, seq_disp, is_hl, sl, lp, has_phys);
     }
   };
 

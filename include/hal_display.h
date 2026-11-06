@@ -240,12 +240,12 @@ static int rgb_panel_init(){
 #else
   esp_lcd_rgb_panel_config_t cfg={};
   cfg.clk_src=LCD_CLK_SRC_DEFAULT;
-  cfg.timings.pclk_hz=16*1000*1000; cfg.timings.h_res=LCD_H_RES; cfg.timings.v_res=LCD_V_RES;
+  cfg.timings.pclk_hz=14*1000*1000; cfg.timings.h_res=LCD_H_RES; cfg.timings.v_res=LCD_V_RES;
   cfg.timings.hsync_pulse_width=4; cfg.timings.hsync_back_porch=30; cfg.timings.hsync_front_porch=8;
   cfg.timings.vsync_pulse_width=4; cfg.timings.vsync_back_porch=8; cfg.timings.vsync_front_porch=8;
   cfg.timings.flags.pclk_active_neg=1;
   cfg.data_width=16; cfg.bits_per_pixel=16; cfg.num_fbs=1;
-  cfg.bounce_buffer_size_px=LCD_H_RES*16;
+  cfg.bounce_buffer_size_px=LCD_H_RES*20;
   cfg.dma_burst_size=64;
   cfg.flags.bb_invalidate_cache=1;
   cfg.hsync_gpio_num=46; cfg.vsync_gpio_num=3; cfg.de_gpio_num=5; cfg.pclk_gpio_num=7; cfg.disp_gpio_num=-1;

@@ -98,7 +98,7 @@ inline bool operator!=(const String& s, const PsramString& ps) { return ps != s;
 #define THUMB_W   160
 #define THUMB_H   254                       // 160 * 1011/638 — 4-up grid, ~19mm tiles (bigger tap target)
 #define THUMB_SZ  (THUMB_W*THUMB_H*2)      // RGB565 bytes per cover (81280)
-enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_ABS=2, TAB_YOTO=3 };
+enum TabFilter { TAB_ALL=0, TAB_SERIES=1, TAB_RECENT=2, TAB_ABS=3, TAB_YOTO=4 };
 static TabFilter s_active_tab = TAB_ALL;
 static PsramString s_selected_series_filter = ""; // Level 2 Series navigation state (empty = Level 1 Index)
 
