@@ -55,25 +55,188 @@ static String mode_select(){
   return h;
 }
 
+inline String parse_tz_input(const String& raw){
+  String s = raw;
+  s.trim();
+  if(s.length() == 0) return "EST5EDT,M3.2.0,M11.1.0";
+
+  String up = s;
+  up.toUpperCase();
+  if(up == "UTC" || up == "GMT" || up == "Z" || up == "UTC0" || up == "GMT0" || up == "0" || up == "+0" || up == "-0"){
+    return "UTC0";
+  }
+
+  String rem = s;
+  if(rem.startsWith("UTC") || rem.startsWith("utc")) rem = rem.substring(3);
+  else if(rem.startsWith("GMT") || rem.startsWith("gmt")) rem = rem.substring(3);
+  rem.trim();
+
+  bool has_sign = (rem.startsWith("+") || rem.startsWith("-"));
+  bool is_all_digits = true;
+  for(size_t i = (has_sign ? 1 : 0); i < rem.length(); i++){
+    char c = rem[i];
+    if(c != ':' && (c < '0' || c > '9')){
+      is_all_digits = false;
+      break;
+    }
+  }
+
+  if(rem.length() > 0 && is_all_digits){
+    bool is_positive = !rem.startsWith("-");
+    if(rem.startsWith("+") || rem.startsWith("-")) rem = rem.substring(1);
+    int colon = rem.indexOf(':');
+    int hours = 0;
+    int mins = 0;
+    if(colon > 0){
+      hours = rem.substring(0, colon).toInt();
+      mins = rem.substring(colon + 1).toInt();
+    } else {
+      hours = rem.toInt();
+    }
+    if(hours == 0 && mins == 0) return "UTC0";
+    if(hours < 0) hours = -hours;
+    if(mins < 0) mins = -mins;
+    if(hours > 14) hours = 14;
+    if(mins > 59) mins = 59;
+
+    char label_buf[32];
+    char offset_buf[32];
+    char sign_char = is_positive ? '+' : '-';
+    if(mins > 0){
+      snprintf(label_buf, sizeof(label_buf), "<UTC%c%d:%02d>", sign_char, hours, mins);
+      // In POSIX: east (+) is negative, west (-) is positive
+      snprintf(offset_buf, sizeof(offset_buf), "%s%d:%02d", is_positive ? "-" : "", hours, mins);
+    } else {
+      snprintf(label_buf, sizeof(label_buf), "<UTC%c%d>", sign_char, hours);
+      snprintf(offset_buf, sizeof(offset_buf), "%s%d", is_positive ? "-" : "", hours);
+    }
+    return String(label_buf) + offset_buf;
+  }
+
+  return s;
+}
+
 static String tz_select(){
-  static const struct { const char* label; const char* val; } zones[] = {
-    {"US Eastern (New York)",    "EST5EDT,M3.2.0,M11.1.0"},
-    {"US Central (Chicago)",     "CST6CDT,M3.2.0,M11.1.0"},
-    {"US Mountain (Denver)",     "MST7MDT,M3.2.0,M11.1.0"},
-    {"Arizona (no DST)",         "MST7"},
-    {"US Pacific (Los Angeles)", "PST8PDT,M3.2.0,M11.1.0"},
-    {"Alaska",                   "AKST9AKDT,M3.2.0,M11.1.0"},
-    {"Hawaii",                   "HST10"},
+  struct TzEntry { const char* grp; const char* label; const char* val; };
+  static const TzEntry zones[] = {
+    // North America
+    {"North America", "US Eastern (New York, Miami, Atlanta)", "EST5EDT,M3.2.0,M11.1.0"},
+    {"North America", "US Central (Chicago, Dallas)", "CST6CDT,M3.2.0,M11.1.0"},
+    {"North America", "US Mountain (Denver, Salt Lake City)", "MST7MDT,M3.2.0,M11.1.0"},
+    {"North America", "US Arizona (Phoenix - no DST)", "MST7"},
+    {"North America", "US Pacific (Los Angeles, Seattle)", "PST8PDT,M3.2.0,M11.1.0"},
+    {"North America", "US Alaska (Anchorage)", "AKST9AKDT,M3.2.0,M11.1.0"},
+    {"North America", "US Hawaii (Honolulu - no DST)", "HST10"},
+    {"North America", "Canada Atlantic (Halifax)", "AST4ADT,M3.2.0,M11.1.0"},
+    {"North America", "Canada Newfoundland (St. John's)", "NST3:30NDT,M3.2.0,M11.1.0"},
+    {"North America", "Mexico (Mexico City)", "CST6"},
+
+    // Central & South America
+    {"Central & South America", "Colombia, Peru, Ecuador (Bogota, Lima)", "COT5"},
+    {"Central & South America", "Venezuela (Caracas)", "VET4"},
+    {"Central & South America", "Brazil (Sao Paulo, Rio de Janeiro)", "BRT3"},
+    {"Central & South America", "Argentina (Buenos Aires)", "ART3"},
+    {"Central & South America", "Chile (Santiago)", "CLT4CLST,M9.1.0/24,M4.1.0/24"},
+
+    // Europe & UK
+    {"Europe & UK", "UK & Ireland (London, Dublin)", "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"Europe & UK", "Western Europe (Lisbon)", "WET0WEST,M3.5.0/1,M10.5.0"},
+    {"Europe & UK", "Central Europe (Berlin, Paris, Rome, Madrid, Amsterdam)", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe & UK", "Eastern Europe (Athens, Helsinki, Kyiv, Bucharest)", "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+    {"Europe & UK", "Turkey (Istanbul)", "TRT-3"},
+
+    // Africa & Middle East
+    {"Africa & Middle East", "Egypt (Cairo)", "EET-2EEST,M4.5.5/0,M10.5.4/24"},
+    {"Africa & Middle East", "South Africa (Johannesburg, Cape Town)", "SAST-2"},
+    {"Africa & Middle East", "East Africa (Nairobi, Addis Ababa)", "EAT-3"},
+    {"Africa & Middle East", "West Africa (Lagos, Accra)", "WAT-1"},
+    {"Africa & Middle East", "Gulf / UAE (Dubai, Abu Dhabi)", "GST-4"},
+    {"Africa & Middle East", "Israel (Jerusalem)", "IST-2IDT,M3.4.4/26,M10.5.0"},
+
+    // Asia
+    {"Asia", "Pakistan (Karachi, Islamabad)", "PKT-5"},
+    {"Asia", "India & Sri Lanka (New Delhi, Mumbai, Colombo)", "IST-5:30"},
+    {"Asia", "Nepal (Kathmandu)", "NPT-5:45"},
+    {"Asia", "Bangladesh (Dhaka)", "BST-6"},
+    {"Asia", "Thailand, Vietnam, Indonesia (Bangkok, Hanoi, Jakarta)", "ICT-7"},
+    {"Asia", "China, Hong Kong, Singapore, Taiwan (Beijing, Singapore)", "CST-8"},
+    {"Asia", "Japan & Korea (Tokyo, Seoul)", "JST-9"},
+
+    // Australia & Pacific
+    {"Australia & Pacific", "Australia Western (Perth)", "AWST-8"},
+    {"Australia & Pacific", "Australia Northern (Darwin)", "ACST-9:30"},
+    {"Australia & Pacific", "Australia South (Adelaide)", "ACST-9:30ACDT,M10.1.0,M4.1.0/3"},
+    {"Australia & Pacific", "Australia Queensland (Brisbane)", "AEST-10"},
+    {"Australia & Pacific", "Australia Eastern (Sydney, Melbourne, Hobart)", "AEST-10AEDT,M10.1.0,M4.1.0/3"},
+    {"Australia & Pacific", "New Zealand (Auckland, Wellington)", "NZST-12NZDT,M9.5.0,M4.1.0/3"},
+    {"Australia & Pacific", "Fiji", "FJT-12"},
+
+    // Standard Fixed UTC Offsets
+    {"Standard UTC Offsets", "UTC-12:00 (Baker Island)", "<UTC-12>12"},
+    {"Standard UTC Offsets", "UTC-11:00 (Samoa, Niue)", "<UTC-11>11"},
+    {"Standard UTC Offsets", "UTC-10:00 (Hawaii Std)", "<UTC-10>10"},
+    {"Standard UTC Offsets", "UTC-09:00 (Alaska Std)", "<UTC-9>9"},
+    {"Standard UTC Offsets", "UTC-08:00 (Pacific Std)", "<UTC-8>8"},
+    {"Standard UTC Offsets", "UTC-07:00 (Mountain Std)", "<UTC-7>7"},
+    {"Standard UTC Offsets", "UTC-06:00 (Central Std)", "<UTC-6>6"},
+    {"Standard UTC Offsets", "UTC-05:00 (Eastern Std)", "<UTC-5>5"},
+    {"Standard UTC Offsets", "UTC-04:00 (Atlantic Std)", "<UTC-4>4"},
+    {"Standard UTC Offsets", "UTC-03:30 (Newfoundland Std)", "<UTC-3:30>3:30"},
+    {"Standard UTC Offsets", "UTC-03:00 (Buenos Aires / Brasilia)", "<UTC-3>3"},
+    {"Standard UTC Offsets", "UTC-02:00 (South Georgia)", "<UTC-2>2"},
+    {"Standard UTC Offsets", "UTC-01:00 (Azores Std)", "<UTC-1>1"},
+    {"Standard UTC Offsets", "UTC±00:00 (Greenwich / UTC)", "UTC0"},
+    {"Standard UTC Offsets", "UTC+01:00 (Central European Std)", "<UTC+1>-1"},
+    {"Standard UTC Offsets", "UTC+02:00 (Eastern European Std)", "<UTC+2>-2"},
+    {"Standard UTC Offsets", "UTC+03:00 (Moscow / Arabia Std)", "<UTC+3>-3"},
+    {"Standard UTC Offsets", "UTC+03:30 (Iran Std)", "<UTC+3:30>-3:30"},
+    {"Standard UTC Offsets", "UTC+04:00 (Gulf Std)", "<UTC+4>-4"},
+    {"Standard UTC Offsets", "UTC+04:30 (Afghanistan)", "<UTC+4:30>-4:30"},
+    {"Standard UTC Offsets", "UTC+05:00 (Pakistan Std)", "<UTC+5>-5"},
+    {"Standard UTC Offsets", "UTC+05:30 (India Standard Time)", "<UTC+5:30>-5:30"},
+    {"Standard UTC Offsets", "UTC+05:45 (Nepal)", "<UTC+5:45>-5:45"},
+    {"Standard UTC Offsets", "UTC+06:00 (Bangladesh Std)", "<UTC+6>-6"},
+    {"Standard UTC Offsets", "UTC+06:30 (Myanmar)", "<UTC+6:30>-6:30"},
+    {"Standard UTC Offsets", "UTC+07:00 (Indochina Time)", "<UTC+7>-7"},
+    {"Standard UTC Offsets", "UTC+08:00 (China / Singapore / WA)", "<UTC+8>-8"},
+    {"Standard UTC Offsets", "UTC+09:00 (Japan / Korea Std)", "<UTC+9>-9"},
+    {"Standard UTC Offsets", "UTC+09:30 (Darwin Std)", "<UTC+9:30>-9:30"},
+    {"Standard UTC Offsets", "UTC+10:00 (Australia Eastern Std)", "<UTC+10>-10"},
+    {"Standard UTC Offsets", "UTC+11:00 (Solomon Islands)", "<UTC+11>-11"},
+    {"Standard UTC Offsets", "UTC+12:00 (New Zealand Std)", "<UTC+12>-12"},
+    {"Standard UTC Offsets", "UTC+13:00 (Tonga / Tokelau)", "<UTC+13>-13"},
+    {"Standard UTC Offsets", "UTC+14:00 (Line Islands / Kiritimati)", "<UTC+14>-14"},
   };
-  String h = "<label>Timezone<select name='tz'>";
+
+  String h = "<label>Timezone<select name='tz' id='tz_sel'>";
   bool found = false;
-  for(auto& z : zones){
-    bool sel = (cfg::tz == z.val); found |= sel;
+  const char* cur_grp = nullptr;
+
+  for(size_t i = 0; i < sizeof(zones)/sizeof(zones[0]); i++){
+    auto& z = zones[i];
+    if(!cur_grp || strcmp(cur_grp, z.grp) != 0){
+      if(cur_grp) h += "</optgroup>";
+      cur_grp = z.grp;
+      h += String("<optgroup label=\"") + cur_grp + "\">";
+    }
+    bool sel = (cfg::tz == z.val);
+    found |= sel;
     h += String("<option value=\"") + z.val + "\"" + (sel ? " selected" : "") + ">" + z.label + "</option>";
   }
-  if(!found)
+  if(cur_grp) h += "</optgroup>";
+
+  if(!found){
+    h += "<optgroup label=\"Current Custom Setting\">";
     h += "<option value=\"" + esc(cfg::tz) + "\" selected>Custom (" + esc(cfg::tz) + ")</option>";
-  h += "</select><small>Sets the night clock and OK-to-wake to local time.</small></label>";
+    h += "</optgroup>";
+  }
+  h += "</select></label>";
+
+  h += "<label style='margin-top:8px'>Manual UTC Offset or Custom POSIX String"
+       "<input type='text' id='tz_custom' name='tz_custom' value='' "
+       "placeholder='e.g. UTC-5, UTC+2, +05:30, or custom POSIX' style='margin-top:4px'>"
+       "<small>Entering a value here overrides the dropdown above. Supports friendly UTC offsets (e.g. UTC+1, -5, +5:30) or full POSIX strings.</small></label>";
+
   return h;
 }
 
@@ -315,7 +478,18 @@ static void handle_post(WebServer& w){
   v = w.arg("csec");  if(v.length()) cfg::client_secret = v;
   v = w.arg("mode");  if(v.length()) cfg::op_mode       = v;
   v = w.arg("curl");  cfg::core_url = v;
-  v = w.arg("tz");    if(v.length()) cfg::tz            = v;
+  String custom_tz = w.arg("tz_custom");
+  custom_tz.trim();
+  String chosen_tz = (custom_tz.length() > 0) ? custom_tz : w.arg("tz");
+  chosen_tz.trim();
+  if(chosen_tz.length() > 0){
+    String parsed = parse_tz_input(chosen_tz);
+    if(cfg::tz != parsed){
+      cfg::tz = parsed;
+      configTzTime(cfg::tz.c_str(), "pool.ntp.org", "time.nist.gov");
+      log_msg("[NTP] Clock reconfigured with TZ '%s'", cfg::tz.c_str());
+    }
+  }
   v = w.arg("pin");   if(v.length() == 4) cfg::parent_pin = v;
 
   // Profile assignment
