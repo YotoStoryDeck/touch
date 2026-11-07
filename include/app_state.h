@@ -95,6 +95,56 @@ inline bool operator==(const String& s, const PsramString& ps) { return ps == s;
 inline bool operator!=(const String& s, const PsramString& ps) { return ps != s; }
 
 // ---------------- app state ----------------
+// Lightweight UTF-8 to ASCII normalizer for microcontroller display fonts
+inline String clean_display_text(const String& in){
+  if(in.length() == 0) return in;
+  String out = "";
+  out.reserve(in.length());
+  for(size_t i = 0; i < in.length(); i++){
+    uint8_t b1 = (uint8_t)in[i];
+    // Check 3-byte UTF-8 sequences (0xE2 0x80 ...)
+    if(b1 == 0xE2 && i + 2 < in.length() && (uint8_t)in[i+1] == 0x80){
+      uint8_t b3 = (uint8_t)in[i+2];
+      if(b3 == 0x99 || b3 == 0x98 || b3 == 0x9A || b3 == 0x9B) { out += '\''; i += 2; continue; } // single quotes
+      if(b3 == 0x9C || b3 == 0x9D || b3 == 0x9E || b3 == 0x9F) { out += '"'; i += 2; continue; } // double quotes
+      if(b3 == 0x93 || b3 == 0x94 || b3 == 0x95) { out += '-'; i += 2; continue; } // dashes
+      if(b3 == 0xA6) { out += "..."; i += 2; continue; } // ellipsis
+    }
+    // Check 2-byte Latin-1 UTF-8 sequences (0xC3 ...)
+    if(b1 == 0xC3 && i + 1 < in.length()){
+      uint8_t b2 = (uint8_t)in[i+1];
+      // A accents: À Á Â Ã Ä Å
+      if(b2 >= 0x80 && b2 <= 0x85) { out += 'A'; i++; continue; }
+      // a accents: à á â ã ä å
+      if(b2 >= 0xA0 && b2 <= 0xA5) { out += 'a'; i++; continue; }
+      // E accents: È É Ê Ë
+      if(b2 >= 0x88 && b2 <= 0x8B) { out += 'E'; i++; continue; }
+      // e accents: è é ê ë (Pokémon -> Pokemon)
+      if(b2 >= 0xA8 && b2 <= 0xAB) { out += 'e'; i++; continue; }
+      // I accents: Ì Í Î Ï
+      if(b2 >= 0x8C && b2 <= 0x8F) { out += 'I'; i++; continue; }
+      // i accents: ì í î ï
+      if(b2 >= 0xAC && b2 <= 0xAF) { out += 'i'; i++; continue; }
+      // O accents: Ò Ó Ô Õ Ö
+      if(b2 >= 0x92 && b2 <= 0x96) { out += 'O'; i++; continue; }
+      // o accents: ò ó ô õ ö
+      if(b2 >= 0xB2 && b2 <= 0xB6) { out += 'o'; i++; continue; }
+      // U accents: Ù Ú Û Ü
+      if(b2 >= 0x99 && b2 <= 0x9C) { out += 'U'; i++; continue; }
+      // u accents: ù ú û ü
+      if(b2 >= 0xB9 && b2 <= 0xBC) { out += 'u'; i++; continue; }
+      // N/n: Ñ ñ
+      if(b2 == 0x91) { out += 'N'; i++; continue; }
+      if(b2 == 0xB1) { out += 'n'; i++; continue; }
+      // C/c: Ç ç
+      if(b2 == 0x87) { out += 'C'; i++; continue; }
+      if(b2 == 0xA7) { out += 'c'; i++; continue; }
+    }
+    out += (char)b1;
+  }
+  return out;
+}
+
 #define THUMB_W   160
 #define THUMB_H   254                       // 160 * 1011/638 — 4-up grid, ~19mm tiles (bigger tap target)
 #define THUMB_SZ  (THUMB_W*THUMB_H*2)      // RGB565 bytes per cover (81280)
@@ -103,8 +153,8 @@ static TabFilter s_active_tab = TAB_ALL;
 static PsramString s_selected_series_filter = ""; // Level 2 Series navigation state (empty = Level 1 Index)
 
 // Fixed Viewport Thumbnail Pool in PSRAM:
-// Exactly 24 active bitmap buffers (~1.95 MB PSRAM total) regardless of catalog size (243+ books).
-#define THUMB_POOL_SIZE 24
+// Exactly 32 active bitmap buffers (~2.60 MB PSRAM total) regardless of catalog size (243+ books).
+#define THUMB_POOL_SIZE 32
 
 struct ThumbSlot {
   int          card_idx = -1;               // Index in s_cards currently holding this buffer
@@ -126,6 +176,8 @@ struct Card {
   PsramString series;                      // primary series / collection name
   float       sequence = -1.0f;            // book sequence in series (-1.0f = none; >= 0.0f = valid)
   PsramString seq_display;                 // e.g. "#0-3", "#1", or "1-3"
+  PsramString series_cover;
+  PsramString series_cover_id;
   static const int MAX_EXTRA_SERIES = 6;
   PsramString extra_series[MAX_EXTRA_SERIES]; // additional series/groups from series_list
   float       extra_seq[MAX_EXTRA_SERIES] = {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f};
@@ -165,6 +217,19 @@ inline void init_thumb_pool(){
     }
     s_thumb_pool[p].card_idx = -1;
     s_thumb_pool[p].last_use = 0;
+  }
+}
+
+struct SeriesGroup {
+  PsramString name;
+  int         rep_card_idx = -1;
+  int         count = 0;
+};
+static std::vector<SeriesGroup, PsramVectorAlloc<SeriesGroup>> s_series_groups;
+
+inline void unbind_grid_tiles(){
+  for(size_t i = 0; i < s_cards.size(); i++){
+    s_cards[i].tile = nullptr;
   }
 }
 

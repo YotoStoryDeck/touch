@@ -382,7 +382,16 @@ void loop(){
         update_home_bar();
       }
       if(s_scr_now && lv_scr_act() == s_scr_now){
-        np_set_chapter_label(); np_set_playicon(); np_update_progress();
+        np_set_chapter_label(); np_set_playicon(); np_update_progress(); np_update_vol_ui();
+      }
+    } else if(!core::s_is_approved && !s_scr_pairing){
+      log_msg("[CORE] Device unapproved/quarantined in Core! Transitioning to pairing screen immediately.");
+      s_lib_ok = false;
+      s_playing = false;
+      go_home();
+      show_pairing_screen(cfg::core_url, "Device Quarantined: Awaiting Admin Approval in StoryDeck Core");
+      if(!s_pairing_timer){
+        s_pairing_timer = lv_timer_create(pairing_poll_cb, 5000, NULL);
       }
     }
   }

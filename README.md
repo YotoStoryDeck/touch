@@ -93,26 +93,11 @@ pio run -e waveshare-s3-43b -t upload
 
 ---
 
-### Option 3: Browser Companion / Simulator (Requires Core & Touch)
+### Option 3: Wall Tablet Kiosk & Browser Companion
 
-To run the Touch UI on a wall-mounted tablet, phone, or browser without physical ESP32 hardware, both **StoryDeck Core** (backend API hub) and **StoryDeck Touch** (frontend companion assets) are required:
-
-1. **When running Core via Docker Release:**
-   * Pre-packaged releases of StoryDeck Core bundle the compiled `web-touch/` companion assets directly. Ensure your **StoryDeck Core** container is running on port `5055`.
-   * Open your browser or kiosk display to `http://<core-ip>:5055/kiosk/` or `http://<core-ip>:5055/simulator/`.
-
-2. **When running locally from Source / Development:**
-   * Both repositories are required:
-     ```bash
-     # 1. Clone and run StoryDeck Core (Backend API)
-     git clone https://github.com/YotoStoryDeck/core.git
-     cd core
-     python app.py
-
-     # 2. In a separate terminal, clone StoryDeck Touch (Frontend Web Assets)
-     git clone https://github.com/YotoStoryDeck/touch.git
-     ```
-   * StoryDeck Core serves the `touch/web-touch/` assets directly at `http://localhost:5055/kiosk/` (or symlinked to `static/kiosk/`). Alternatively, open `touch/web-touch/index.html` in your browser and point it to your Core server IP in settings.
+To run the Touch UI on a wall-mounted tablet (iPad, Fire HD, Android) or browser without physical ESP32 hardware:
+* The Wall Tablet Kiosk web client is maintained directly in [StoryDeck Core](https://github.com/YotoStoryDeck/core) under `static/kiosk/`.
+* Open your tablet browser or full-screen kiosk app to `http://<core-ip>:5055/kiosk/` (or `http://<core-ip>:5055/simulator/`). All client assets are served natively by StoryDeck Core.
 
 ---
 

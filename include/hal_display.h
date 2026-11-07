@@ -240,14 +240,14 @@ static int rgb_panel_init(){
 #else
   esp_lcd_rgb_panel_config_t cfg={};
   cfg.clk_src=LCD_CLK_SRC_DEFAULT;
-  cfg.timings.pclk_hz=14*1000*1000; cfg.timings.h_res=LCD_H_RES; cfg.timings.v_res=LCD_V_RES;
-  cfg.timings.hsync_pulse_width=4; cfg.timings.hsync_back_porch=30; cfg.timings.hsync_front_porch=8;
-  cfg.timings.vsync_pulse_width=4; cfg.timings.vsync_back_porch=8; cfg.timings.vsync_front_porch=8;
+  cfg.timings.pclk_hz=12*1000*1000; cfg.timings.h_res=LCD_H_RES; cfg.timings.v_res=LCD_V_RES;
+  cfg.timings.hsync_pulse_width=4; cfg.timings.hsync_back_porch=8; cfg.timings.hsync_front_porch=8;
+  cfg.timings.vsync_pulse_width=4; cfg.timings.vsync_back_porch=16; cfg.timings.vsync_front_porch=16;
   cfg.timings.flags.pclk_active_neg=1;
   cfg.data_width=16; cfg.bits_per_pixel=16; cfg.num_fbs=1;
   cfg.bounce_buffer_size_px=LCD_H_RES*20;
   cfg.dma_burst_size=64;
-  cfg.flags.bb_invalidate_cache=1;
+  cfg.flags.bb_invalidate_cache=0;
   cfg.hsync_gpio_num=46; cfg.vsync_gpio_num=3; cfg.de_gpio_num=5; cfg.pclk_gpio_num=7; cfg.disp_gpio_num=-1;
   const int dp[16]={14,38,18,17,10, 39,0,45,48,47,21, 1,2,42,41,40};
   for(int i=0;i<16;++i) cfg.data_gpio_nums[i]=dp[i];

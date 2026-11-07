@@ -195,6 +195,12 @@ inline bool fetch_config_and_profiles(const String& base_url, bool prune_avatars
   }
   http.setTimeout(1200);
   int code = http.GET();
+  if(code == 401 || code == 403){
+    http.end();
+    s_is_approved = false;
+    s_access_token = "";
+    return false;
+  }
   if(code != 200){ http.end(); return false; }
 
   size_t blen = 0; char* body = read_body(http, blen);
@@ -204,6 +210,14 @@ inline bool fetch_config_and_profiles(const String& base_url, bool prune_avatars
   DeserializationError jerr = deserializeJson(doc, (const char*)body, blen);
   free(body);
   if(jerr) return false;
+
+  if(!doc["is_approved"].isNull()){
+    s_is_approved = (bool)doc["is_approved"];
+  }
+  if(!s_is_approved){
+    s_access_token = "";
+    return false;
+  }
 
   bool cfg_changed = false;
   const char* pin = doc["parent_pin"];
@@ -604,7 +618,7 @@ inline int player_control(const String& base_url, const String& device_id, const
 
 // 6. Fetch Child Catalog (ABS + Yoto merged via Core hub)
 inline bool fetch_catalog(const String& base_url, const String& child_id,
-  void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list, const String& lp, bool has_phys)){
+  void (*card_cb)(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list, const String& lp, bool has_phys, const String& s_cover, const String& s_cover_id)){
   if(base_url.length() == 0 || child_id.length() == 0) return false;
 
   auto fetch_src = [&](const String& path, const String& src_name){
@@ -640,6 +654,8 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
     f0["series_list"][0]["name"] = true;
     f0["series_list"][0]["sequence"] = true;
     f0["series_list"][0]["sequence_display"] = true;
+    f0["series_cover"] = true;
+    f0["series_cover_id"] = true;
     PsramAlloc palloc; JsonDocument doc(&palloc);
     DeserializationError jerr = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
     free(body);
@@ -683,7 +699,9 @@ inline bool fetch_catalog(const String& base_url, const String& child_id,
       else item_src = src_name;
       String lp = (const char*)(item["last_played_at"] | item["lastPlayedAt"] | "");
       bool has_phys = (bool)(item["has_physical"] | false);
-      card_cb(id, title, author, cover, item_src, series, seq, seq_disp, is_hl, sl, lp, has_phys);
+      String s_cover = (const char*)(item["series_cover"] | "");
+      String s_cover_id = (const char*)(item["series_cover_id"] | "");
+      card_cb(id, title, author, cover, item_src, series, seq, seq_disp, is_hl, sl, lp, has_phys, s_cover, s_cover_id);
     }
   };
 

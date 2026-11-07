@@ -13,7 +13,6 @@ static void back_cb(lv_event_t* e){
   s_detail_bar = nullptr;
   if(s_scr_home){
     lv_scr_load(s_scr_home);
-    lv_refr_now(lv_disp_get_default());
   } else if(s_scr_error){
     lv_scr_load(s_scr_error);
   }
@@ -224,6 +223,30 @@ static void open_detail(int i){
   bool is_abs_book = c.is_abs();
   lv_obj_t* src_badge = lv_label_create(sum_row);
   lv_label_set_text(src_badge, is_abs_book ? "Audiobookshelf" : "Yoto");
+
+  if(c.series.length() > 0){
+    lv_obj_t* sbtn = lv_btn_create(sum_row);
+    lv_obj_set_style_bg_color(sbtn, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_bg_color(sbtn, lv_color_hex(0xE5352B), LV_STATE_PRESSED);
+    lv_obj_set_style_radius(sbtn, 12, 0);
+    lv_obj_set_style_pad_left(sbtn, 10, 0);
+    lv_obj_set_style_pad_right(sbtn, 10, 0);
+    lv_obj_set_style_pad_top(sbtn, 4, 0);
+    lv_obj_set_style_pad_bottom(sbtn, 4, 0);
+    lv_obj_set_style_shadow_width(sbtn, 0, 0);
+    lv_obj_t* slbl = lv_label_create(sbtn);
+    String stxt = "Series: " + String(c.series.c_str()) + " >";
+    lv_label_set_text(slbl, stxt.c_str());
+    lv_obj_set_style_text_font(slbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(slbl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(slbl);
+    lv_obj_add_event_cb(sbtn, [](lv_event_t*){
+      Card& cur_c = s_cards[s_cur_card];
+      if(cur_c.series.length() > 0){
+        open_series_view(cur_c.series);
+      }
+    }, LV_EVENT_CLICKED, NULL);
+  }
   lv_obj_set_style_text_font(src_badge, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(src_badge, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_color(src_badge, is_abs_book ? lv_color_hex(0x4F46E5) : lv_color_hex(0xE5352B), 0);

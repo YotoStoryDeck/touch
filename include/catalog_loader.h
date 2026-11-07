@@ -1,3 +1,4 @@
+void precompute_series_metadata(); // fwd
 #include <algorithm>
 #pragma once
 
@@ -87,7 +88,7 @@ static char* read_body_psram(HTTPClient& http, size_t& outLen){
 
 
 // Add single card from Core catalog (preserving multiple series_list memberships for Kiosk parity; NO LIMIT)
-static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list, const String& lp, bool has_phys){
+static void add_core_card(const String& id, const String& title, const String& author, const String& cover, const String& src, const String& series, float seq, const String& seq_disp, bool is_hl, JsonArray series_list, const String& lp, bool has_phys, const String& s_cover = "", const String& s_cover_id = ""){ 
   Card c;
   c.id               = id.c_str();
   c.title            = title.c_str();
@@ -100,6 +101,8 @@ static void add_core_card(const String& id, const String& title, const String& a
   c.sequence         = seq;
   c.seq_display      = seq_disp.c_str();
   c.has_physical     = has_phys;
+  c.series_cover     = s_cover.c_str();
+  c.series_cover_id  = s_cover_id.c_str();
   c.extra_series_cnt = 0;
   if(!series_list.isNull() && series_list.size() > 0){
     for(size_t si = 0; si < series_list.size(); si++){
@@ -205,6 +208,7 @@ bool fetch_library_core(){
   log_msg("[CORE] Catalog loaded: %d cards for profile '%s' in %u ms", s_card_count, prof_id.c_str(), (unsigned)(millis() - t_cat0));
 
   sort_catalog_kiosk_order();
+  precompute_series_metadata();
 
   sync_active_player_playback();
 
