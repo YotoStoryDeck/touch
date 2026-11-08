@@ -97,14 +97,20 @@ jobs:
         run: |
           IS_PRERELEASE="${{ steps.meta.outputs.prerelease }}"
           NOTES_FILE="release_notes.md"
-          rm -f "${NOTES_FILE}"
+          TEMP_FILE="release_notes_combined.md"
+          rm -f "${TEMP_FILE}"
 
           if [ "${IS_PRERELEASE}" = "true" ]; then
-            echo "> [!WARNING]" >> "${NOTES_FILE}"
-            echo "> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions." >> "${NOTES_FILE}"
-            echo "" >> "${NOTES_FILE}"
+            echo "> [!WARNING]" >> "${TEMP_FILE}"
+            echo "> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions." >> "${TEMP_FILE}"
+            echo "" >> "${TEMP_FILE}"
           fi
-          touch "${NOTES_FILE}"
+
+          if [ -f "${NOTES_FILE}" ]; then
+            cat "${NOTES_FILE}" >> "${TEMP_FILE}"
+          fi
+          touch "${TEMP_FILE}"
+          mv "${TEMP_FILE}" "${NOTES_FILE}"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
