@@ -77,8 +77,8 @@ jobs:
 
       - name: Configure Firmware Build Seeds
         run: |
-          if [ ! -f include/secrets.h ]; then
-            cp include/secrets.h.example include/secrets.h
+          if [ ! -f secrets.h ]; then
+            cp secrets.h.example secrets.h
           fi
 
       - name: Build Waveshare ESP32-S3 Firmware

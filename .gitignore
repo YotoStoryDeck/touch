@@ -12,3 +12,6 @@ node_modules/
 # Wokwi Virtual MicroSD Cache (cover .565 & chapter .chap files)
 sdcard/
 !sdcard/ythumbs/.gitkeep
+secrets.h
+include/secrets.h
+**/secrets.h

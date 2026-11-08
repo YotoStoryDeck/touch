@@ -39,7 +39,11 @@ static void* tls_psram_calloc(size_t n, size_t size){
 
 // Core & Hardware Modules
 #include "app_log.h"
+#if __has_include("secrets.h")
 #include "secrets.h"
+#elif __has_include("../secrets.h")
+#include "../secrets.h"
+#endif
 #include "app_config.h"
 #include "yoto_api.h"
 #include "core_api.h"
@@ -322,8 +326,8 @@ void setup(){
     start_hotspot();
     WiFi.begin(cfg::wifi_ssid.c_str(), cfg::wifi_pass.c_str());
     show_error("WiFi Connection Needed",
-               "Unable to join the configured WiFi network (2.4GHz only).\nSetup hotspot 'Yoto-Setup' is active.",
-               "Join WiFi 'Yoto-Setup' on phone/PC or tap 'Open Settings' below.");
+               "Unable to join the configured WiFi network (2.4GHz only).\nSetup hotspot 'StoryDeck-Setup' is active.",
+               "Join WiFi 'StoryDeck-Setup' on phone/PC or tap 'Open Settings' below.");
   }
   lv_timer_create(net_retry_cb, 30000, NULL);   // self-deletes once the library is in
 

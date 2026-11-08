@@ -6,7 +6,11 @@
 // web portal) with secrets.h as the compile-time default.
 // Token-in-flash is an accepted risk for this single-home appliance (scoped to
 // library-view + device-control, revocable, only extractable with physical+JTAG access).
+#if __has_include("secrets.h")
 #include "secrets.h"
+#elif __has_include("../secrets.h")
+#include "../secrets.h"
+#endif
 #include "app_config.h"
 #include "tls_arena.h"
 

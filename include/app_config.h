@@ -6,7 +6,33 @@
 // Header-only, included by main.cpp only (single TU), matching yoto_api.h style.
 #include <Arduino.h>
 #include <Preferences.h>
+#if __has_include("secrets.h")
 #include "secrets.h"
+#elif __has_include("../secrets.h")
+#include "../secrets.h"
+#endif
+
+#ifndef WIFI_SSID
+#define WIFI_SSID            ""
+#endif
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD        ""
+#endif
+#ifndef YOTO_CLIENT_ID
+#define YOTO_CLIENT_ID       ""
+#endif
+#ifndef YOTO_CLIENT_SECRET
+#define YOTO_CLIENT_SECRET   ""
+#endif
+#ifndef YOTO_DEVICE_ID
+#define YOTO_DEVICE_ID       ""
+#endif
+#ifndef YOTO_SEED_REFRESH
+#define YOTO_SEED_REFRESH    ""
+#endif
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD         ""
+#endif
 #ifndef STORYDECK_VERSION
 #define STORYDECK_VERSION "0.1.0"
 #endif
