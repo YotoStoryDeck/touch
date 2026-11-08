@@ -1,6 +1,6 @@
 #pragma once
 // Runtime app settings — NVS-backed, editable without reflashing (via the on-device
-// grown-ups screen and the web portal at http://yoto-controller.local/settings).
+// grown-ups screen and the web portal at http://storydeck-touch.local/settings).
 // secrets.h still provides the compile-time DEFAULTS; NVS overrides once saved, so a
 // flashed board can be re-pointed at new WiFi / new Yoto credentials in the field.
 // Header-only, included by main.cpp only (single TU), matching yoto_api.h style.
@@ -20,7 +20,7 @@ static String client_id;       // Yoto OAuth confidential client
 static String client_secret;
 static String device_id;       // the Yoto player this panel commands
 static String op_mode;         // "core" (StoryDeck Core) vs "standalone" (Direct Yoto Cloud)
-static String core_url;        // Base URL of StoryDeck Core container (e.g. http://<server-ip>:5065)
+static String core_url;        // Base URL of StoryDeck Core container (e.g. http://<server-ip>:5055)
 static String assigned_profile = ""; // Assigned child profile ID (Core mode)
 static bool   lock_player   = false; // Lock audio output to specific player vs profile roaming
 static String locked_dev_id = "";    // Locked player ID
@@ -59,11 +59,11 @@ static void load(){
   client_secret = s_prefs.getString("csec",  YOTO_CLIENT_SECRET);
   device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
   op_mode       = s_prefs.getString("mode",  "core");
-  core_url      = s_prefs.getString("curl",  "http://192.168.1.11:5065");
+  core_url      = s_prefs.getString("curl",  "http://localhost:5055");
 #endif
-  lock_player   = s_prefs.getBool("lockp",   true);
-  locked_dev_id = s_prefs.getString("lockid", "y29tYSZid8OsUIgvDNsXNveL");
-  assigned_profile = s_prefs.getString("prof",   "wesley");
+  lock_player   = s_prefs.getBool("lockp",   false);
+  locked_dev_id = s_prefs.getString("lockid", "");
+  assigned_profile = s_prefs.getString("prof",   "");
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
   parent_pin    = s_prefs.getString("pin",   "1234");
   catalog_card_limit = s_prefs.getInt("catlim", 60);

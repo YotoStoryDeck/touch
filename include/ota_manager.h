@@ -17,10 +17,10 @@ extern void flick_stress_task(void*);
 // Two doors into the same flash-over-WiFi mechanism (both need WiFi up first; USB-C stays
 // the recovery path if a bad image ever wedges the app):
 //   1. ArduinoOTA — push from the Mac:  pio run -e waveshare-s3-43b-ota -t upload
-//   2. ElegantOTA — open http://yoto-controller.local/update (or http://<board-ip>/update)
+//   2. ElegantOTA — open http://storydeck-touch.local/update (or http://<board-ip>/update)
 //      in any browser and drop in .pio/build/waveshare-s3-43b/firmware.bin
 // Updates land in the spare app slot and only swap over on success, and they DON'T touch NVS,
-// so the Yoto tokens survive. mDNS advertises the board as "yoto-controller.local".
+// so the Yoto tokens survive. mDNS advertises the board as "storydeck-touch.local".
 static WebServer s_ota_web(80);
 
 // "Loading new software" splash for firmware updates. The hard constraint: on the ESP32-S3 every
@@ -64,7 +64,7 @@ static void ota_restore_display(){
 }
 
 static void ota_begin(){
-  ArduinoOTA.setHostname("yoto-controller");
+  ArduinoOTA.setHostname("storydeck-touch");
   ArduinoOTA.setTimeout(10000);   // Increase receive timeout from 1000ms default to 10000ms to eliminate Receive Failed errors
   if(sizeof(OTA_PASSWORD) > 1) ArduinoOTA.setPassword(OTA_PASSWORD);   // empty string => no auth
   ArduinoOTA.onStart([](){ Serial.println("[OTA] push start"); ota_splash_and_blank(); });

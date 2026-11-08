@@ -1,6 +1,6 @@
 #pragma once
-// Web settings portal — http://yoto-controller.local/settings (or http://192.168.4.1/settings
-// when the board is in Yoto-Setup hotspot mode). Rides the SAME WebServer that ElegantOTA
+// Web settings portal — http://storydeck-touch.local/settings (or http://192.168.4.1/settings
+// when the board is in StoryDeck-Setup hotspot mode). Rides the SAME WebServer that ElegantOTA
 // uses, so it costs no extra sockets/RAM. Lets you change WiFi + Yoto credentials + timezone
 // WITHOUT reflashing: values save to NVS (cfg::), which overrides the secrets.h defaults.
 // Pasting a refresh token reseeds yoto:: (e.g. after a re-login that added scopes).
@@ -495,7 +495,7 @@ static void handle_get(WebServer& w){
     "<h2>StoryDeck Integration</h2>" +
     mode_select() +
     "<div id='core_sec'>" +
-    text_row("StoryDeck Core URL", "curl", cfg::core_url, "Hub address (e.g. http://<server-ip>:5065 or https://storydeck.local). Required for Core Managed mode.") +
+    text_row("StoryDeck Core URL", "curl", cfg::core_url, "Hub address (e.g. http://<server-ip>:5055 or http://localhost:5055). Required for Core Managed mode.") +
     "<div><button type='button' class='test-btn' onclick='testCore()'>Test StoryDeck Core URL</button><span id='core_badge'></span></div>" +
     "</div>" +
     "<div id='yoto_sec'>" +

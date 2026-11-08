@@ -219,7 +219,7 @@ void setup(){
     String hname = cfg::kiosk_name;
     hname.replace(" ", "-");
     if(hname.length() > 0) WiFi.setHostname(hname.c_str());
-    else WiFi.setHostname("yoto-controller");
+    else WiFi.setHostname("storydeck-touch");
   }
   WiFi.setAutoReconnect(true);
   WiFi.setSleep(false);                     // no modem-sleep: pm_dream wake re-enables the PHY and aborts if internal RAM is empty
@@ -290,9 +290,8 @@ void setup(){
   ota_begin();
   if(WiFi.status() == WL_CONNECTED && cfg::op_mode == "core"){
     if(!core::ping(cfg::core_url)){
-      if(core::ping("http://192.168.1.11:5065")) cfg::core_url = "http://192.168.1.11:5065";
-      else if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
-      else if(core::ping("http://host.wokwi.internal:5065")) cfg::core_url = "http://host.wokwi.internal:5065";
+      if(core::ping("http://host.wokwi.internal:5055")) cfg::core_url = "http://host.wokwi.internal:5055";
+      else if(core::ping("http://localhost:5055")) cfg::core_url = "http://localhost:5055";
     }
   }
 #endif

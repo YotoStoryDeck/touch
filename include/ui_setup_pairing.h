@@ -14,17 +14,17 @@ static lv_obj_t* s_err_qr = nullptr;
 static void start_hotspot(){
   s_hotspot_wanted = true;
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP("Yoto-Setup");
-  Serial.println("[WIFI] Setup Hotspot asserted: 'Yoto-Setup' (192.168.4.1)");
+  WiFi.softAP("StoryDeck-Setup");
+  Serial.println("[WIFI] Setup Hotspot asserted: 'StoryDeck-Setup' (192.168.4.1)");
 }
 
 static void ensure_hotspot_active(){
   if(s_hotspot_wanted && !s_lib_ok){
     // If we want the hotspot and are not yet fully online with a valid library, ensure AP mode is alive
     if(!(WiFi.getMode() & WIFI_MODE_AP) || WiFi.softAPIP() == IPAddress(0,0,0,0)){
-      Serial.println("[WIFI] Watchdog: Hotspot went down! Re-enabling 'Yoto-Setup'...");
+      Serial.println("[WIFI] Watchdog: Hotspot went down! Re-enabling 'StoryDeck-Setup'...");
       WiFi.mode(WIFI_AP_STA);
-      WiFi.softAP("Yoto-Setup");
+      WiFi.softAP("StoryDeck-Setup");
     }
   }
 }
@@ -32,7 +32,7 @@ static void ensure_hotspot_active(){
 void start_hotspot_cb(lv_event_t*){
   start_hotspot();
   show_error("Setup Hotspot Active",
-             "Connect your phone to WiFi 'Yoto-Setup' or scan the QR code to join.\nNavigate to http://192.168.4.1/settings to set up WiFi.",
+             "Connect your phone to WiFi 'StoryDeck-Setup' or scan the QR code to join.\nNavigate to http://192.168.4.1/settings to set up WiFi.",
              "Hotspot is live. Open browser to configure.");
 }
 
@@ -85,7 +85,7 @@ static void show_error(const char* title, const char* message, const char* actio
     lv_obj_align(hs_card, LV_ALIGN_TOP_LEFT, 0, 60);
 
     lv_obj_t* hs_title = lv_label_create(hs_card);
-    lv_label_set_text(hs_title, LV_SYMBOL_WIFI " Hotspot Active: 'Yoto-Setup'");
+    lv_label_set_text(hs_title, LV_SYMBOL_WIFI " Hotspot Active: 'StoryDeck-Setup'");
     lv_obj_set_style_text_font(hs_title, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(hs_title, lv_color_hex(0x137333), 0);
 
@@ -95,7 +95,7 @@ static void show_error(const char* title, const char* message, const char* actio
       lv_label_set_text_fmt(s_err_hs_client_lbl, "%d device(s) connected! Open http://192.168.4.1/settings", stations);
       lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x137333), 0);
     } else {
-      lv_label_set_text(s_err_hs_client_lbl, "1. Connect to WiFi 'Yoto-Setup' (No pass)\n2. Open browser: http://192.168.4.1/settings");
+      lv_label_set_text(s_err_hs_client_lbl, "1. Connect to WiFi 'StoryDeck-Setup' (No pass)\n2. Open browser: http://192.168.4.1/settings");
       lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x137333), 0);
     }
     lv_obj_set_style_text_font(s_err_hs_client_lbl, &lv_font_montserrat_14, 0);

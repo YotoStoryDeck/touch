@@ -248,7 +248,7 @@ static void tick_cb(lv_timer_t*){
         lv_label_set_text_fmt(s_err_hs_client_lbl, "%d device(s) connected! Open http://192.168.4.1/settings", cur_sta);
         lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x137333), 0);
       } else {
-        lv_label_set_text(s_err_hs_client_lbl, "Broadcasting... Scan QR or connect to 'Yoto-Setup' (No password)");
+        lv_label_set_text(s_err_hs_client_lbl, "Broadcasting... Scan QR or connect to 'StoryDeck-Setup' (No password)");
         lv_obj_set_style_text_color(s_err_hs_client_lbl, lv_color_hex(0x5F6368), 0);
       }
     }
