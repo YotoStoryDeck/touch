@@ -270,6 +270,7 @@ static bool is_tile_visible(lv_obj_t* tile){
 }
 
 static int acquire_thumb_slot(int card_idx){
+  if(!s_thumb_pool[0].buf) init_thumb_pool();
   for(int p = 0; p < THUMB_POOL_SIZE; p++){
     if(s_thumb_pool[p].card_idx < 0){
       return p;
@@ -331,7 +332,7 @@ bool load_thumb_for_card(int card_idx, bool force_refr){
   }
 
   int slot = acquire_thumb_slot(card_idx);
-  if(slot < 0) return false;
+  if(slot < 0 || !s_thumb_pool[slot].buf) return false;
 
   bool ok = false;
   if(have_sd){

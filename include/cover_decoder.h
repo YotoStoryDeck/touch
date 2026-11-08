@@ -50,6 +50,7 @@ static int jpg_draw(JPEGDRAW* d){
 // Fetch coverBase resized to width W and decode into buf (W*H*2 RGB565). Handles BOTH formats
 // Yoto serves: tall PNG book covers AND square JPEG podcast covers (sniffed by magic bytes).
 static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
+  if(!buf) return false;
   if(coverBase.length() == 0){ s_thumb_diag = "no cover url"; return false; }
   String url = coverBase;
   if(url.indexOf("/api/thumb") >= 0){
@@ -175,6 +176,7 @@ static bool fetch_cover(const String& coverBase, int W, int H, uint8_t* buf){
 // is exactly the plain fetch path. Keyed by (cardId,width) so grid/detail/now-playing each
 // get their own cached size.
 static bool load_cover_cached(const String& id, const String& coverUrl, int W, int H, size_t sz, uint8_t* buf){
+  if(!buf) return false;
   if(sd_cache_read(id, W, buf, sz, coverUrl)) return true;
   bool ok = false;
   int attempts = (coverUrl.indexOf("/api/thumb") >= 0) ? 1 : 2;

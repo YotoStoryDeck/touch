@@ -258,6 +258,7 @@ void setup(){
   static lv_indev_drv_t id; lv_indev_drv_init(&id);
   id.type=LV_INDEV_TYPE_POINTER; id.read_cb=touch_cb; lv_indev_drv_register(&id);
   lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0xFBF7F0), 0);
+  init_thumb_pool();
 
   // MicroSD (cover cache) — best-effort. A write/read self-test proves the wiring; on failure
   // the app still runs, covers just fetch live each boot as before.
