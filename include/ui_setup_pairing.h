@@ -136,14 +136,14 @@ static void show_error(const char* title, const char* message, const char* actio
   lv_obj_clear_flag(qr_card, LV_OBJ_FLAG_SCROLLABLE);
 
   // Generate QR Code data
-  String qr_data = is_ap ? "WIFI:T:nopass;S:Yoto-Setup;;" : ("http://" + WiFi.localIP().toString() + "/settings");
+  String qr_data = is_ap ? "WIFI:T:nopass;S:StoryDeck-Setup;;" : ("http://" + WiFi.localIP().toString() + "/settings");
   lv_obj_t* qr = lv_qrcode_create(qr_card, 160, lv_color_hex(0x23303A), lv_color_hex(0xFFFFFF));
   lv_qrcode_update(qr, qr_data.c_str(), qr_data.length());
   lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 8);
   s_err_qr = qr;
 
   lv_obj_t* qr_label = lv_label_create(qr_card);
-  lv_label_set_text(qr_label, is_ap ? "Scan to Join Hotspot\nWiFi: Yoto-Setup" : "Scan for Settings\nWeb Portal");
+  lv_label_set_text(qr_label, is_ap ? "Scan to Join Hotspot\nWiFi: StoryDeck-Setup" : "Scan for Settings\nWeb Portal");
   lv_obj_set_style_text_font(qr_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(qr_label, lv_color_hex(0x7A7060), 0);
   lv_obj_set_style_text_align(qr_label, LV_TEXT_ALIGN_CENTER, 0);
@@ -175,6 +175,21 @@ static void show_error(const char* title, const char* message, const char* actio
 
 // ---------------- Pairing / Waiting for Admin Approval Screen ----------------
 static lv_obj_t* s_pairing_status_lbl = nullptr;
+
+static void show_setup_wizard(){
+  status_hide();
+  bool is_connected = (WiFi.status() == WL_CONNECTED);
+  String msg;
+  String hint;
+  if(!is_connected){
+    msg = "Welcome to StoryDeck Touch! Initial setup is required to configure Wi-Fi and choose your operational mode (Core Managed or Standalone Cloud).";
+    hint = "Connect phone/PC to 'StoryDeck-Setup' or tap 'Open Settings' below.";
+  } else {
+    msg = "Wi-Fi is connected! Please choose your operational mode (StoryDeck Core Managed or Standalone Direct Yoto Cloud).";
+    hint = String("Open http://") + WiFi.localIP().toString() + "/settings on your phone or PC.";
+  }
+  show_error("StoryDeck Touch Setup", msg.c_str(), hint.c_str());
+}
 
 static void show_pairing_screen(const String& core_url, const String& status_msg){
   status_hide();

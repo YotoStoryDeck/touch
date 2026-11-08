@@ -52,9 +52,12 @@ static String secret_row(const char* label, const char* name, const char* hint){
 }
 
 static String mode_select(){
-  String h = "<label>Operational Mode<select name='mode' id='mode_sel' onchange='toggleModeFields()'>";
+  String h = "<label>Operational Mode<select name='mode' id='mode_sel' onchange='toggleModeFields()' required>";
+  if(cfg::op_mode.length() == 0){
+    h += "<option value='' disabled selected>-- Select Initial Operational Mode --</option>";
+  }
   h += String("<option value='core'") + (cfg::op_mode == "core" ? " selected" : "") + ">StoryDeck Core Managed (Hub + Profiles)</option>";
-  h += String("<option value='standalone'") + (cfg::op_mode != "core" ? " selected" : "") + ">Standalone Cloud (Direct Yoto API)</option>";
+  h += String("<option value='standalone'") + (cfg::op_mode == "standalone" ? " selected" : "") + ">Standalone Cloud (Direct Yoto API)</option>";
   h += "</select><small>Choose whether this screen connects to your local StoryDeck Core server or directly to Yoto Cloud.</small></label>";
   return h;
 }

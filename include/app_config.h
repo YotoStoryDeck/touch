@@ -53,13 +53,15 @@ static void load(){
   #endif
   core_url      = s_prefs.getString("curl",  WOKWI_CORE_URL);
 #else
-  wifi_ssid     = s_prefs.getString("ssid",  WIFI_SSID);
-  wifi_pass     = s_prefs.getString("pass",  WIFI_PASSWORD);
-  client_id     = s_prefs.getString("cid",   YOTO_CLIENT_ID);
-  client_secret = s_prefs.getString("csec",  YOTO_CLIENT_SECRET);
-  device_id     = s_prefs.getString("devid", YOTO_DEVICE_ID);
-  op_mode       = s_prefs.getString("mode",  "core");
-  core_url      = s_prefs.getString("curl",  "http://localhost:5055");
+  String default_ssid = (strcmp(WIFI_SSID, "your-2.4GHz-ssid") == 0) ? "" : String(WIFI_SSID);
+  String default_pass = (strcmp(WIFI_PASSWORD, "your-wifi-password") == 0) ? "" : String(WIFI_PASSWORD);
+  wifi_ssid     = s_prefs.getString("ssid",  default_ssid);
+  wifi_pass     = s_prefs.getString("pass",  default_pass);
+  client_id     = s_prefs.getString("cid",   "");
+  client_secret = s_prefs.getString("csec",  "");
+  device_id     = s_prefs.getString("devid", "");
+  op_mode       = s_prefs.getString("mode",  "");
+  core_url      = s_prefs.getString("curl",  "");
 #endif
   lock_player   = s_prefs.getBool("lockp",   false);
   locked_dev_id = s_prefs.getString("lockid", "");
@@ -78,8 +80,17 @@ static void load(){
   night_m       = s_prefs.getInt("nightm", 0);
   saver_size    = s_prefs.getInt("svsize", 2);
 }
+// Check if device has completed initial setup
+static bool is_configured(){
+  if(s_prefs.getBool("configured", false)) return true;
+  if(op_mode == "core" && core_url.length() > 0 && core_url != "http://localhost:5055") return true;
+  if(op_mode == "standalone" && client_id.length() > 0 && client_id != "your-yoto-client-id") return true;
+  return false;
+}
+
 // Persist everything (NVS only rewrites changed keys, so blanket-saving is cheap).
 static void save(){
+  s_prefs.putBool("configured", true);
   s_prefs.putString("kname", kiosk_name);
   s_prefs.putString("ssid",  wifi_ssid);
   s_prefs.putString("pass",  wifi_pass);

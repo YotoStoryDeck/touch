@@ -74,7 +74,11 @@ void net_init_and_fetch(){
   }
 
   // Core mode registration & approval gate
-  if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
+  if(cfg::op_mode == "core"){
+    if(cfg::core_url.length() == 0 || cfg::core_url == "http://localhost:5055"){
+      show_setup_wizard();
+      return;
+    }
     if(!core::s_is_approved){
       status("Checking StoryDeck Core registration...");
       String err;
@@ -272,9 +276,11 @@ void setup(){
   // portal and keep retrying STA in the background. OTA + portal start either way, so the
   // board is ALWAYS wirelessly reachable (the old code returned on failure, which made a
   // wrong WiFi password recoverable only over USB at the wall).
-  status("Connecting to WiFi...");
-  uint32_t t0=millis();
-  while(WiFi.status()!=WL_CONNECTED && millis()-t0 < 20000){ delay(200); }
+  if(cfg::wifi_ssid.length() > 0 && cfg::wifi_ssid != "your-2.4GHz-ssid"){
+    status("Connecting to WiFi...");
+    uint32_t t0=millis();
+    while(WiFi.status()!=WL_CONNECTED && millis()-t0 < 15000){ delay(200); }
+  }
 
   // Start OTA & Web Portal immediately upon WiFi link so Port 80 (/settings, /logs) and Port 3232 (OTA) are ALWAYS live
   ota_begin();
@@ -301,6 +307,12 @@ void setup(){
     show_error("Safe Mode",
                (String("The controller crashed ") + (unsigned)s_crash_count + " times in a row while starting, so automatic loading was skipped.").c_str(),
                "Open Settings to check WiFi / Core URL, then tap Retry. OTA updates still work.");
+  } else if(!cfg::is_configured()){
+    // Initial setup required: direct user to settings
+    if(WiFi.status() != WL_CONNECTED){
+      start_hotspot();
+    }
+    show_setup_wizard();
   } else if(WiFi.status()==WL_CONNECTED){
     status((String("WiFi OK: ") + WiFi.localIP().toString() + "\nFetching library...").c_str());
     log_msg("[WIFI] Connected: IP %s (RSSI %d dBm)", WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
