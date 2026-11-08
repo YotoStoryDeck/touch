@@ -342,6 +342,31 @@ static String profile_device_picker(){
   return h;
 }
 
+static String portal_toolbar(const String& active_tab = "settings"){
+  String tb = "<div class='nav-toolbar'>";
+  auto btn = [&](const char* label, const char* url, bool active, const char* id = "", const char* extra = ""){
+    String s = "<a href='";
+    s += url;
+    s += "' class='nav-btn";
+    if(active) s += " active";
+    s += "'";
+    if(id && id[0]){ s += " id='"; s += id; s += "'"; }
+    if(extra && extra[0]){ s += " "; s += extra; }
+    s += ">";
+    s += label;
+    s += "</a>";
+    return s;
+  };
+  tb += btn("⚙️ Settings", "/settings", active_tab == "settings");
+  tb += btn("🎴 Card Curation", "/settings?tab=curation", active_tab == "curation", "nav_curation");
+  tb += btn("📜 Console Logs", "/logs", false, "", "target='_blank'");
+  tb += btn("📺 Live Display", "/screen", false, "", "target='_blank'");
+  tb += btn("⚡ Firmware Update", "/update", false);
+  tb += btn("🔄 Reboot", "/reboot", false, "", "onclick=\"return confirm('Reboot StoryDeck Touch now?');\"");
+  tb += "</div>";
+  return tb;
+}
+
 static void handle_get(WebServer& w){
   if(!auth_ok(w)) return;
   String tab = w.arg("tab");
@@ -356,12 +381,9 @@ static void handle_get(WebServer& w){
       "th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #f0eae0}"
       "th{background:#f4ede0;color:#23303a;font-weight:700;font-size:0.9em}"
       "button.save-btn{background:#e5352b;color:#fff;border:0;border-radius:11px;padding:12px 22px;font-size:1.05em;font-weight:700;margin-top:14px;cursor:pointer;width:100%}"
-      "a.nav-btn{display:inline-block;padding:8px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.95em}"
-      "</style></head><body>"
-      "<div style='display:flex;gap:8px;margin-bottom:18px;'>"
-      "<a href='/settings' class='nav-btn' style='background:#f4ede0;color:#23303a;'>Settings</a>"
-      "<a href='/settings?tab=curation' class='nav-btn' style='background:#e5352b;color:#fff;'>Card Curation</a>"
-      "</div>"
+      ".nav-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#f0e8da;padding:6px;border-radius:10px;margin-bottom:18px;border:1px solid #e5dcce;}.nav-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:7px;text-decoration:none;font-weight:600;font-size:0.88em;color:#23303a;background:#fff;border:1px solid #dcd3c4;box-shadow:0 1px 2px rgba(0,0,0,0.03);}.nav-btn.active{background:#e5352b;color:#fff;border-color:#cf2b22;}"
+      "</style></head><body>" +
+      portal_toolbar("curation") +
       "<h1>Card Curation &amp; Ownership</h1>"
       "<p style='color:#7a7060;font-size:0.92em;'>Manage sticky favorites and mark physical plastic card copies owned in bedroom stands. Physical cards receive lower rotation probability unless hidden.</p>"
       "<form method='POST' action='/settings/curation'>"
@@ -369,6 +391,7 @@ static void handle_get(WebServer& w){
       "<input type='checkbox' name='hide_phys' value='1'" + String(curation::get_hide_physical() ? " checked" : "") + " style='width:auto;margin:0;'>"
       "<span>Hide Physical Cards from Touchscreen Catalog</span></label>"
       "<table><thead><tr><th style='width:50px;'>Cover</th><th>Title</th><th style='width:70px;text-align:center;'>Sticky &#11088;</th><th style='width:70px;text-align:center;'>Physical &#127188;</th></tr></thead><tbody>";
+    if(s_card_count == 0){ ch += "<tr><td colspan='4' style='text-align:center;padding:24px;color:#7a7060;'><em>No cards currently in memory. Connect your controller to WiFi and Yoto to load cards.</em></td></tr>"; }
 
     for(int i = 0; i < s_card_count; i++){
       if(s_cards[i].daily) continue;
@@ -401,7 +424,7 @@ static void handle_get(WebServer& w){
     "button.test-btn:hover{background:#f3e9d8}"
     "a{color:#e5352b}.info{background:#fff;border-radius:11px;padding:10px 14px;font-size:.9em;color:#666}"
     ".status-badge{display:inline-block;padding:3px 8px;border-radius:6px;font-size:0.85em;margin-left:8px;font-weight:600}"
-    ".badge-ok{background:#e6f4ea;color:#137333}.badge-err{background:#fce8e6;color:#c5221f}.badge-wait{background:#e8eaed;color:#5f6368}"
+    ".badge-ok{background:#e6f4ea;color:#137333}.badge-err{background:#fce8e6;color:#c5221f}.badge-wait{background:#e8eaed;color:#5f6368}.nav-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#f0e8da;padding:6px;border-radius:10px;margin-bottom:18px;border:1px solid #e5dcce;}.nav-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:7px;text-decoration:none;font-weight:600;font-size:0.88em;color:#23303a;background:#fff;border:1px solid #dcd3c4;box-shadow:0 1px 2px rgba(0,0,0,0.03);}.nav-btn.active{background:#e5352b;color:#fff;border-color:#cf2b22;}"
     "</style><script>\n"
     "var s_yoto_pkce_verifier = '';\n"
     "var s_yoto_redirect_uri = 'http://127.0.0.1:8787/callback';\n"
@@ -497,6 +520,7 @@ static void handle_get(WebServer& w){
     "        populatePlayerDropdown(d.players);\n"
     "      }\n"
     "      toggleModeFields();\n"
+    "      var cb = document.getElementById('curation_banner'); if(cb) cb.style.display = 'flex';\n"
     "    } else {\n"
     "      if(b){\n"
     "        b.className = 'status-badge badge-err';\n"
@@ -575,6 +599,8 @@ static void handle_get(WebServer& w){
     "  if(rotSec) rotSec.style.display = isCore ? 'none' : 'block';\n"
     "  if(profGrp) profGrp.style.display = isCore ? 'block' : 'none';\n"
     "  if(discBtnCore) discBtnCore.style.display = isCore ? 'inline-block' : 'none';\n"
+    "  var navCur = document.getElementById('nav_curation');\n"
+    "  if(navCur) navCur.style.display = isCore ? 'none' : 'inline-flex';\n"
     "  if(discBtnYoto) discBtnYoto.style.display = isCore ? 'none' : 'inline-block';\n"
     "\n"
     "  if(!isCore){\n"
@@ -686,7 +712,9 @@ static void handle_get(WebServer& w){
     "    });\n"
     "}\n"
     "window.addEventListener('DOMContentLoaded', toggleModeFields);\n"
-    "</script></head><body><h1>StoryDeck Touch Settings</h1>"
+    "</script></head><body>" +
+    portal_toolbar("settings") +
+    "<h1>StoryDeck Touch Settings</h1>"
     "<div class=info>IP " + WiFi.localIP().toString() +
     " &middot; WiFi " + String(WiFi.RSSI()) + " dBm"
     " &middot; free RAM " + String(ESP.getFreeHeap()/1024) + " KB"
@@ -717,6 +745,11 @@ static void handle_get(WebServer& w){
     "<div><div style='font-weight:700;color:#23303a;'>Yoto Cloud Connection Status</div>"
     "<div id='yoto_status_text' style='font-size:0.9em;'>" + (yoto::is_authenticated() ? "<span style='color:#137333;font-weight:700;'>&#10004; Authenticated (Ready)</span>" : "<span style='color:#e5352b;font-weight:600;'>&#9888; Not Authenticated</span>") + "</div></div>"
     "<button type='button' class='test-btn' id='btn_yoto_oauth' style='background:#e5352b;color:#fff;border:0;padding:10px 18px;font-weight:700;border-radius:8px;cursor:pointer;' onclick='startYotoOAuth()'>🔑 Authenticate with Yoto</button>"
+    "</div>"
+    "<div id='curation_banner' style='display:" + String(yoto::is_authenticated() ? "flex" : "none") + ";align-items:center;justify-content:space-between;gap:12px;background:#e6f4ea;border:1px solid #ceead6;border-radius:10px;padding:12px 14px;margin-top:12px;'>"
+    "<div><div style='color:#137333;font-weight:700;font-size:0.95em;'>&#127188; Card Curation Ready</div>"
+    "<div style='color:#2e7d32;font-size:0.85em;'>Customize favorites, physical card ownership, and catalog rotation.</div></div>"
+    "<a href='/settings?tab=curation' style='background:#137333;color:#fff;text-decoration:none;font-weight:700;padding:8px 16px;border-radius:8px;font-size:0.9em;white-space:nowrap;'>Open Curation &rarr;</a>"
     "</div>"
     "<div id='yoto_oauth_paste_box' style='display:none;margin-top:14px;padding-top:14px;border-top:1px dashed #d7cebe;'>"
     "<div style='font-weight:600;font-size:0.92em;color:#23303a;margin-bottom:6px;'>Step 2: Complete Authorization</div>"
