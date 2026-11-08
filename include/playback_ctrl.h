@@ -38,15 +38,16 @@ static void transport_worker_task(void* param){
         }
       }
 
-      if(cfg::device_id.length() == 0){
-        cfg::device_id = core::resolve_active_device_id(core::s_active_profile_idx);
+      String dev_id = cfg::device_id;
+      if(dev_id.length() == 0){
+        dev_id = core::resolve_active_device_id(core::s_active_profile_idx);
       }
 
       if(cfg::op_mode == "core" && cfg::core_url.length() > 0){
         if(cmd.is_volume){
-          core::player_control(cfg::core_url, cfg::device_id, "volume", cmd.volume);
+          core::player_control(cfg::core_url, dev_id, "volume", cmd.volume);
         } else {
-          core::player_control(cfg::core_url, cfg::device_id, cmd.name);
+          core::player_control(cfg::core_url, dev_id, cmd.name);
         }
       } else {
         // Standalone Yoto Cloud mode
@@ -57,8 +58,8 @@ static void transport_worker_task(void* param){
         } else if(strcmp(cmd.name, "pause") == 0 || strcmp(cmd.name, "resume") == 0 || strcmp(cmd.name, "stop") == 0){
           ycmd = String("card/") + cmd.name;
         }
-        if(ycmd.length() > 0){
-          String path = String("/device-v2/") + cfg::device_id + "/command/" + ycmd;
+        if(ycmd.length() > 0 && dev_id.length() > 0){
+          String path = String("/device-v2/") + dev_id + "/command/" + ycmd;
           String out;
           yoto::post(path, ypayload.length() ? ypayload : String("{}"), out);
         }
@@ -70,7 +71,7 @@ static void transport_worker_task(void* param){
 inline void init_transport_queue(){
   if(!s_cmd_queue){
     s_cmd_queue = xQueueCreate(8, sizeof(TransportCmd));
-    xTaskCreatePinnedToCore(transport_worker_task, "transport_cmd", 4096, nullptr, 3, &s_cmd_task, 0);
+    xTaskCreatePinnedToCore(transport_worker_task, "transport_cmd", 10240, nullptr, 3, &s_cmd_task, 0);
   }
 }
 

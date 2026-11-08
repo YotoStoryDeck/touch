@@ -9,6 +9,7 @@
 #include "ui_catalog.h"
 
 static void back_cb(lv_event_t* e){
+  cancel_detail_timer();
   s_detail_play_lbl = nullptr;
   s_detail_bar = nullptr;
   if(s_scr_home){
@@ -114,6 +115,7 @@ static void detail_set_summary(lv_obj_t* sum){
 }
 
 static void open_detail(int i){
+  cancel_detail_timer();
   log_msg("[USER] Inspecting card %d: '%s' (%s) - prioritizing detail & tracks", i, s_cards[i].title.c_str(), s_cards[i].id.c_str());
   s_detail_play_lbl = nullptr;
   s_detail_bar = nullptr;
@@ -305,30 +307,22 @@ static void open_detail(int i){
   lv_obj_set_style_text_color(bk, lv_color_hex(0x23303A), 0);
   lv_obj_center(bk);
 
-  lv_obj_t* old = s_scr_detail;
-  s_scr_detail = scr;
+  lv_obj_t* oldd = s_scr_detail; s_scr_detail = scr;
+  lv_obj_t* oldn = s_scr_now;    s_scr_now = nullptr;
+  s_np_barfill = s_np_tcur = s_np_trem = s_np_playicon = s_np_chapter = s_np_sleep = s_np_vol_slider = s_np_vol_limit = s_np_vol_label = nullptr;
   lv_scr_load(scr);
-  if(old) lv_obj_del(old);
+  if(oldd) lv_obj_del_async(oldd);
+  if(oldn) lv_obj_del_async(oldn);
   lv_refr_now(lv_disp_get_default());   // paint the screen NOW so the tap feels instant
 
   // ---- async slow path: defer heavy network / JPEG operations to a shallow timer ----
-  struct DetailAsyncCtx {
-    int card_idx;
-    bool need_ch;
-    bool need_cover;
-    lv_obj_t* scr_target;
-    lv_obj_t* title_lbl;
-    lv_obj_t* sum_lbl;
-    lv_obj_t* list_box;
-    lv_obj_t* cover_img;
-  };
-
   if(!have_ch || (!cover_sd && s_dcover)){
     DetailAsyncCtx* ctx = new DetailAsyncCtx{
       i, !have_ch, (!cover_sd && s_dcover != nullptr),
       scr, title, sum, list, cover
     };
-    lv_timer_t* tmr = lv_timer_create([](lv_timer_t* t){
+    s_detail_async_tmr = lv_timer_create([](lv_timer_t* t){
+      s_detail_async_tmr = nullptr;
       DetailAsyncCtx* c = (DetailAsyncCtx*)t->user_data;
       lv_timer_del(t);
       if(!c) return;
@@ -363,6 +357,6 @@ static void open_detail(int i){
       }
       delete c;
     }, 40, ctx);
-    lv_timer_set_repeat_count(tmr, 1);
+    lv_timer_set_repeat_count(s_detail_async_tmr, 1);
   }
 }

@@ -269,6 +269,30 @@ static lv_img_dsc_t s_dcover_dsc{};
 static lv_obj_t* s_detail_play_lbl = nullptr;
 static lv_obj_t* s_detail_bar = nullptr;    // bottom Now Playing mini-bar on Detail screen
 
+// Detail screen background fetch timer & context
+struct DetailAsyncCtx {
+  int card_idx;
+  bool need_ch;
+  bool need_cover;
+  lv_obj_t* scr_target;
+  lv_obj_t* title_lbl;
+  lv_obj_t* sum_lbl;
+  lv_obj_t* list_box;
+  lv_obj_t* cover_img;
+};
+static lv_timer_t* s_detail_async_tmr = nullptr;
+
+inline void cancel_detail_timer(){
+  if(s_detail_async_tmr){
+    if(s_detail_async_tmr->user_data){
+      delete (DetailAsyncCtx*)s_detail_async_tmr->user_data;
+      s_detail_async_tmr->user_data = nullptr;
+    }
+    lv_timer_del(s_detail_async_tmr);
+    s_detail_async_tmr = nullptr;
+  }
+}
+
 // now-playing screen + optimistic playback state
 #define NCOVER_W  170
 #define NCOVER_H  270                       // 170 * 1011/638
@@ -459,6 +483,7 @@ inline String get_active_player_name(){
 }
 
 inline void go_home(){
+  cancel_detail_timer();
   s_np_barfill=s_np_tcur=s_np_trem=s_np_playicon=s_np_chapter=s_np_sleep=s_np_vol_slider=s_np_vol_limit=s_np_vol_label=nullptr;
   s_set_sleep_lbl=nullptr;
   s_detail_play_lbl=nullptr;

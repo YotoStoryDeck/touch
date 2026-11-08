@@ -37,14 +37,21 @@ static String s_refresh;       // current rotating refresh token (single-use; pe
 // remains on plain s_access reads in get/post — at worst a transient bad header that the
 // existing 403→refresh retry self-heals; not worth guarding the streaming get() path for.)
 static SemaphoreHandle_t s_tok_mtx = nullptr;
+static SemaphoreHandle_t s_post_mtx = nullptr;
 
 // The current access token (JWT) — used by the MQTT client as its broker password.
-inline const String& access(){ return s_access; }
+inline String access(){
+  if(s_tok_mtx) xSemaphoreTake(s_tok_mtx, portMAX_DELAY);
+  String tok = s_access;
+  if(s_tok_mtx) xSemaphoreGive(s_tok_mtx);
+  return tok;
+}
 
 // Load tokens from NVS; first boot seeds the refresh token from the compile-time constant,
 // after which NVS is the source of truth (so rotation survives reboots).
 inline void begin(){
-  if(!s_tok_mtx) s_tok_mtx = xSemaphoreCreateMutex();
+  if(!s_tok_mtx)  s_tok_mtx  = xSemaphoreCreateMutex();
+  if(!s_post_mtx) s_post_mtx = xSemaphoreCreateMutex();
   s_prefs.begin("yoto", false);
   s_refresh = s_prefs.getString("refresh", "");
   if(s_refresh.isEmpty()){
@@ -61,8 +68,10 @@ inline void begin(){
 // Reseed the refresh token at runtime (web portal "paste a fresh token" path — e.g. after
 // a re-login that added scopes). Clears the cached access token so the next call refreshes.
 inline void set_refresh(const String& rt){
+  if(s_tok_mtx) xSemaphoreTake(s_tok_mtx, portMAX_DELAY);
   s_refresh = rt; s_prefs.putString("refresh", s_refresh);
   s_access = "";  s_prefs.putString("access", s_access);
+  if(s_tok_mtx) xSemaphoreGive(s_tok_mtx);
 }
 
 // A 401, or a 403 whose body says "unauthorized" but NOT "scope", means the access token
@@ -120,7 +129,11 @@ inline int get(WiFiClientSecure& cli, HTTPClient& http, const String& path){
   // almost always lands, and the caller caches the result so one success sticks for good.
   for(int attempt = 0; attempt < 3; attempt++){
     http.begin(cli, String(API_HOST) + path);
-    http.addHeader("Authorization", "Bearer " + s_access);
+    String tok;
+    if(s_tok_mtx) xSemaphoreTake(s_tok_mtx, portMAX_DELAY);
+    tok = s_access;
+    if(s_tok_mtx) xSemaphoreGive(s_tok_mtx);
+    http.addHeader("Authorization", "Bearer " + tok);
     http.setTimeout(8000);                          // was 15s — keep a UI-blocking call short
     int code = http.GET();
     if(code == 200) return code;                    // caller streams + ends
@@ -137,12 +150,19 @@ inline int get(WiFiClientSecure& cli, HTTPClient& http, const String& path){
 
 // Authed POST with a JSON body; returns the response in `out`. Auto-refreshes once on expiry.
 inline int post(const String& path, const String& jsonBody, String& out){
+  if(s_post_mtx) xSemaphoreTake(s_post_mtx, portMAX_DELAY);
   tlsarena::Guard tg;
+  int final_code = -1;
   for(int attempt = 0; attempt < 2; attempt++){
+    String tok;
+    if(s_tok_mtx) xSemaphoreTake(s_tok_mtx, portMAX_DELAY);
+    tok = s_access;
+    if(s_tok_mtx) xSemaphoreGive(s_tok_mtx);
+
     WiFiClientSecure cli; cli.setInsecure();
     HTTPClient http;
     http.begin(cli, String(API_HOST) + path);
-    http.addHeader("Authorization", "Bearer " + s_access);
+    http.addHeader("Authorization", "Bearer " + tok);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(10000);
     int code = http.POST(jsonBody);
@@ -150,9 +170,11 @@ inline int post(const String& path, const String& jsonBody, String& out){
     http.end();
     cli.stop();                                     // same keep-alive trap as get() above
     if(attempt == 0 && isExpired(code, out) && refresh()) continue;
-    return code;
+    final_code = code;
+    break;
   }
-  return -1;
+  if(s_post_mtx) xSemaphoreGive(s_post_mtx);
+  return final_code;
 }
 
 // Check if credentials exist and are ready for API calls
