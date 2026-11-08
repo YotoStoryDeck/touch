@@ -151,7 +151,7 @@ inline bool sd_rd_str(File& f, String& out){
 
 // Persist the freshly-parsed chapter list (in the s_ch globals) for this card to SD.
 inline void sd_chap_write(const String& id){
-  if(!s_sd_ok) return;
+  if(!s_sd_ok || s_ch_count <= 0) return;
   File f = SD.open(sd_chap_path(id), FILE_WRITE);
   if(!f) return;
   f.write((const uint8_t*)&CHAP_MAGIC, 2);
@@ -191,7 +191,7 @@ inline bool sd_chap_read(const String& id){
       if(!sd_rd_str(f, s_ch[k].track_key)) break;
       if(!sd_rd_str(f, s_ch[k].title))     break;
     }
-    if(k == n){ s_ch_count = n; ok = true; }
+    if(k == n && n > 0){ s_ch_count = n; ok = true; }
   } while(0);
   f.close();
   return ok;

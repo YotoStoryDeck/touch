@@ -102,10 +102,29 @@ static void parse_event(const char* json, int len){
     int raw = o["volume"] | 0;                  // raw 0..16 -> percent; pass through if already 0..100
     s_live.volume = (raw <= HW_VOL_MAX) ? (int)(raw * 100.0 / HW_VOL_MAX + 0.5) : raw;
   }
-  const char* ps = o["playbackStatus"];
-  if(ps){
+  if(o["playbackStatus"].is<const char*>()){
+    const char* ps = o["playbackStatus"];
     s_live.status = !strcmp(ps, "playing") ? ST_PLAYING
                   : !strcmp(ps, "paused")  ? ST_PAUSED  : ST_STOPPED;
+  } else if(o["status"].is<const char*>()){
+    const char* st = o["status"];
+    s_live.status = !strcmp(st, "playing") ? ST_PLAYING
+                  : !strcmp(st, "paused")  ? ST_PAUSED  : ST_STOPPED;
+  } else if(o["status"].is<JsonObjectConst>()){
+    JsonObjectConst st = o["status"].as<JsonObjectConst>();
+    if(!st["card-pause"].isNull() && !strcmp(st["card-pause"], "OK")){
+      s_live.status = ST_PAUSED;
+    } else if(!st["card-stop"].isNull() && !strcmp(st["card-stop"], "OK")){
+      s_live.status = ST_STOPPED;
+    } else if(!st["card-start"].isNull() && !strcmp(st["card-start"], "OK")){
+      s_live.status = ST_PLAYING;
+    }
+  }
+
+  const char* src = o["source"];
+  if(src && !strcmp(src, "none")){
+    s_live.status = ST_STOPPED;
+    s_live.cardId[0] = 0;
   }
   s_live.online = true;
   s_live.seq++;

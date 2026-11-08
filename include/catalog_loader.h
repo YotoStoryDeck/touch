@@ -527,65 +527,71 @@ static bool fetch_card_detail(int i){
   if(!body) return false;
 
   JsonDocument filter;
-
-  filter["card"]["title"] = true;
-
+  filter["card"]["title"]                                         = true;
   filter["card"]["content"]["chapters"][0]["key"]                = true;
-
   filter["card"]["content"]["chapters"][0]["title"]              = true;
-
   filter["card"]["content"]["chapters"][0]["duration"]           = true;
-
   filter["card"]["content"]["chapters"][0]["tracks"][0]["key"]   = true;
+  filter["card"]["content"]["tracks"][0]["key"]                  = true;
+  filter["card"]["content"]["tracks"][0]["title"]                = true;
+  filter["card"]["content"]["tracks"][0]["duration"]             = true;
+  filter["card"]["metadata"]["media"]["duration"]                 = true;
 
   PsramAllocator psram;
-
   JsonDocument doc(&psram);
-
   DeserializationError err = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
-
   free(body);
-
-  if(err) return false;
-
-  JsonObject card = doc["card"];
-
-  s_detail_title = (const char*)(card["title"] | c.title.c_str());
-
-  s_ch_count = 0;
-
-  for(JsonObject ch : card["content"]["chapters"].as<JsonArray>()){
-
-    if(s_ch_count >= MAX_CH) break;
-
-    String ck = (const char*)(ch["key"] | "");
-
-    String tk = ck;
-
-    JsonArray trks = ch["tracks"].as<JsonArray>();
-
-    if(!trks.isNull() && trks.size() > 0){
-
-      const char* t0 = trks[0]["key"];
-
-      if(t0 && *t0) tk = t0;
-
-    }
-
-    s_ch[s_ch_count].key       = ck;
-
-    s_ch[s_ch_count].track_key = tk;
-
-    s_ch[s_ch_count].title     = (const char*)(ch["title"] | "");
-
-    s_ch[s_ch_count].dur       = (int)(ch["duration"] | 0);
-
-    s_ch_count++;
-
+  if(err){
+    log_msg("[DETAIL] JSON parse err for card %s: %s", c.id.c_str(), err.c_str());
+    return false;
   }
 
-  sd_chap_write(c.id.c_str());
+  JsonObject card = doc["card"];
+  s_detail_title = (const char*)(card["title"] | c.title.c_str());
+  s_ch_count = 0;
 
+  // 1) Parse chapters array if present
+  for(JsonObject ch : card["content"]["chapters"].as<JsonArray>()){
+    if(s_ch_count >= MAX_CH) break;
+    String ck = (const char*)(ch["key"] | "");
+    String tk = ck;
+    JsonArray trks = ch["tracks"].as<JsonArray>();
+    if(!trks.isNull() && trks.size() > 0){
+      const char* t0 = trks[0]["key"];
+      if(t0 && *t0) tk = t0;
+    }
+    s_ch[s_ch_count].key       = ck;
+    s_ch[s_ch_count].track_key = tk;
+    s_ch[s_ch_count].title     = (const char*)(ch["title"] | "");
+    s_ch[s_ch_count].dur       = (int)(ch["duration"] | 0);
+    s_ch_count++;
+  }
+
+  // 2) Fallback to content.tracks array if chapters array was absent/empty
+  if(s_ch_count == 0 && !card["content"]["tracks"].isNull()){
+    for(JsonObject trk : card["content"]["tracks"].as<JsonArray>()){
+      if(s_ch_count >= MAX_CH) break;
+      String tk = (const char*)(trk["key"] | "");
+      s_ch[s_ch_count].key       = tk.length() ? tk : String("01");
+      s_ch[s_ch_count].track_key = tk.length() ? tk : String("01");
+      s_ch[s_ch_count].title     = (const char*)(trk["title"] | s_detail_title.c_str());
+      s_ch[s_ch_count].dur       = (int)(trk["duration"] | 0);
+      s_ch_count++;
+    }
+  }
+
+  // 3) Fallback for single-audio / interactive cards without track breakdowns
+  if(s_ch_count == 0){
+    s_ch_count = 1;
+    s_ch[0].key = "01";
+    s_ch[0].track_key = "01";
+    s_ch[0].title = s_detail_title.length() ? s_detail_title : c.title.c_str();
+    int md_dur = (int)(card["metadata"]["media"]["duration"] | 0);
+    s_ch[0].dur = md_dur > 0 ? md_dur : 1800;
+  }
+
+  log_msg("[DETAIL] Card %s ('%s') parsed %d tracks", c.id.c_str(), s_detail_title.c_str(), s_ch_count);
+  sd_chap_write(c.id.c_str());
   return true;
 
 }

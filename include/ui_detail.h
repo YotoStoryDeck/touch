@@ -125,7 +125,7 @@ static void open_detail(int i){
   // 1) Chapters: SD cache first — instant and offline. On a miss, open with an empty
   //    "loading" list and fetch live AFTER the screen is painted (slow path below).
   bool have_ch = sd_chap_read(c.id.c_str());
-  if(!have_ch){ s_ch_count = 0; s_detail_title = c.title.c_str(); }
+  if(!have_ch || s_ch_count <= 0){ s_ch_count = 0; s_detail_title = c.title.c_str(); have_ch = false; }
 
   // 2) Detail cover: SD cache first. On a miss, fall back to the grid thumb (already decoded
   //    in PSRAM) upscaled in place as an instant placeholder; the sharp cover loads below.
@@ -338,7 +338,7 @@ static void open_detail(int i){
             detail_set_summary(c->sum_lbl);
             detail_fill_chapters(c->list_box);
           }
-        } else if(s_ch_count == 0 && s_scr_detail == c->scr_target){
+        } else if(s_scr_detail == c->scr_target){
           s_ch_count = 1;
           s_ch[0].key = "01";
           s_ch[0].track_key = "01";
@@ -346,6 +346,7 @@ static void open_detail(int i){
           s_ch[0].dur = 1800;
           detail_set_summary(c->sum_lbl);
           detail_fill_chapters(c->list_box);
+          sd_chap_write(card.id.c_str());
         }
       }
       if(c->need_cover && s_scr_detail == c->scr_target && s_dcover){

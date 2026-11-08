@@ -23,6 +23,7 @@ struct TransportCmd {
 
 static QueueHandle_t s_cmd_queue = nullptr;
 static TaskHandle_t  s_cmd_task  = nullptr;
+static uint32_t      s_play_start_t = 0;
 
 static void transport_worker_task(void* param){
   TransportCmd cmd;
@@ -136,17 +137,19 @@ static int send_cmd(const char* name, const String& body){
     JsonDocument p;
     p["uri"] = String("https://yoto.io/") + (const char*)(in["id"] | "");
     auto pad_key = [](const char* k) -> String {
-      if(!k || !*k) return String("01");
+      if(!k || !*k) return String("");
       String s(k);
       if(s.length() == 1 && s[0] >= '1' && s[0] <= '9') return String("0") + s;
       return s;
     };
     const char* ck = in["chapterKey"];
     const char* tk = in["trackKey"];
-    String pck = pad_key(ck);
-    String ptk = (tk && *tk) ? pad_key(tk) : pck;
-    p["chapterKey"] = pck;
-    p["trackKey"]   = ptk;
+    if(ck && *ck){
+      String pck = pad_key(ck);
+      String ptk = (tk && *tk) ? pad_key(tk) : pck;
+      p["chapterKey"] = pck;
+      p["trackKey"]   = ptk;
+    }
     if(!in["secondsIn"].isNull()) p["secondsIn"] = in["secondsIn"];
     serializeJson(p, payload);
   } else if(nm == "pause" || nm == "resume" || nm == "stop"){
@@ -211,6 +214,20 @@ static void apply_live_state(){
 // auto-advance, the bedtime sleep timer, and screensaver arming.
 static void tick_cb(lv_timer_t*){
   apply_live_state();
+
+  // Optimistic playback confirmation watchdog: if player does not confirm playback within 12s, clear state
+  if(s_playing && s_play_start_t > 0 && millis() - s_play_start_t > 12000){
+    ymqtt::Live lv; ymqtt::snapshot(lv);
+    if(lv.status != ymqtt::ST_PLAYING){
+      log_msg("[PLAY] Player did not confirm playback within 12s (status=%d), reverting playing state", (int)lv.status);
+      s_playing = false;
+      s_play_start_t = 0;
+      np_set_playicon();
+      update_home_bar();
+    } else {
+      s_play_start_t = 0;
+    }
+  }
 
   // Auto-detect and mount MicroSD if inserted while running, migrating NVS items
   static uint32_t s_last_sd_probe = 0;
@@ -477,6 +494,7 @@ static void play_from_confirmed(int chapterIdx){
     arm_sleep_timer_if_needed();
     // Do NOT autoresolve the book/chapter. Wait for the player to send an authoritative update.
     s_playing = true;
+    s_play_start_t = millis();
     s_pos = 0;
     s_play_card = s_cur_card;
     s_play_title = s_detail_title.length() ? s_detail_title : String(s_cards[s_cur_card].title.c_str());
