@@ -344,7 +344,10 @@ void loop(){
   ArduinoOTA.handle();        // cheap polls when idle; block only during an actual update
   s_ota_web.handleClient();
   ElegantOTA.loop();
-  lv_timer_handler();
+  uint32_t ms_next = lv_timer_handler();
+  if(!is_ui_interacting()){
+    delay(ms_next > 2 ? 2 : (ms_next > 0 ? 1 : 0));
+  }
   if(s_thumbs_loading && heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 14000){
     thumb_load_step();
   }
