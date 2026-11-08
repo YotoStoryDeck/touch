@@ -403,7 +403,6 @@ static void handle_get(WebServer& w){
     ".status-badge{display:inline-block;padding:3px 8px;border-radius:6px;font-size:0.85em;margin-left:8px;font-weight:600}"
     ".badge-ok{background:#e6f4ea;color:#137333}.badge-err{background:#fce8e6;color:#c5221f}.badge-wait{background:#e8eaed;color:#5f6368}"
     "</style><script>\n"
-    "</style><script>\n"
     "var s_yoto_pkce_verifier = '';\n"
     "var s_yoto_redirect_uri = 'http://127.0.0.1:8787/callback';\n"
     "\n"
