@@ -209,7 +209,20 @@ static void apply_live_state(){
 // now-playing screen is visible — it's the source of truth the widgets read), chapter
 // auto-advance, the bedtime sleep timer, and screensaver arming.
 static void tick_cb(lv_timer_t*){
-  apply_live_state();                       // device truth first; the optimistic clock fills gaps
+  apply_live_state();
+
+  // Auto-detect and mount MicroSD if inserted while running, migrating NVS items
+  static uint32_t s_last_sd_probe = 0;
+  if(!s_sd_ok && (millis() - s_last_sd_probe > 5000)){
+    s_last_sd_probe = millis();
+    if(sd_probe_and_mount()){
+      curation::migrate_nvs_to_sd();
+      if(cfg::op_mode != "core"){
+        build_catalog_from_library();
+        if(s_scr_home) populate_grid();
+      }
+    }
+  }                       // device truth first; the optimistic clock fills gaps
 
   // periodic resync / keepalive: re-request state every ~4 min (also keeps the broker from
   // dropping the idle connection — belt-and-suspenders alongside esp-mqtt's own PINGREQ).

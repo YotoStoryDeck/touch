@@ -370,6 +370,7 @@ static String portal_toolbar(const String& active_tab = "settings"){
 
 static void handle_get(WebServer& w){
   if(!auth_ok(w)) return;
+  if(!s_sd_ok) sd_probe_and_mount();
   String tab = w.arg("tab");
   if(tab == "curation" && cfg::op_mode != "core"){
     curation::load();
@@ -986,6 +987,7 @@ static void handle_portal_discovery(WebServer& w){
 
 static void handle_curation_post(WebServer& w){
   if(!auth_ok(w)) return;
+  if(!s_sd_ok) sd_probe_and_mount();
   curation::load();
   curation::set_hide_physical(w.hasArg("hide_phys"));
 

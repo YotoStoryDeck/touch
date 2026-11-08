@@ -42,6 +42,13 @@ inline bool sd_begin(){
   return true;
 }
 
+// Check for and mount MicroSD if not already mounted (e.g. after card insertion)
+inline bool sd_probe_and_mount(){
+  if(s_sd_ok) return true;
+  return sd_begin();
+}
+
+
 // FNV-1a 32-bit hash of a cover URL (including ?v= / ?t= version tags) so SD cache detects changed covers
 inline uint32_t sd_cover_url_hash(const String& url){
   if(url.length() == 0) return 0;

@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <vector>
+#include <Preferences.h>
 #include "app_state.h"
 #include "storage_sd.h"
 #include "app_config.h"
@@ -79,6 +80,118 @@ inline void toggle_card_hidden(const String& id, bool hide){
   }
 }
 
+inline bool has_nvs_curation_data(){
+  Preferences p;
+  if(!p.begin("curation", true)) return false;
+  bool has_data = p.isKey("pinned") || p.isKey("phys") || p.isKey("hidden") || p.isKey("hidep");
+  p.end();
+  return has_data;
+}
+
+inline bool migrate_nvs_to_sd(){
+  if(!s_sd_ok) return false;
+  if(!has_nvs_curation_data()) return false;
+
+  Preferences p;
+  if(!p.begin("curation", false)) return false;
+  bool nvs_hidep   = p.getBool("hidep", false);
+  String nvs_pins  = p.getString("pinned", "");
+  String nvs_phys  = p.getString("phys", "");
+  String nvs_hid   = p.getString("hidden", "");
+
+  auto parse_csv_add = [](const String& csv, std::vector<PsramString, PsramVectorAlloc<PsramString>>& target){
+    if(csv.length() == 0) return;
+    int start = 0;
+    while(start < csv.length()){
+      int comma = csv.indexOf(',', start);
+      if(comma == -1) comma = csv.length();
+      String token = csv.substring(start, comma);
+      token.trim();
+      if(token.length() > 0){
+        bool exists = false;
+        for(const auto& existing : target){
+          if(existing == token.c_str()){ exists = true; break; }
+        }
+        if(!exists) target.push_back(token.c_str());
+      }
+      start = comma + 1;
+    }
+  };
+
+  // If SD already has a curation file, load it first to merge
+  if(SD.exists("/config/curation.json")){
+    File f = SD.open("/config/curation.json", FILE_READ);
+    if(f){
+      JsonDocument doc;
+      DeserializationError err = deserializeJson(doc, f);
+      f.close();
+      if(!err){
+        if(doc["hide_physical"].is<bool>() && doc["hide_physical"].as<bool>()) s_hide_physical = true;
+        if(!doc["pinned"].isNull()){
+          for(JsonVariant v : doc["pinned"].as<JsonArray>()){
+            String sid = v.as<String>();
+            if(sid.length() > 0){
+              bool exists = false;
+              for(const auto& existing : s_pinned_ids){ if(existing == sid.c_str()){ exists = true; break; } }
+              if(!exists) s_pinned_ids.push_back(sid.c_str());
+            }
+          }
+        }
+        if(!doc["physical"].isNull()){
+          for(JsonVariant v : doc["physical"].as<JsonArray>()){
+            String sid = v.as<String>();
+            if(sid.length() > 0){
+              bool exists = false;
+              for(const auto& existing : s_physical_ids){ if(existing == sid.c_str()){ exists = true; break; } }
+              if(!exists) s_physical_ids.push_back(sid.c_str());
+            }
+          }
+        }
+        if(!doc["hidden"].isNull()){
+          for(JsonVariant v : doc["hidden"].as<JsonArray>()){
+            String sid = v.as<String>();
+            if(sid.length() > 0){
+              bool exists = false;
+              for(const auto& existing : s_hidden_ids){ if(existing == sid.c_str()){ exists = true; break; } }
+              if(!exists) s_hidden_ids.push_back(sid.c_str());
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if(nvs_hidep) s_hide_physical = true;
+  parse_csv_add(nvs_pins, s_pinned_ids);
+  parse_csv_add(nvs_phys, s_physical_ids);
+  parse_csv_add(nvs_hid, s_hidden_ids);
+
+  if(!SD.exists("/config")) SD.mkdir("/config");
+  File f = SD.open("/config/curation.json", FILE_WRITE);
+  if(f){
+    JsonDocument doc;
+    doc["hide_physical"] = s_hide_physical;
+    JsonArray pArr = doc["pinned"].to<JsonArray>();
+    for(const auto& id : s_pinned_ids) pArr.add(id.c_str());
+    JsonArray phArr = doc["physical"].to<JsonArray>();
+    for(const auto& id : s_physical_ids) phArr.add(id.c_str());
+    JsonArray hArr = doc["hidden"].to<JsonArray>();
+    for(const auto& id : s_hidden_ids) hArr.add(id.c_str());
+    serializeJson(doc, f);
+    f.close();
+
+    // Clear NVS since migration is fully persisted on SD
+    p.clear();
+    p.end();
+
+    log_msg("[CURATION] Migrated NVS items to /sd/config/curation.json (%d pinned, %d physical, %d hidden). NVS cleared.",
+            (int)s_pinned_ids.size(), (int)s_physical_ids.size(), (int)s_hidden_ids.size());
+    return true;
+  }
+  p.end();
+  return false;
+}
+
 inline void load(){
   s_pinned_ids.clear();
   s_physical_ids.clear();
@@ -86,6 +199,20 @@ inline void load(){
   s_hide_physical = false;
 
   if(s_sd_ok){
+    // Auto-migrate any existing NVS curation data to SD if found
+    if(has_nvs_curation_data()){
+      if(migrate_nvs_to_sd()){
+        s_loaded = true;
+        log_msg("[CURATION] Active after migration: %d pinned, %d physical, %d hidden",
+                (int)s_pinned_ids.size(), (int)s_physical_ids.size(), (int)s_hidden_ids.size());
+        return;
+      }
+    }
+
+    s_pinned_ids.clear();
+    s_physical_ids.clear();
+    s_hidden_ids.clear();
+
     if(!SD.exists("/config")) SD.mkdir("/config");
     if(SD.exists("/config/curation.json")){
       File f = SD.open("/config/curation.json", FILE_READ);
@@ -98,19 +225,19 @@ inline void load(){
           if(!doc["pinned"].isNull()){
             for(JsonVariant v : doc["pinned"].as<JsonArray>()){
               String sid = v.as<String>();
-              if(sid.length() > 0) s_pinned_ids.push_back(sid.c_str());
+              if(sid.length() > 0 && !is_card_pinned(sid)) s_pinned_ids.push_back(sid.c_str());
             }
           }
           if(!doc["physical"].isNull()){
             for(JsonVariant v : doc["physical"].as<JsonArray>()){
               String sid = v.as<String>();
-              if(sid.length() > 0) s_physical_ids.push_back(sid.c_str());
+              if(sid.length() > 0 && !is_card_physical(sid)) s_physical_ids.push_back(sid.c_str());
             }
           }
           if(!doc["hidden"].isNull()){
             for(JsonVariant v : doc["hidden"].as<JsonArray>()){
               String sid = v.as<String>();
-              if(sid.length() > 0) s_hidden_ids.push_back(sid.c_str());
+              if(sid.length() > 0 && !is_card_hidden(sid)) s_hidden_ids.push_back(sid.c_str());
             }
           }
           s_loaded = true;
@@ -168,6 +295,13 @@ inline void save(){
       serializeJson(doc, f);
       f.close();
       log_msg("[CURATION] Saved to /sd/config/curation.json");
+
+      // Also clean up NVS so NVS doesn't hold stale data
+      Preferences p;
+      if(p.begin("curation", false)){
+        p.clear();
+        p.end();
+      }
       return;
     }
   }

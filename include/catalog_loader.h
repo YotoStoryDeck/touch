@@ -159,6 +159,10 @@ static void add_core_card(const String& id, const String& title, const String& a
   c.tile         = nullptr;
   c.pool_slot    = -1;
   if(s_card_count < cfg::catalog_card_limit){
+    for(const auto& existing : s_cards){
+      if(existing.id == c.id) return;
+      if(existing.title.length() > 0 && c.title.length() > 0 && existing.title.equalsIgnoreCase(c.title)) return;
+    }
     s_cards.push_back(c);
     s_card_count = (int)s_cards.size();
   }
@@ -290,20 +294,30 @@ void build_catalog_from_library(){
   s_cards.push_back(daily_card);
 
   int limit = cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 60;
-  for(const auto& c : last_played){
-    if((int)s_cards.size() >= limit) break;
+  auto push_unique = [&](const Card& c) -> bool {
+    if((int)s_cards.size() >= limit) return false;
+    for(const auto& existing : s_cards){
+      if(existing.id == c.id) return false;
+      if(existing.title.length() > 0 && c.title.length() > 0 && existing.title.equalsIgnoreCase(c.title)){
+        return false;
+      }
+    }
     s_cards.push_back(c);
+    return true;
+  };
+
+  for(const auto& c : last_played){
+    push_unique(c);
   }
   for(const auto& c : pinned){
-    if((int)s_cards.size() >= limit) break;
-    s_cards.push_back(c);
+    push_unique(c);
   }
   for(const auto& c : pool){
-    if((int)s_cards.size() >= limit) break;
-    s_cards.push_back(c);
+    push_unique(c);
   }
 
   s_card_count = (int)s_cards.size();
+  precompute_series_metadata();
   if(s_card_count > 0 && s_sd_ok) sd_prune_stale_covers(false);
 }
 
@@ -352,12 +366,16 @@ bool fetch_library(){
   for(JsonObject c : doc["cards"].as<JsonArray>()){
     const char* cid = (const char*)(c["cardId"] | "");
     if(!cid || !cid[0]) continue;
+    const char* raw_title = (const char*)(c["card"]["title"] | "");
+    String title_str = raw_title ? raw_title : "";
+    title_str.trim();
     const char* lp = (const char*)(c["lastPlayedAt"] | "");
 
-    // Check for duplicate cardId
+    // Check for duplicate cardId OR identical title
     int dup_idx = -1;
     for(size_t i = 0; i < s_library_cards.size(); i++){
-      if(s_library_cards[i].id == cid){
+      if(s_library_cards[i].id == cid ||
+         (title_str.length() > 0 && s_library_cards[i].title.equalsIgnoreCase(title_str.c_str()))){
         dup_idx = (int)i;
         break;
       }
@@ -370,12 +388,16 @@ bool fetch_library(){
           s_library_cards[dup_idx].lp = lp;
         }
       }
+      if(s_library_cards[dup_idx].cover.length() == 0){
+        const char* cov = (const char*)(c["card"]["content"]["cover"]["imageL"] | "");
+        if(cov && cov[0]) s_library_cards[dup_idx].cover = cov;
+      }
       continue;
     }
 
     Card item;
     item.id         = cid;
-    item.title      = (const char*)(c["card"]["title"] | "");
+    item.title      = title_str.c_str();
     item.sort_title = clean_sort_title(item.title.c_str());
     item.lp         = lp ? lp : "";
     item.cover      = (const char*)(c["card"]["content"]["cover"]["imageL"] | "");
