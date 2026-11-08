@@ -137,11 +137,9 @@ jobs:
 
           if [ "${IS_PRERELEASE}" = "true" ]; then
             # Pre-releases always use the warning banner + commit changelog
-            cat << 'EOF' >> "${NOTES_FILE}"
-> [!WARNING]
-> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions.
-
-EOF
+            echo "> [!WARNING]" >> "${NOTES_FILE}"
+            echo "> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions." >> "${NOTES_FILE}"
+            echo "" >> "${NOTES_FILE}" 
             generate_changelog "${NOTES_FILE}"
           else
             # Full releases look for release-v[tag].md in releases/ or release/ folder
