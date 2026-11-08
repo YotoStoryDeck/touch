@@ -94,82 +94,18 @@ jobs:
 
       - name: Generate Changelog & Release Notes
         id: notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git fetch --tags --force
-
-          TAG="${{ steps.meta.outputs.tag }}"
-          IS_PRERELEASE="${{ steps.meta.outputs.prerelease }}"
-          NOTES_FILE="release_notes.md"
-          rm -f "${NOTES_FILE}"
-
-          # Helper function to generate git log commit changelog
-          generate_changelog() {
-            local out="$1"
-            echo "Resolving previous tag for changelog comparison..."
-            if [ "${IS_PRERELEASE}" = "true" ]; then
-              PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n 1 || true)
-              echo "Pre-release: Previous tag resolved to '${PREV_TAG:-none}'"
-            else
-              PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -n 1 || true)
-              echo "Full release: Previous stable tag resolved to '${PREV_TAG:-none}'"
-            fi
-
-            echo "## Changelog" >> "${out}"
-            if [ -n "${PREV_TAG}" ]; then
-              COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"* %H: %s (@%an)")
-              if [ -n "${COMMITS}" ]; then
-                echo "${COMMITS}" >> "${out}"
-              else
-                echo "* Maintenance release / no commit delta" >> "${out}"
-              fi
-              echo "" >> "${out}"
-              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}" >> "${out}"
-            else
-              COMMITS=$(git log --pretty=format:"* %H: %s (@%an)")
-              if [ -n "${COMMITS}" ]; then
-                echo "${COMMITS}" >> "${out}"
-              else
-                echo "* Initial release" >> "${out}"
-              fi
-              echo "" >> "${out}"
-            fi
-          }
-
-          if [ "${IS_PRERELEASE}" = "true" ]; then
-            # Pre-releases always use the warning banner + commit changelog
-            echo "> [!WARNING]" >> "${NOTES_FILE}"
-            echo "> This release is intended for testing purposes only. Please do not use it with production data, as frequent updates and architectural changes may occur between pre-release versions." >> "${NOTES_FILE}"
-            echo "" >> "${NOTES_FILE}" 
-            generate_changelog "${NOTES_FILE}"
-          else
-            # Full releases look for release-v[tag].md in releases/ or release/ folder
-            MATCHED_FILE=""
-            CLEAN_VER=$(echo "${TAG}" | sed -E 's/^[[:space:]]*[vV]+//')
-            for CANDIDATE in \
-              "releases/release-${TAG}.md" \
-              "releases/release-v${CLEAN_VER}.md" \
-              "release/release-${TAG}.md" \
-              "release/release-v${CLEAN_VER}.md" \
-              "release-${TAG}.md" \
-              "release-v${CLEAN_VER}.md"; do
-              if [ -f "${CANDIDATE}" ]; then
-                MATCHED_FILE="${CANDIDATE}"
-                break
-              fi
-            done
-
-            if [ -n "${MATCHED_FILE}" ]; then
-              echo "Found matching release file for full release: ${MATCHED_FILE}"
-              cat "${MATCHED_FILE}" >> "${NOTES_FILE}"
-            else
-              echo "No matching release file found for ${TAG}. Falling back to commit changelog."
-              generate_changelog "${NOTES_FILE}"
-            fi
-          fi
-
-          echo "Final release notes generated:"
-          cat "${NOTES_FILE}"
-
+          python3 .github/scripts/generate_changelog.py \
+            --repo "${{ github.repository }}" \
+            --tag "${{ steps.meta.outputs.tag }}" \
+            --prerelease "${{ steps.meta.outputs.prerelease }}" \
+            --output-file "release_notes.md" \
+            --token "${GITHUB_TOKEN}"
+          echo "Generated release notes:"
+          cat release_notes.md
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
