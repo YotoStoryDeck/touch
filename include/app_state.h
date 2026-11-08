@@ -340,7 +340,9 @@ static void crash_guard_init(){
 
 static void status_hide(){
   if(s_status_box){
-    lv_obj_del(s_status_box);
+    if(lv_obj_is_valid(s_status_box)){
+      lv_obj_del(s_status_box);
+    }
     s_status_box = nullptr;
     s_status = nullptr;
     lv_refr_now(lv_disp_get_default());
@@ -349,8 +351,17 @@ static void status_hide(){
 
 static void status(const char* msg){
   lv_obj_t* cur_act = lv_scr_act();
+  if(!cur_act) return;
+  if(s_status_box && !lv_obj_is_valid(s_status_box)){
+    s_status_box = nullptr;
+    s_status = nullptr;
+  }
   if(!s_status_box || lv_obj_get_parent(s_status_box) != cur_act){
-    if(s_status_box){ lv_obj_del(s_status_box); s_status_box = nullptr; s_status = nullptr; }
+    if(s_status_box && lv_obj_is_valid(s_status_box)){
+      lv_obj_del(s_status_box);
+    }
+    s_status_box = nullptr;
+    s_status = nullptr;
     // White card modal overlay with subtle border & shadow so message is crisp and prominent
     s_status_box = lv_obj_create(cur_act);
     lv_obj_set_size(s_status_box, 480, 120);

@@ -155,4 +155,62 @@ inline int post(const String& path, const String& jsonBody, String& out){
   return -1;
 }
 
+// Check if credentials exist and are ready for API calls
+inline bool is_authenticated(){
+  return (s_refresh.length() > 0 || s_access.length() > 0);
+}
+
+// Exchange OAuth authorization code for tokens (in-browser PKCE flow)
+inline bool exchange_auth_code(const String& code, const String& verifier, const String& redirect_uri, const String& client_id, const String& client_secret, String& err_out){
+  if(s_tok_mtx) xSemaphoreTake(s_tok_mtx, portMAX_DELAY);
+  bool ok = false;
+  do {
+    tlsarena::Guard tg;
+    WiFiClientSecure cli; cli.setInsecure();
+    HTTPClient http;
+    if(!http.begin(cli, String(AUTH_HOST) + "/oauth/token")){
+      err_out = "Failed to connect to Yoto auth server";
+      break;
+    }
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    http.setTimeout(15000);
+    String form = "grant_type=authorization_code";
+    form += "&client_id=";     form += client_id;
+    if(client_secret.length() > 0){
+      form += "&client_secret="; form += client_secret;
+    }
+    form += "&code=";          form += code;
+    form += "&code_verifier="; form += verifier;
+    form += "&redirect_uri=";  form += redirect_uri;
+
+    int http_code = http.POST(form);
+    String resp = (http_code > 0) ? http.getString() : "";
+    http.end();
+
+    if(http_code != 200){
+      err_out = "Token exchange failed (HTTP " + String(http_code) + "): " + resp;
+      break;
+    }
+    JsonDocument doc;
+    if(deserializeJson(doc, resp)){
+      err_out = "Failed to parse token response JSON";
+      break;
+    }
+    const char* at = doc["access_token"];
+    const char* rt = doc["refresh_token"];
+    if(!at || !rt){
+      err_out = "Token response missing access_token or refresh_token";
+      break;
+    }
+    s_access = at;
+    s_refresh = rt;
+    s_prefs.putString("access", s_access);
+    s_prefs.putString("refresh", s_refresh);
+    ok = true;
+  } while(false);
+  if(s_tok_mtx) xSemaphoreGive(s_tok_mtx);
+  return ok;
+}
+
 } // namespace yoto
+

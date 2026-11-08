@@ -502,10 +502,26 @@ static void handle_get(WebServer& w){
     "<div><button type='button' class='test-btn' onclick='testCore()'>Test StoryDeck Core URL</button><span id='core_badge'></span></div>" +
     "</div>" +
     "<div id='yoto_sec'>" +
-    "<h2>Yoto Account (Standalone Direct)</h2>" +
-    text_row("Client ID", "cid", cfg::client_id, "From the Yoto developer dashboard.") +
-    secret_row("Client Secret", "csec", "From the Yoto developer dashboard.") +
-    secret_row("Refresh Token", "rt", "Paste a fresh refresh token to re-seed credentials.") +
+    "<h2>Yoto Cloud Account (Standalone Direct)</h2>" +
+    "<p style='color:#7a7060;font-size:0.92em;margin-bottom:12px;'>"
+      "StoryDeck Touch connects directly to Yoto Cloud without a Core hub. Register a free developer app at <a href='https://dashboard.yoto.dev' target='_blank' rel='noopener' style='color:#e5352b;font-weight:600;'>dashboard.yoto.dev</a> (Public Client, Callback: <code>http://127.0.0.1:8787/callback</code>) and authenticate below."
+    "</p>"
+    "<input type='hidden' id='yoto_is_authed' value='" + String(yoto::is_authenticated() ? "1" : "0") + "'>" +
+    text_row("Yoto Client ID", "cid", cfg::client_id, "From your Yoto Developer Dashboard application.") +
+    secret_row("Client Secret (Optional)", "csec", "Optional: Leave blank for standard Public Client PKCE apps.") +
+    "<div style='background:#f4ede0;border-radius:12px;padding:14px;margin-top:12px;border:1px solid #e7e0d2;'>"
+    "<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;'>"
+    "<div><div style='font-weight:700;color:#23303a;'>Yoto Cloud Connection Status</div>"
+    "<div id='yoto_status_text' style='font-size:0.9em;'>" + (yoto::is_authenticated() ? "<span style='color:#137333;font-weight:700;'>&#10004; Authenticated (Ready)</span>" : "<span style='color:#e5352b;font-weight:600;'>&#9888; Not Authenticated</span>") + "</div></div>"
+    "<button type='button' class='test-btn' id='btn_yoto_oauth' style='background:#e5352b;color:#fff;border:0;padding:10px 18px;font-weight:700;border-radius:8px;cursor:pointer;' onclick='startYotoOAuth()'>🔑 Authenticate with Yoto</button>"
+    "</div>"
+    "<div id='yoto_oauth_paste_box' style='display:none;margin-top:14px;padding-top:14px;border-top:1px dashed #d7cebe;'>"
+    "<div style='font-weight:600;font-size:0.92em;color:#23303a;margin-bottom:6px;'>Step 2: Complete Authorization</div>"
+    "<div style='font-size:0.88em;color:#5f6368;margin-bottom:8px;'>Sign into Yoto in the opened window. When redirected to <code>http://127.0.0.1:8787/callback?code=...</code>, copy the full URL from your browser address bar and paste it below:</div>"
+    "<div style='display:flex;gap:8px;'>"
+    "<input type='text' id='yoto_callback_url' placeholder='http://127.0.0.1:8787/callback?code=...' style='margin:0;flex:1;'>"
+    "<button type='button' class='test-btn' style='background:#137333;color:#fff;border:0;padding:10px 16px;font-weight:700;border-radius:8px;cursor:pointer;' onclick='finishYotoOAuth()'>Complete Sign-In</button>"
+    "</div><div id='yoto_oauth_badge' style='margin-top:8px;'></div></div></div>"
     "</div>" +
     profile_device_picker() +
         "<div id='rot_sec'>" +
@@ -554,24 +570,26 @@ static void handle_post(WebServer& w){
   }
   v = w.arg("pin");   if(v.length() == 4) cfg::parent_pin = v;
 
-  // Profile assignment
-  String prof = w.arg("prof_custom");
-  if(prof.length() == 0) prof = w.arg("prof");
-  prof.trim();
-  cfg::assigned_profile = prof;
-  core::s_assigned_profile = prof;
+  // Profile assignment (Core mode only)
+  if(cfg::op_mode == "standalone"){
+    cfg::assigned_profile = "";
+    core::s_assigned_profile = "";
+  } else {
+    String prof = w.arg("prof_custom");
+    if(prof.length() == 0) prof = w.arg("prof");
+    prof.trim();
+    cfg::assigned_profile = prof;
+    core::s_assigned_profile = prof;
+  }
 
-  // Target Player assignment
+  // Target Player assignment: Permanently locked
   String dev = w.arg("devid_custom");
   if(dev.length() == 0) dev = w.arg("devid");
   dev.trim();
   if(dev.length() > 0){
     cfg::device_id = dev;
     cfg::locked_dev_id = dev;
-    cfg::lock_player = (w.hasArg("lockp") && (w.arg("lockp") == "1" || w.arg("lockp") == "on"));
-  } else {
-    cfg::locked_dev_id = "";
-    cfg::lock_player = false;
+    cfg::lock_player = true;
   }
 
     v = w.arg("catlim"); if(v.length()){ int n = v.toInt(); if(n >= 10 && n <= 300) cfg::catalog_card_limit = n; }
@@ -727,6 +745,91 @@ static void handle_curation_post(WebServer& w){
     "<p><a href='/settings?tab=curation'>Back to Card Curation</a> &middot; <a href='/settings'>Settings</a></p></body>");
 }
 
+// Standalone: Exchange OAuth code for Yoto token and discover players
+static void handle_yoto_oauth_exchange(WebServer& w){
+  if(!auth_ok(w)) return;
+  if(w.hasArg("plain")){
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, w.arg("plain"));
+    if(err){
+      w.send(200, "application/json", "{\"ok\":false,\"error\":\"JSON parse error\"}");
+      return;
+    }
+    String code = (const char*)(doc["code"] | "");
+    String verifier = (const char*)(doc["verifier"] | "");
+    String redirect_uri = (const char*)(doc["redirect_uri"] | "http://127.0.0.1:8787/callback");
+    String client_id = (const char*)(doc["client_id"] | "");
+    String client_secret = (const char*)(doc["client_secret"] | "");
+
+    if(code.length() == 0){
+      w.send(200, "application/json", "{\"ok\":false,\"error\":\"Authorization code empty\"}");
+      return;
+    }
+    if(client_id.length() == 0) client_id = cfg::client_id;
+    if(client_id.length() == 0){
+      w.send(200, "application/json", "{\"ok\":false,\"error\":\"Client ID empty\"}");
+      return;
+    }
+
+    String err_msg;
+    bool ok = yoto::exchange_auth_code(code, verifier, redirect_uri, client_id, client_secret, err_msg);
+    if(!ok){
+      w.send(200, "application/json", "{\"ok\":false,\"error\":\"" + esc(err_msg) + "\"}");
+      return;
+    }
+
+    // Save client_id to config
+    cfg::client_id = client_id;
+    if(client_secret.length() > 0) cfg::client_secret = client_secret;
+    cfg::save();
+
+    // Discover players from Yoto
+    core::discover_standalone_players();
+
+    String out = "{\"ok\":true,\"message\":\"Yoto authenticated successfully\",\"players\":[";
+    for(int i = 0; i < core::s_standalone_player_count; i++){
+      if(i > 0) out += ",";
+      out += "{\"id\":\"" + esc(core::s_standalone_players[i].id) + "\",";
+      out += "\"name\":\"" + esc(core::s_standalone_players[i].name) + "\",";
+      out += "\"online\":" + String(core::s_standalone_players[i].online ? "true" : "false") + "}";
+    }
+    out += "]}";
+    w.send(200, "application/json", out);
+    return;
+  }
+  w.send(400, "application/json", "{\"ok\":false,\"error\":\"Bad request\"}");
+}
+
+// Standalone: Discover Yoto players
+static void handle_yoto_players(WebServer& w){
+  if(!auth_ok(w)) return;
+  if(!yoto::is_authenticated()){
+    w.send(200, "application/json", "{\"ok\":false,\"authenticated\":false,\"error\":\"Yoto not authenticated\"}");
+    return;
+  }
+  bool ok = core::discover_standalone_players();
+  String out = "{\"ok\":true,\"authenticated\":true,\"players\":[";
+  for(int i = 0; i < core::s_standalone_player_count; i++){
+    if(i > 0) out += ",";
+    out += "{\"id\":\"" + esc(core::s_standalone_players[i].id) + "\",";
+    out += "\"name\":\"" + esc(core::s_standalone_players[i].name) + "\",";
+    out += "\"online\":" + String(core::s_standalone_players[i].online ? "true" : "false") + "}";
+  }
+  out += "]}";
+  w.send(200, "application/json", out);
+}
+
+// Direct callback capture
+static void handle_yoto_callback(WebServer& w){
+  String code = w.arg("code");
+  w.send(200, "text/html; charset=utf-8",
+    "<!doctype html><body style='font-family:system-ui;background:#fbf7f0;padding:24px;text-align:center'>"
+    "<h2 style='color:#137333'>&#10004; Yoto Authorization Code Received!</h2>"
+    "<p>You can close this window and paste this authorization code into your settings page:</p>"
+    "<pre style='background:#fff;padding:12px;border-radius:8px;border:1px solid #ccc;font-size:1.1em;'>" + esc(code) + "</pre>"
+    "<p><a href='/settings' style='color:#e5352b;font-weight:700;'>Return to Settings</a></p></body>");
+}
+
 static void begin(WebServer& w){
 
   w.on("/settings", HTTP_GET,  [&w](){ handle_get(w);    });
@@ -736,6 +839,9 @@ static void begin(WebServer& w){
   w.on("/api/ping/wifi", HTTP_GET, [&w](){ handle_ping_wifi(w); });
   w.on("/api/ping/core", HTTP_GET, [&w](){ handle_ping_core(w); });
   w.on("/api/portal/discovery", HTTP_GET, [&w](){ handle_portal_discovery(w); });
+  w.on("/api/yoto/oauth/exchange", HTTP_POST, [&w](){ handle_yoto_oauth_exchange(w); });
+  w.on("/api/yoto/players", HTTP_GET, [&w](){ handle_yoto_players(w); });
+  w.on("/callback", HTTP_GET, [&w](){ handle_yoto_callback(w); });
 }
 
 } // namespace portal

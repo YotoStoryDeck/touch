@@ -38,6 +38,7 @@ void start_hotspot_cb(lv_event_t*){
 
 static void show_error(const char* title, const char* message, const char* action_hint){
   if(s_scr_home && s_lib_ok) return; // don't cover home if already healthy
+  status_hide();
   if(!s_scr_error){
     s_scr_error = lv_obj_create(NULL);
   }

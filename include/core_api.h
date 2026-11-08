@@ -8,6 +8,7 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "app_config.h"
+#include "yoto_api.h"
 #include "app_log.h"
 
 inline int sd_prune_stale_avatars(const String* valid_keys, int key_count);
@@ -66,6 +67,37 @@ static bool    s_exclude_single_series = true;
 // Standalone mode discovered players (from /device-v2/devices/mine)
 static PlayerInfo s_standalone_players[MAX_PROF_PLAYERS];
 static int        s_standalone_player_count = 0;
+
+inline bool discover_standalone_players(){
+  tlsarena::Guard tg;
+  WiFiClientSecure cli; cli.setInsecure();
+  HTTPClient http;
+  int code = yoto::get(cli, http, "/device-v2/devices/mine");
+  if(code == 200){
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, http.getStream());
+    http.end();
+    if(!err){
+      s_standalone_player_count = 0;
+      for(JsonObject d : doc["devices"].as<JsonArray>()){
+        if(s_standalone_player_count >= MAX_PROF_PLAYERS) break;
+        String did = (const char*)(d["deviceId"] | d["id"] | "");
+        if(did.length() == 0) continue;
+        PlayerInfo& pi = s_standalone_players[s_standalone_player_count++];
+        pi.id      = did;
+        pi.name    = (const char*)(d["name"] | "Yoto Player");
+        pi.online  = (bool)(d["online"] | false);
+        pi.is_home = pi.online;
+        pi.volume  = (int)(d["volume"] | 50);
+        pi.volume_max = (int)(d["volume_max"] | 100);
+      }
+      return (s_standalone_player_count > 0);
+    }
+  } else if(code > 0){
+    http.end();
+  }
+  return false;
+}
 
 static String s_access_token = "";
 static bool   s_is_registered = false;

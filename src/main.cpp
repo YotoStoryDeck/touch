@@ -68,6 +68,10 @@ static void* tls_psram_calloc(size_t n, size_t size){
 #include "ota_manager.h"
 
 void net_init_and_fetch(){
+  if(!cfg::is_configured()){
+    show_setup_wizard();
+    return;
+  }
   if(!s_net_ready){
     configTzTime(cfg::tz.c_str(), "pool.ntp.org", "time.nist.gov");   // screensaver clock
     log_msg("[NTP] Clock configured with TZ '%s'", cfg::tz.c_str());
@@ -201,6 +205,7 @@ static void net_retry_cb(lv_timer_t* t){
   if(s_lib_ok){ lv_timer_del(t); return; }
   if(s_safe_mode) return;                   // wait for a manual Retry
   if(s_scr_pairing) return;                 // pairing screen has its own background poller
+  if(!cfg::is_configured()) return;         // waiting for initial setup/credentials
   static bool s_retrying = false;
   if(s_retrying) return;
   s_retrying = true;
