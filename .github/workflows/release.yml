@@ -91,6 +91,7 @@ jobs:
           cp .pio/build/waveshare-s3-43b/firmware.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-firmware.bin
           cp .pio/build/waveshare-s3-43b/bootloader.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-bootloader.bin || true
           cp .pio/build/waveshare-s3-43b/partitions.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-partitions.bin || true
+          cp .pio/build/waveshare-s3-43b/firmware.factory.bin dist/storydeck-touch-${{ steps.meta.outputs.tag }}-factory.bin || true
 
       - name: Generate Changelog & Release Notes
         id: notes
