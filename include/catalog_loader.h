@@ -218,102 +218,13 @@ bool fetch_library_core(){
 
 
 
-bool fetch_library(){
-
-
-  size_t blen = 0;
-
-  char* body = nullptr;
-
-  {
-
-    tlsarena::Guard tg;
-
-    WiFiClientSecure cli; HTTPClient http;
-
-    int code = yoto::get(cli, http, "/card/family/library");
-
-    if(code != 200){
-
-      if(code == 403 || code == 401){
-
-        show_error("Authentication Required (HTTP 403)",
-
-                   "Yoto rejected the request. Your Client ID, Secret, or Refresh Token\nis invalid or not yet configured.",
-
-                   "Open Settings below or visit the web portal to enter valid credentials.");
-
-      } else {
-
-        show_error("Library Request Failed",
-
-                   (String("Yoto API returned HTTP ") + code + " (free heap=" + ESP.getFreeHeap() + ")").c_str(),
-
-                   "Check internet connection or retry.");
-
-      }
-
-      if(code > 0) http.end();
-
-      return false;
-
-    }
-
-    body = read_body_psram(http, blen);
-
-    http.end();
-
-  }
-
-  if(!body){ status("Library buf alloc fail"); return false; }
-
-  JsonDocument filter;
-
-  filter["cards"][0]["cardId"]                       = true;
-
-  filter["cards"][0]["lastPlayedAt"]                 = true;
-
-  filter["cards"][0]["card"]["title"]                = true;
-
-  filter["cards"][0]["card"]["content"]["cover"]["imageL"] = true;
-
-  PsramAllocator psram;
-
-  JsonDocument doc(&psram);
-
-  DeserializationError err = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
-
-  free(body);
-
-  if(err){ status((String("JSON error: ") + err.c_str() + " (" + blen + "B)").c_str()); return false; }
-
+void build_catalog_from_library(){
   curation::load();
   clear_card_pool_slots();
   s_cards.clear();
   s_cards.reserve(256);
   s_card_count = 0;
 
-  static std::vector<Card, PsramVectorAlloc<Card>> raw_cards;
-  raw_cards.clear();
-
-  for(JsonObject c : doc["cards"].as<JsonArray>()){
-    Card item;
-    item.id         = (const char*)(c["cardId"] | "");
-    item.title      = (const char*)(c["card"]["title"] | "");
-    item.sort_title = clean_sort_title(item.title.c_str());
-    item.lp         = (const char*)(c["lastPlayedAt"] | "");
-    item.cover      = (const char*)(c["card"]["content"]["cover"]["imageL"] | "");
-    item.source     = 0;
-    item.is_highlight = curation::is_card_pinned(item.id.c_str());
-    item.has_physical = curation::is_card_physical(item.id.c_str());
-
-    if(curation::get_hide_physical() && item.has_physical){
-      continue; // Filtered out by Grown-ups setting
-    }
-    raw_cards.push_back(item);
-  }
-
-  // 1. Last-Played items (lp descending)
   static std::vector<Card, PsramVectorAlloc<Card>> last_played;
   static std::vector<Card, PsramVectorAlloc<Card>> pinned;
   static std::vector<Card, PsramVectorAlloc<Card>> pool;
@@ -321,7 +232,21 @@ bool fetch_library(){
   pinned.clear();
   pool.clear();
 
-  for(const auto& item : raw_cards){
+  for(auto& item : s_library_cards){
+    // Update curation status
+    item.is_highlight = curation::is_card_pinned(item.id.c_str());
+    item.has_physical = curation::is_card_physical(item.id.c_str());
+
+    // 1. Completely hidden from catalog
+    if(curation::is_card_hidden(item.id.c_str())){
+      continue;
+    }
+
+    // 2. Physical cards hidden by grown-ups setting
+    if(curation::get_hide_physical() && item.has_physical){
+      continue;
+    }
+
     if(item.lp.length() > 0){
       last_played.push_back(item);
     } else if(item.is_highlight){
@@ -379,12 +304,97 @@ bool fetch_library(){
   }
 
   s_card_count = (int)s_cards.size();
-  if(s_card_count > 0) sd_prune_stale_covers(false);
-  return s_card_count > 0;
-
+  if(s_card_count > 0 && s_sd_ok) sd_prune_stale_covers(false);
 }
 
+bool fetch_library(){
+  size_t blen = 0;
+  char* body = nullptr;
+  {
+    tlsarena::Guard tg;
+    WiFiClientSecure cli; HTTPClient http;
+    int code = yoto::get(cli, http, "/card/family/library");
+    if(code != 200){
+      if(code == 403 || code == 401){
+        show_error("Authentication Required (HTTP 403)",
+                   "Yoto rejected the request. Your Client ID, Secret, or Refresh Token\nis invalid or not yet configured.",
+                   "Open Settings below or visit the web portal to enter valid credentials.");
+      } else {
+        show_error("Library Request Failed",
+                   (String("Yoto API returned HTTP ") + code + " (free heap=" + ESP.getFreeHeap() + ")").c_str(),
+                   "Check internet connection or retry.");
+      }
+      if(code > 0) http.end();
+      return false;
+    }
+    body = read_body_psram(http, blen);
+    http.end();
+  }
 
+  if(!body){ status("Library buf alloc fail"); return false; }
+
+  JsonDocument filter;
+  filter["cards"][0]["cardId"]                             = true;
+  filter["cards"][0]["lastPlayedAt"]                       = true;
+  filter["cards"][0]["card"]["title"]                      = true;
+  filter["cards"][0]["card"]["content"]["cover"]["imageL"] = true;
+
+  PsramAllocator psram;
+  JsonDocument doc(&psram);
+  DeserializationError err = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
+  free(body);
+  if(err){ status((String("JSON error: ") + err.c_str() + " (" + blen + "B)").c_str()); return false; }
+
+  // 1. Populate s_library_cards with ALL cards, strictly deduplicating by cardId
+  s_library_cards.clear();
+  s_library_cards.reserve(256);
+
+  for(JsonObject c : doc["cards"].as<JsonArray>()){
+    const char* cid = (const char*)(c["cardId"] | "");
+    if(!cid || !cid[0]) continue;
+    const char* lp = (const char*)(c["lastPlayedAt"] | "");
+
+    // Check for duplicate cardId
+    int dup_idx = -1;
+    for(size_t i = 0; i < s_library_cards.size(); i++){
+      if(s_library_cards[i].id == cid){
+        dup_idx = (int)i;
+        break;
+      }
+    }
+
+    if(dup_idx >= 0){
+      // Deduplicate: merge latest lastPlayedAt timestamp
+      if(lp && lp[0]){
+        if(s_library_cards[dup_idx].lp.length() == 0 || strcmp(lp, s_library_cards[dup_idx].lp.c_str()) > 0){
+          s_library_cards[dup_idx].lp = lp;
+        }
+      }
+      continue;
+    }
+
+    Card item;
+    item.id         = cid;
+    item.title      = (const char*)(c["card"]["title"] | "");
+    item.sort_title = clean_sort_title(item.title.c_str());
+    item.lp         = lp ? lp : "";
+    item.cover      = (const char*)(c["card"]["content"]["cover"]["imageL"] | "");
+    item.source     = 0;
+    item.is_highlight = curation::is_card_pinned(item.id.c_str());
+    item.has_physical = curation::is_card_physical(item.id.c_str());
+    item.daily      = false;
+    item.tile       = nullptr;
+    item.pool_slot  = -1;
+
+    s_library_cards.push_back(item);
+  }
+  s_library_card_count = (int)s_library_cards.size();
+  log_msg("[LIBRARY] Loaded %d unique library cards from Yoto", s_library_card_count);
+
+  // 2. Build active display catalog s_cards according to curation & limits
+  build_catalog_from_library();
+  return (s_card_count > 0);
+}
 
 // Stream one cover thumbnail into a PSRAM pool buffer and blit it onto the grid tile.
 
@@ -408,7 +418,7 @@ void load_thumbs(){
 
   for(int i = 0; i < initial_preload; i++){
 
-    if(load_thumb_for_card(i, false)) loaded++;
+    if(load_thumb_for_card(i, !s_sd_ok)) loaded++;
 
   }
 

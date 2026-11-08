@@ -325,14 +325,22 @@ bool load_thumb_for_card(int card_idx, bool force_refr){
     return true;
   }
 
-  if(!s_sd_ok || !sd_cache_exists(c.id.c_str(), THUMB_W, c.cover.c_str())){
+  bool have_sd = s_sd_ok && sd_cache_exists(c.id.c_str(), THUMB_W, c.cover.c_str());
+  if(!have_sd && !force_refr && s_sd_ok){
     return false;
   }
 
   int slot = acquire_thumb_slot(card_idx);
   if(slot < 0) return false;
 
-  if(!sd_cache_read(c.id.c_str(), THUMB_W, s_thumb_pool[slot].buf, THUMB_SZ, c.cover.c_str())){
+  bool ok = false;
+  if(have_sd){
+    ok = sd_cache_read(c.id.c_str(), THUMB_W, s_thumb_pool[slot].buf, THUMB_SZ, c.cover.c_str());
+  } else if(c.cover.length() > 0 && WiFi.status() == WL_CONNECTED){
+    ok = load_cover_cached(c.id.c_str(), c.cover.c_str(), THUMB_W, THUMB_H, THUMB_SZ, s_thumb_pool[slot].buf);
+  }
+
+  if(!ok){
     s_thumb_pool[slot].card_idx = -1;
     return false;
   }
@@ -395,12 +403,10 @@ inline bool stream_visible_uncached_thumb(){
         continue;
       }
 
-      // Visible tile is missing its cover on SD: fetch it over WiFi, cache to SD, and load!
+      // Visible tile is missing its cover: load via SD or direct WiFi streaming
       if(s_cards[i].cover.length() > 0){
-        if(!s_dcover) s_dcover = (uint8_t*)heap_caps_malloc(DCOVER_SZ, MALLOC_CAP_SPIRAM);
-        if(s_dcover && load_cover_cached(s_cards[i].id.c_str(), s_cards[i].cover.c_str(), THUMB_W, THUMB_H, THUMB_SZ, s_dcover)){
-          load_thumb_for_card(i, true);
-          log_msg("[STREAM] Cached & loaded cover for card %d: '%s'", i, s_cards[i].title.c_str());
+        if(load_thumb_for_card(i, true)){
+          log_msg("[STREAM] Loaded cover for card %d: '%s' (sd_ok=%d)", i, s_cards[i].title.c_str(), s_sd_ok ? 1 : 0);
           return true;
         } else {
           s_cards[i].stream_fail_t = millis();

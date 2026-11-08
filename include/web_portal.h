@@ -16,6 +16,7 @@
 #include "standalone_curation.h"
 
 extern bool fetch_library();
+extern void build_catalog_from_library();
 extern void build_grid();
 
 namespace portal {
@@ -372,39 +373,64 @@ static void handle_get(WebServer& w){
   String tab = w.arg("tab");
   if(tab == "curation" && cfg::op_mode != "core"){
     curation::load();
+    if(w.hasArg("refresh") || (s_library_cards.empty() && yoto::is_authenticated())){
+      fetch_library();
+    }
+    std::vector<Card, PsramVectorAlloc<Card>>& card_list = !s_library_cards.empty() ? s_library_cards : s_cards;
+    std::vector<Card, PsramVectorAlloc<Card>> sorted_cards = card_list;
+    std::sort(sorted_cards.begin(), sorted_cards.end(), [](const Card& a, const Card& b){
+      return a.sort_title < b.sort_title;
+    });
+
     String ch = "<!doctype html><html><head><meta charset='utf-8'>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
       "<title>StoryDeck Standalone Curation</title><style>"
-      "body{font-family:-apple-system,system-ui,sans-serif;background:#fbf7f0;color:#23303a;max-width:680px;margin:0 auto;padding:18px}"
-      "h1{color:#e5352b;font-size:1.5em}h2{font-size:1.05em;margin:1.4em 0 .3em;color:#3a6b50}"
-      "table{width:100%;border-collapse:collapse;margin-top:12px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1)}"
+      "body{font-family:-apple-system,system-ui,sans-serif;background:#fbf7f0;color:#23303a;max-width:720px;margin:0 auto;padding:18px}"
+      "h1{color:#e5352b;font-size:1.5em;margin:0}h2{font-size:1.05em;margin:1.4em 0 .3em;color:#3a6b50}"
+      "table{width:100%;border-collapse:collapse;margin-top:14px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1)}"
       "th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #f0eae0}"
       "th{background:#f4ede0;color:#23303a;font-weight:700;font-size:0.9em}"
       "button.save-btn{background:#e5352b;color:#fff;border:0;border-radius:11px;padding:12px 22px;font-size:1.05em;font-weight:700;margin-top:14px;cursor:pointer;width:100%}"
       ".nav-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#f0e8da;padding:6px;border-radius:10px;margin-bottom:18px;border:1px solid #e5dcce;}.nav-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:7px;text-decoration:none;font-weight:600;font-size:0.88em;color:#23303a;background:#fff;border:1px solid #dcd3c4;box-shadow:0 1px 2px rgba(0,0,0,0.03);}.nav-btn.active{background:#e5352b;color:#fff;border-color:#cf2b22;}"
       "</style></head><body>" +
       portal_toolbar("curation") +
+      "<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px;'>"
       "<h1>Card Curation &amp; Ownership</h1>"
-      "<p style='color:#7a7060;font-size:0.92em;'>Manage sticky favorites and mark physical plastic card copies owned in bedroom stands. Physical cards receive lower rotation probability unless hidden.</p>"
+      "<a href='/settings?tab=curation&refresh=1' class='nav-btn' style='font-size:0.85em;padding:6px 12px;'>🔄 Refresh from Yoto (" + String((int)sorted_cards.size()) + " cards)</a>"
+      "</div>"
+      "<div class='info' style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;background:#fff;border:1px solid #e7e0d2;border-radius:10px;padding:10px 14px;'>"
+      "<div><strong>Storage Mode:</strong> " + (s_sd_ok ? "<span style='color:#137333;font-weight:700;'>💾 MicroSD Mounted (/config/curation.json)</span>" : "<span style='color:#b06000;font-weight:700;'>⚡ Internal Flash NVS (No MicroSD Card)</span>") + "</div>"
+      "<small style='color:#7a7060;'>" + (s_sd_ok ? "Curation saved to SD &bull; Covers cached" : "Curation saved to Flash NVS &bull; Covers stream live") + "</small>"
+      "</div>"
+      "<p style='color:#7a7060;font-size:0.92em;margin-bottom:12px;'>Manage sticky favorites (⭐), mark physical plastic card copies owned in bedroom stands (🂠), or completely hide cards from appearing in the catalog (🚫).</p>"
       "<form method='POST' action='/settings/curation'>"
       "<label style='display:flex;align-items:center;gap:10px;background:#fff;padding:12px;border-radius:10px;border:1px solid #e7e0d2;cursor:pointer;font-weight:600;'>"
       "<input type='checkbox' name='hide_phys' value='1'" + String(curation::get_hide_physical() ? " checked" : "") + " style='width:auto;margin:0;'>"
-      "<span>Hide Physical Cards from Touchscreen Catalog</span></label>"
-      "<table><thead><tr><th style='width:50px;'>Cover</th><th>Title</th><th style='width:70px;text-align:center;'>Sticky &#11088;</th><th style='width:70px;text-align:center;'>Physical &#127188;</th></tr></thead><tbody>";
-    if(s_card_count == 0){ ch += "<tr><td colspan='4' style='text-align:center;padding:24px;color:#7a7060;'><em>No cards currently in memory. Connect your controller to WiFi and Yoto to load cards.</em></td></tr>"; }
+      "<span>Hide All Physical Cards from Touchscreen Catalog</span></label>"
+      "<table><thead><tr><th style='width:50px;'>Cover</th><th>Title</th><th style='width:65px;text-align:center;'>Sticky &#11088;</th><th style='width:65px;text-align:center;'>Physical &#127188;</th><th style='width:65px;text-align:center;'>Hide &#128683;</th></tr></thead><tbody>";
 
-    for(int i = 0; i < s_card_count; i++){
-      if(s_cards[i].daily) continue;
-      bool is_p = curation::is_card_pinned(s_cards[i].id.c_str());
-      bool is_ph = curation::is_card_physical(s_cards[i].id.c_str());
-      ch += "<tr><td><img src='" + esc(s_cards[i].cover.c_str()) + "' style='width:36px;height:54px;object-fit:cover;border-radius:4px;'></td>";
-      ch += "<td><strong>" + esc(s_cards[i].title.c_str()) + "</strong><br><small style='color:#9a9384;'>" + esc(s_cards[i].id.c_str()) + "</small></td>";
-      ch += "<td style='text-align:center;'><input type='checkbox' name='pin_" + esc(s_cards[i].id.c_str()) + "' value='1'" + (is_p ? " checked" : "") + "></td>";
-      ch += "<td style='text-align:center;'><input type='checkbox' name='phys_" + esc(s_cards[i].id.c_str()) + "' value='1'" + (is_ph ? " checked" : "") + "></td></tr>";
+    if(sorted_cards.empty()){ ch += "<tr><td colspan='5' style='text-align:center;padding:24px;color:#7a7060;'><em>No cards currently in memory. Connect your controller to WiFi and Yoto to load cards.</em></td></tr>"; }
+
+    for(size_t i = 0; i < sorted_cards.size(); i++){
+      if(sorted_cards[i].daily) continue;
+      bool is_p = curation::is_card_pinned(sorted_cards[i].id.c_str());
+      bool is_ph = curation::is_card_physical(sorted_cards[i].id.c_str());
+      bool is_h = curation::is_card_hidden(sorted_cards[i].id.c_str());
+      ch += "<tr><td>";
+      if(sorted_cards[i].cover.length() > 0){
+        ch += "<img src='" + esc(sorted_cards[i].cover.c_str()) + "' style='width:36px;height:54px;object-fit:cover;border-radius:4px;'>";
+      } else {
+        ch += "<div style='width:36px;height:54px;background:#e2dacd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#8a8070;font-size:18px;'>&#127188;</div>";
+      }
+      ch += "</td>";
+      ch += "<td><strong>" + esc(sorted_cards[i].title.c_str()) + "</strong><br><small style='color:#9a9384;'>" + esc(sorted_cards[i].id.c_str()) + "</small></td>";
+      ch += "<td style='text-align:center;'><input type='checkbox' name='pin_" + esc(sorted_cards[i].id.c_str()) + "' value='1'" + (is_p ? " checked" : "") + "></td>";
+      ch += "<td style='text-align:center;'><input type='checkbox' name='phys_" + esc(sorted_cards[i].id.c_str()) + "' value='1'" + (is_ph ? " checked" : "") + "></td>";
+      ch += "<td style='text-align:center;'><input type='checkbox' name='hide_" + esc(sorted_cards[i].id.c_str()) + "' value='1'" + (is_h ? " checked" : "") + "></td></tr>";
     }
 
     ch += "</tbody></table>"
-      "<button type='submit' class='save-btn'>Save Curation to MicroSD</button></form>"
+      "<button type='submit' class='save-btn'>" + String(s_sd_ok ? "💾 Save Curation to MicroSD" : "⚡ Save Curation to Flash (NVS)") + "</button></form>"
       "</body></html>";
     w.send(200, "text/html; charset=utf-8", ch);
     return;
@@ -716,6 +742,7 @@ static void handle_get(WebServer& w){
     portal_toolbar("settings") +
     "<h1>StoryDeck Touch Settings</h1>"
     "<div class=info>IP " + WiFi.localIP().toString() +
+    " &middot; Storage: " + (s_sd_ok ? "<span style='color:#137333;font-weight:700;'>💾 MicroSD</span>" : "<span style='color:#b06000;font-weight:700;'>⚡ Flash (NVS)</span>") +
     " &middot; WiFi " + String(WiFi.RSSI()) + " dBm"
     " &middot; free RAM " + String(ESP.getFreeHeap()/1024) + " KB"
     " &middot; v" STORYDECK_VERSION " &middot; <a href='/update'>firmware update</a></div>"
@@ -962,23 +989,31 @@ static void handle_curation_post(WebServer& w){
   curation::load();
   curation::set_hide_physical(w.hasArg("hide_phys"));
 
-  for(int i = 0; i < s_card_count; i++){
-    if(s_cards[i].daily) continue;
-    String id = s_cards[i].id.c_str();
+  std::vector<Card, PsramVectorAlloc<Card>>& card_list = !s_library_cards.empty() ? s_library_cards : s_cards;
+  for(size_t i = 0; i < card_list.size(); i++){
+    if(card_list[i].daily) continue;
+    String id = card_list[i].id.c_str();
     bool pin = w.hasArg("pin_" + id);
     bool phys = w.hasArg("phys_" + id);
+    bool hide = w.hasArg("hide_" + id);
     curation::toggle_card_pinned(id, pin);
     curation::toggle_card_physical(id, phys);
+    curation::toggle_card_hidden(id, hide);
   }
   curation::save();
-  fetch_library();
-  if(s_scr_home) build_grid();
+
+  if(cfg::op_mode != "core"){
+    build_catalog_from_library();
+    if(s_scr_home) build_grid();
+  }
+
+  String storage_notice = s_sd_ok ? "Saved to MicroSD (/config/curation.json)." : "Saved to Internal Flash NVS (no MicroSD card inserted).";
 
   w.send(200, "text/html; charset=utf-8",
-    "<!doctype html><body style='font-family:system-ui;background:#fbf7f0;padding:24px'>"
-    "<h2 style='color:#3a6b50'>Curation Saved.</h2>"
-    "<p>Card highlights and physical tags saved to MicroSD.</p>"
-    "<p><a href='/settings?tab=curation'>Back to Card Curation</a> &middot; <a href='/settings'>Settings</a></p></body>");
+    "<!doctype html><body style='font-family:system-ui;background:#fbf7f0;padding:24px;text-align:center'>"
+    "<h2 style='color:#3a6b50'>&#10004; Curation Saved</h2>"
+    "<p>" + storage_notice + " Active catalog and touchscreen display updated.</p>"
+    "<p><a href='/settings?tab=curation' style='color:#e5352b;font-weight:700;'>Back to Card Curation</a> &middot; <a href='/settings'>Settings</a></p></body>");
 }
 
 #include <mbedtls/sha256.h>

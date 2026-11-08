@@ -10,6 +10,7 @@ namespace curation {
 
 static std::vector<PsramString, PsramVectorAlloc<PsramString>> s_pinned_ids;
 static std::vector<PsramString, PsramVectorAlloc<PsramString>> s_physical_ids;
+static std::vector<PsramString, PsramVectorAlloc<PsramString>> s_hidden_ids;
 static bool s_hide_physical = false;
 static bool s_loaded = false;
 
@@ -23,6 +24,13 @@ inline bool is_card_pinned(const String& id){
 inline bool is_card_physical(const String& id){
   for(const auto& pid : s_physical_ids){
     if(pid == id.c_str()) return true;
+  }
+  return false;
+}
+
+inline bool is_card_hidden(const String& id){
+  for(const auto& hid : s_hidden_ids){
+    if(hid == id.c_str()) return true;
   }
   return false;
 }
@@ -59,9 +67,22 @@ inline void toggle_card_physical(const String& id, bool phys){
   }
 }
 
+inline void toggle_card_hidden(const String& id, bool hide){
+  for(auto it = s_hidden_ids.begin(); it != s_hidden_ids.end(); ++it){
+    if(*it == id.c_str()){
+      if(!hide) s_hidden_ids.erase(it);
+      return;
+    }
+  }
+  if(hide){
+    s_hidden_ids.push_back(id.c_str());
+  }
+}
+
 inline void load(){
   s_pinned_ids.clear();
   s_physical_ids.clear();
+  s_hidden_ids.clear();
   s_hide_physical = false;
 
   if(s_sd_ok){
@@ -86,9 +107,15 @@ inline void load(){
               if(sid.length() > 0) s_physical_ids.push_back(sid.c_str());
             }
           }
+          if(!doc["hidden"].isNull()){
+            for(JsonVariant v : doc["hidden"].as<JsonArray>()){
+              String sid = v.as<String>();
+              if(sid.length() > 0) s_hidden_ids.push_back(sid.c_str());
+            }
+          }
           s_loaded = true;
-          log_msg("[CURATION] Loaded from SD: %d pinned, %d physical, hide_phys=%d",
-                  (int)s_pinned_ids.size(), (int)s_physical_ids.size(), s_hide_physical ? 1 : 0);
+          log_msg("[CURATION] Loaded from SD: %d pinned, %d physical, %d hidden, hide_phys=%d",
+                  (int)s_pinned_ids.size(), (int)s_physical_ids.size(), (int)s_hidden_ids.size(), s_hide_physical ? 1 : 0);
           return;
         }
       }
@@ -101,33 +128,28 @@ inline void load(){
   s_hide_physical = p.getBool("hidep", false);
   String pins = p.getString("pinned", "");
   String phys = p.getString("phys", "");
+  String hidden = p.getString("hidden", "");
   p.end();
 
-  if(pins.length() > 0){
+  auto parse_csv = [](const String& csv, std::vector<PsramString, PsramVectorAlloc<PsramString>>& target){
+    if(csv.length() == 0) return;
     int start = 0;
-    while(start < pins.length()){
-      int comma = pins.indexOf(',', start);
-      if(comma == -1) comma = pins.length();
-      String token = pins.substring(start, comma);
+    while(start < csv.length()){
+      int comma = csv.indexOf(',', start);
+      if(comma == -1) comma = csv.length();
+      String token = csv.substring(start, comma);
       token.trim();
-      if(token.length() > 0) s_pinned_ids.push_back(token.c_str());
+      if(token.length() > 0) target.push_back(token.c_str());
       start = comma + 1;
     }
-  }
-  if(phys.length() > 0){
-    int start = 0;
-    while(start < phys.length()){
-      int comma = phys.indexOf(',', start);
-      if(comma == -1) comma = phys.length();
-      String token = phys.substring(start, comma);
-      token.trim();
-      if(token.length() > 0) s_physical_ids.push_back(token.c_str());
-      start = comma + 1;
-    }
-  }
+  };
+
+  parse_csv(pins, s_pinned_ids);
+  parse_csv(phys, s_physical_ids);
+  parse_csv(hidden, s_hidden_ids);
   s_loaded = true;
-  log_msg("[CURATION] Loaded from NVS fallback: %d pinned, %d physical",
-          (int)s_pinned_ids.size(), (int)s_physical_ids.size());
+  log_msg("[CURATION] Loaded from NVS fallback: %d pinned, %d physical, %d hidden",
+          (int)s_pinned_ids.size(), (int)s_physical_ids.size(), (int)s_hidden_ids.size());
 }
 
 inline void save(){
@@ -138,13 +160,11 @@ inline void save(){
       JsonDocument doc;
       doc["hide_physical"] = s_hide_physical;
       JsonArray pArr = doc["pinned"].to<JsonArray>();
-      for(const auto& id : s_pinned_ids){
-        pArr.add(id.c_str());
-      }
+      for(const auto& id : s_pinned_ids) pArr.add(id.c_str());
       JsonArray phArr = doc["physical"].to<JsonArray>();
-      for(const auto& id : s_physical_ids){
-        phArr.add(id.c_str());
-      }
+      for(const auto& id : s_physical_ids) phArr.add(id.c_str());
+      JsonArray hArr = doc["hidden"].to<JsonArray>();
+      for(const auto& id : s_hidden_ids) hArr.add(id.c_str());
       serializeJson(doc, f);
       f.close();
       log_msg("[CURATION] Saved to /sd/config/curation.json");
@@ -156,18 +176,17 @@ inline void save(){
   Preferences p;
   p.begin("curation", false);
   p.putBool("hidep", s_hide_physical);
-  String pins = "";
-  for(size_t i = 0; i < s_pinned_ids.size(); i++){
-    if(i > 0) pins += ",";
-    pins += s_pinned_ids[i].c_str();
-  }
-  String phys = "";
-  for(size_t i = 0; i < s_physical_ids.size(); i++){
-    if(i > 0) phys += ",";
-    phys += s_physical_ids[i].c_str();
-  }
-  p.putString("pinned", pins);
-  p.putString("phys", phys);
+  auto make_csv = [](const std::vector<PsramString, PsramVectorAlloc<PsramString>>& src){
+    String res = "";
+    for(size_t i = 0; i < src.size(); i++){
+      if(i > 0) res += ",";
+      res += src[i].c_str();
+    }
+    return res;
+  };
+  p.putString("pinned", make_csv(s_pinned_ids));
+  p.putString("phys", make_csv(s_physical_ids));
+  p.putString("hidden", make_csv(s_hidden_ids));
   p.end();
   log_msg("[CURATION] Saved to NVS fallback");
 }

@@ -351,7 +351,7 @@ void loop(){
   // Active Viewport On-Demand Cover Streamer:
   // When the user is idle, stream covers for any visible placeholder tiles over WiFi with relaxed pacing
   static uint32_t s_stream_t = 0;
-  if(s_lib_ok && s_sd_ok && (millis() - s_stream_t > 1500) && !is_ui_interacting() && heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 50000){
+  if(s_lib_ok && (millis() - s_stream_t > 1500) && !is_ui_interacting() && heap_caps_get_free_size(MALLOC_CAP_INTERNAL) > 50000){
     if(stream_visible_uncached_thumb()){
       s_stream_t = millis();
     }

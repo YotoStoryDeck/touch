@@ -203,6 +203,8 @@ static const char* YOTO_DAILY_COVER =
 
 static std::vector<Card, PsramVectorAlloc<Card>> s_cards;
 int s_card_count=0;
+static std::vector<Card, PsramVectorAlloc<Card>> s_library_cards;
+int s_library_card_count=0;
 
 inline void init_thumb_pool(){
   for(int p = 0; p < THUMB_POOL_SIZE; p++){
