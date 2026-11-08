@@ -36,7 +36,7 @@ static int    night_m      = 0;
 static int    saver_size   = 2;     // night-clock digit size: 0 small / 1 medium / 2 large
 static String tz;                   // POSIX TZ for the clock (default US Eastern)
 static String parent_pin;           // 4-digit Grown-ups security PIN (default "1234")
-static int    catalog_card_limit = 80; // Configurable catalog size ceiling (default 80)
+static int    catalog_card_limit = 60; // Configurable catalog size ceiling (default 60)
 static int    rotation_hour      = 3;  // Daily rotation hour (0-23, default 3 AM)
 static void load(){
   s_prefs.begin("appcfg", false);
@@ -66,7 +66,7 @@ static void load(){
   assigned_profile = s_prefs.getString("prof",   "wesley");
   tz            = s_prefs.getString("tz",    "EST5EDT,M3.2.0,M11.1.0");
   parent_pin    = s_prefs.getString("pin",   "1234");
-  catalog_card_limit = s_prefs.getInt("catlim", 80);
+  catalog_card_limit = s_prefs.getInt("catlim", 60);
   rotation_hour      = s_prefs.getInt("rothr",  3);
   sleep_min     = s_prefs.getInt("slpmin", 0);
   sleep_bedtime = s_prefs.getBool("slpbed", true);

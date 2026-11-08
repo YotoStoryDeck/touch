@@ -392,8 +392,10 @@ static void handle_get(WebServer& w){
     "  var isCore = (m === 'core');\n"
     "  var cSec = document.getElementById('core_sec');\n"
     "  var ySec = document.getElementById('yoto_sec');\n"
+    "  var rotSec = document.getElementById('rot_sec');\n"
     "  if(cSec) cSec.style.display = isCore ? 'block' : 'none';\n"
     "  if(ySec) ySec.style.display = isCore ? 'none' : 'block';\n"
+    "  if(rotSec) rotSec.style.display = isCore ? 'none' : 'block';\n"
     "}\n"
     "function onProfileSelectChange(){\n"
     "  var sel = document.getElementById('prof_sel');\n"
@@ -503,13 +505,15 @@ static void handle_get(WebServer& w){
     secret_row("Refresh Token", "rt", "Paste a fresh refresh token to re-seed credentials.") +
     "</div>" +
     profile_device_picker() +
-        "<h2>Library Rotation &amp; Discovery</h2>" +
+        "<div id='rot_sec'>" +
+    "<h2>Library Rotation &amp; Discovery (Standalone)</h2>" +
     "<label>Catalog Card Limit"
     "<input type='number' name='catlim' id='catlim' min='10' max='300' value='" + String(cfg::catalog_card_limit) + "'>"
-    "<small>Maximum cards loaded into grid memory (default: 80). Lower values optimize RAM and scrolling speed.</small></label>" +
+    "<small>Maximum cards loaded into grid memory (default: 60). Lower values optimize RAM and scrolling speed.</small></label>" +
     "<label>Daily Rotation Refresh Hour (0-23)"
     "<input type='number' name='rothr' id='rothr' min='0' max='23' value='" + String(cfg::rotation_hour) + "'>"
     "<small>Local hour when discovery rotation re-rolls (default: 3 for 3:00 AM).</small></label>" +
+    "</div>" +
 
     "<h2>Clock</h2>" +
     tz_select() +

@@ -14,7 +14,7 @@ StoryDeck Touch supports two flexible operational modes:
    * Pairs with a self-hosted [**StoryDeck Core**](https://github.com/YotoStoryDeck/core) hub.
    * Browses unified libraries combining **Audiobookshelf (ABS)** and Yoto playlists.
    * Features multi-child profile switching, parental tag filtering, bedtime controls, and planned Home Assistant integration.
-   * Secure PIN pairing: device communicates using a lightweight token with zero cloud credentials stored on the bedside unit.
+   * Seamless pairing: device announces itself and pairs via Core Admin approval, communicating using rotating JWT tokens with zero cloud credentials stored on the bedside unit.
 
 2. **Standalone Mode (Direct Yoto Cloud):**
    * Operates completely independently without a local server.
@@ -29,11 +29,11 @@ StoryDeck Touch supports two flexible operational modes:
 | Screen | Description |
 | --- | --- |
 | **Profile Select** | Time-aware greeting ("Who is listening this morning/afternoon/tonight?") with centered multi-child avatar grid. |
-| **Catalog Grid** | Responsive grid of cover art thumbnails (122×193px) with series grouping, highlight sorting, and ABS/Yoto source badges. |
-| **Book Detail** | High-res cover art, track/chapter list, and instant play trigger. |
+| **Catalog Grid** | Responsive grid of cover art thumbnails (160×254px) with series grouping, highlight sorting, and ABS/Yoto source badges. |
+| **Book Detail** | High-res cover art (210×333px), track/chapter list with 16×16 pixel icons, direct Series navigation button, and instant play trigger. |
 | **Now Playing** | Real-time playback status, album art, progress bar, skip controls, and volume slider with native Yoto volume ceilings. |
-| **Night Clock** | Low-glare screensaver with configurable Red (Bedtime) and Green (OK-to-wake) indicators. |
-| **Grown-Ups Screen** | Hidden parental settings menu (long-press gear + PIN) for Wi-Fi, operating mode, player lock, travel safety, and sleep timers. |
+| **Night Clock** | Low-glare screensaver with configurable Red (Bedtime) and Green (OK-to-wake) indicators, live date display, and 8-point orbital pixel shifting burn-in protection. |
+| **Grown-Ups Screen** | Hidden parental settings menu (long-press gear + 4-digit PIN) for Wi-Fi, operating mode, player lock, travel safety, and sleep timers. |
 
 ---
 
@@ -52,8 +52,8 @@ Targeted specifically for the **[Waveshare ESP32-S3-Touch-LCD-4.3B](https://www.
 | **Enclosure** | 3D printable desktop stand or wall-mount case (included in `3d-models/`) |
 
 ### Hardware & Driver Engineering Notes
-* **Pixel Clock:** RGB panel requires an exact **16 MHz** pixel clock (`pclk_active_neg = 1`) for panel sync.
-* **DMA & PSRAM:** Uses single-framebuffer rendering in PSRAM with an internal SRAM bounce buffer (`cfg.dma_burst_size = 64`) to eliminate scanline flicker.
+* **Pixel Clock:** RGB panel is configured for **12 MHz** (`pclk_active_neg = 1`) with expanded 16-line ST7262 vertical porches (`vsync_back_porch = 16`, `vsync_front_porch = 16`) to eliminate PSRAM bus contention and display jitter.
+* **DMA & PSRAM:** Uses single-framebuffer rendering in PSRAM with an internal SRAM bounce buffer (`cfg.dma_burst_size = 64`, `bounce_buffer_size_px = LCD_H_RES * 20`) and a fixed 32-slot LRU PSRAM pool (`THUMB_POOL_SIZE 32`) to eliminate scanline flicker.
 * **Touch Filtering:** Custom GT911 debouncing with hold-state logic between polls prevents touch jitter and accidental chapter selections.
 
 ---
@@ -93,18 +93,18 @@ pio run -e waveshare-s3-43b -t upload
 
 ---
 
-### Option 3: Wall Tablet Kiosk & Browser Companion
+### Option 3: Tablet Kiosk & Browser Companion
 
-To run the Touch UI on a wall-mounted tablet (iPad, Fire HD, Android) or browser without physical ESP32 hardware:
-* The Wall Tablet Kiosk web client is maintained directly in [StoryDeck Core](https://github.com/YotoStoryDeck/core) under `static/kiosk/`.
-* Open your tablet browser or full-screen kiosk app to `http://<core-ip>:5055/kiosk/` (or `http://<core-ip>:5055/simulator/`). All client assets are served natively by StoryDeck Core.
+To run the Touch UI on a tablet (iPad, Fire HD, Android) or browser without physical ESP32 hardware:
+* The Tablet Kiosk web client is maintained directly in [StoryDeck Core](https://github.com/YotoStoryDeck/core) under `static/kiosk/`.
+* Open your tablet browser or full-screen kiosk app to `http://<core-ip>:5055/kiosk/`. All client assets are served natively by StoryDeck Core.
 
 ---
 
 ### 📱 On-Device Setup Wizard
 1. Power on the device.
 2. Select your Wi-Fi network and enter the password using the on-screen touchscreen keyboard.
-3. Choose **StoryDeck Core Mode** (enter the 6-digit pairing PIN shown on screen into your Core Web Admin) or **Standalone Mode** (scan the on-screen QR code to authenticate with Yoto).
+3. Choose **StoryDeck Core Mode** (the device announces itself and waits for one-click approval in your Core Web Admin) or **Standalone Mode** (scan the on-screen QR code to authenticate with Yoto).
 
 ---
 

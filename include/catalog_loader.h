@@ -364,7 +364,7 @@ bool fetch_library(){
   daily_card.daily = true;
   s_cards.push_back(daily_card);
 
-  int limit = cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 80;
+  int limit = cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 60;
   for(const auto& c : last_played){
     if((int)s_cards.size() >= limit) break;
     s_cards.push_back(c);
