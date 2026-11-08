@@ -1054,7 +1054,12 @@ static void handle_yoto_oauth_start(WebServer& w){
     "&redirect_uri=" + url_encode(String(s_pkce_redirect_uri)) +
     "&state=" + String(state_hex);
 
-  w.send(200, "application/json", "{\"ok\":true,\"auth_url\":\"" + esc(auth_url) + "\"}");
+  JsonDocument outDoc;
+  outDoc["ok"] = true;
+  outDoc["auth_url"] = auth_url;
+  String jsonStr;
+  serializeJson(outDoc, jsonStr);
+  w.send(200, "application/json", jsonStr);
 }
 
 // Standalone: Exchange OAuth code for Yoto token and discover players
@@ -1087,7 +1092,12 @@ static void handle_yoto_oauth_exchange(WebServer& w){
     String err_msg;
     bool ok = yoto::exchange_auth_code(code, verifier, redirect_uri, client_id, client_secret, err_msg);
     if(!ok){
-      w.send(200, "application/json", "{\"ok\":false,\"error\":\"" + esc(err_msg) + "\"}");
+      JsonDocument errDoc;
+      errDoc["ok"] = false;
+      errDoc["error"] = err_msg;
+      String jsonErr;
+      serializeJson(errDoc, jsonErr);
+      w.send(200, "application/json", jsonErr);
       return;
     }
 
