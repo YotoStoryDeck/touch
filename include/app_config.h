@@ -64,6 +64,7 @@ static String tz;                   // POSIX TZ for the clock (default US Easter
 static String parent_pin;           // 4-digit Grown-ups security PIN (default "1234")
 static int    catalog_card_limit = 60; // Configurable catalog size ceiling (default 60)
 static int    rotation_hour      = 3;  // Daily rotation hour (0-23, default 3 AM)
+static int    vol_limit          = 100;// Maximum volume ceiling percentage (10-100, default 100 = unconstrained)
 static void load(){
   s_prefs.begin("appcfg", false);
   kiosk_name    = s_prefs.getString("kname", "StoryDeck Touch");
@@ -96,6 +97,8 @@ static void load(){
   parent_pin    = s_prefs.getString("pin",   "1234");
   catalog_card_limit = s_prefs.getInt("catlim", 60);
   rotation_hour      = s_prefs.getInt("rothr",  3);
+  vol_limit          = s_prefs.getInt("vollim", 100);
+  if(vol_limit < 10 || vol_limit > 100) vol_limit = 100;
   sleep_min     = s_prefs.getInt("slpmin", 0);
   sleep_bedtime = s_prefs.getBool("slpbed", true);
   block_remote  = s_prefs.getBool("blkrem", true);
@@ -132,6 +135,7 @@ static void save(){
   s_prefs.putString("pin",   parent_pin);
   s_prefs.putInt("catlim", catalog_card_limit);
   s_prefs.putInt("rothr",  rotation_hour);
+  s_prefs.putInt("vollim", vol_limit);
   s_prefs.putInt("slpmin", sleep_min);
   s_prefs.putBool("slpbed", sleep_bedtime);
   s_prefs.putBool("blkrem", block_remote);

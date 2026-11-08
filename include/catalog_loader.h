@@ -158,7 +158,8 @@ static void add_core_card(const String& id, const String& title, const String& a
   c.daily        = false;
   c.tile         = nullptr;
   c.pool_slot    = -1;
-  if(s_card_count < cfg::catalog_card_limit){
+  int limit = (cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 60) + 1;
+  if(s_card_count < limit){
     for(const auto& existing : s_cards){
       if(existing.id == c.id) return;
       if(existing.title.length() > 0 && c.title.length() > 0 && existing.title.equalsIgnoreCase(c.title)) return;
@@ -293,7 +294,7 @@ void build_catalog_from_library(){
   daily_card.daily = true;
   s_cards.push_back(daily_card);
 
-  int limit = cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 60;
+  int limit = (cfg::catalog_card_limit > 0 ? cfg::catalog_card_limit : 60) + 1;
   auto push_unique = [&](const Card& c) -> bool {
     if((int)s_cards.size() >= limit) return false;
     for(const auto& existing : s_cards){
@@ -542,7 +543,7 @@ static bool fetch_card_detail(int i){
   DeserializationError err = deserializeJson(doc, (const char*)body, blen, DeserializationOption::Filter(filter));
   free(body);
   if(err){
-    log_msg("[DETAIL] JSON parse err for card %s: %s", c.id.c_str(), err.c_str());
+    log_msg("[DETAIL] JSON parse err for card %s: %s (blen=%u)", c.id.c_str(), err.c_str(), (unsigned)blen);
     return false;
   }
 

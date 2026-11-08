@@ -49,6 +49,7 @@ struct Live {
   int      position;       // seconds into the current track
   int      trackLength;    // seconds
   int      volume;         // 0..100 (converted from the raw 0..16 the player reports)
+  int      volumeMax;      // 0..100 (converted from raw 0..16 or percent)
   Status   status;
   bool     online;
   uint32_t seq;            // bumped on each applied update (0 = nothing ever received)
@@ -101,6 +102,12 @@ static void parse_event(const char* json, int len){
   if(!o["volume"].isNull()){
     int raw = o["volume"] | 0;                  // raw 0..16 -> percent; pass through if already 0..100
     s_live.volume = (raw <= HW_VOL_MAX) ? (int)(raw * 100.0 / HW_VOL_MAX + 0.5) : raw;
+  }
+  if(!o["volumeMax"].isNull() || !o["volume_max"].isNull()){
+    int raw_max = !o["volumeMax"].isNull() ? (o["volumeMax"] | HW_VOL_MAX) : (o["volume_max"] | HW_VOL_MAX);
+    s_live.volumeMax = (raw_max <= HW_VOL_MAX && raw_max > 0) ? (int)(raw_max * 100.0 / HW_VOL_MAX + 0.5) : raw_max;
+    if(s_live.volumeMax < 0) s_live.volumeMax = 0;
+    if(s_live.volumeMax > 100) s_live.volumeMax = 100;
   }
   if(o["playbackStatus"].is<const char*>()){
     const char* ps = o["playbackStatus"];

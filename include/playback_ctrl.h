@@ -201,10 +201,15 @@ static void apply_live_state(){
   if(lv.chapterKey[0]){ int k = atoi(lv.chapterKey) - 1; if(k >= 0) s_play_ch = k; }  // "01"->0
   if(lv.trackLength > 0) s_play_dur = lv.trackLength;
   if(lv.position >= 0){ s_pos = lv.position; if(s_play_dur > 0 && s_pos > s_play_dur) s_pos = s_play_dur; }
-  if(lv.volume > 0) s_vol = lv.volume;
+  if(lv.volumeMax > 0 && lv.volumeMax <= 100) s_yoto_vol_max = lv.volumeMax;
+  if(lv.volume > 0){
+    int vmax = get_active_player_vol_max();
+    s_vol = (lv.volume > vmax) ? vmax : lv.volume;
+  }
   if(s_cur_card == s_play_card && s_play_ch >= 0) s_cur_ch = s_play_ch;  // keep now-playing labels aligned
 
   np_set_chapter_label(); np_set_playicon(); np_update_progress();
+  np_update_vol_ui();
   if(s_playing != was_playing || s_play_card != prev_card || s_play_chapter != prev_chapter)
     update_home_bar();
 }

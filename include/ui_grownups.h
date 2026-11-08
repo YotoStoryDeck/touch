@@ -587,6 +587,45 @@ void open_settings(){
   lv_obj_set_style_text_color(s_set_wake_lbl, lv_color_hex(0x23303A), 0);
   pill_btn(r_sched, "+15m", 15, set_wake_cb);
 
+  set_section(p0, "Maximum Volume Limit (All Modes)");
+  lv_obj_t* r_vol = set_row(p0);
+  int vcur = cfg::vol_limit;
+  pill_btn(r_vol, "100%", 100, [](lv_event_t*){
+    cfg::vol_limit = 100;
+    cfg::save();
+    sync_settings_if_core();
+    np_update_vol_ui();
+    open_settings();
+  }, vcur >= 100);
+  pill_btn(r_vol, "85%", 85, [](lv_event_t*){
+    cfg::vol_limit = 85;
+    cfg::save();
+    sync_settings_if_core();
+    np_update_vol_ui();
+    open_settings();
+  }, vcur == 85);
+  pill_btn(r_vol, "75%", 75, [](lv_event_t*){
+    cfg::vol_limit = 75;
+    cfg::save();
+    sync_settings_if_core();
+    np_update_vol_ui();
+    open_settings();
+  }, vcur == 75);
+  pill_btn(r_vol, "60%", 60, [](lv_event_t*){
+    cfg::vol_limit = 60;
+    cfg::save();
+    sync_settings_if_core();
+    np_update_vol_ui();
+    open_settings();
+  }, vcur == 60);
+  pill_btn(r_vol, "50%", 50, [](lv_event_t*){
+    cfg::vol_limit = 50;
+    cfg::save();
+    sync_settings_if_core();
+    np_update_vol_ui();
+    open_settings();
+  }, vcur == 50);
+
   set_section(p0, "Travel & Away Player Protection");
   lv_obj_t* r_away = set_row(p0);
   lv_obj_t* b_blk = pill_btn(r_away, "Block Away Players", 1, [](lv_event_t*){

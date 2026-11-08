@@ -18,6 +18,8 @@
 extern bool fetch_library();
 extern void build_catalog_from_library();
 extern void build_grid();
+extern bool fetch_library_core();
+extern void np_update_vol_ui();
 
 namespace portal {
 
@@ -790,6 +792,9 @@ static void handle_get(WebServer& w){
     profile_device_picker() +
         "<div id='rot_sec'>" +
     "<h2>Library Rotation &amp; Discovery (Standalone)</h2>" +
+    "<label>Maximum Volume Ceiling (All Modes)"
+    "<input type='number' name='vollim' id='vollim' min='10' max='100' value='" + String(cfg::vol_limit) + "'>"
+    "<small>Parent volume ceiling across Core and Standalone modes (10-100%, default: 100).</small></label>" +
     "<label>Catalog Card Limit"
     "<input type='number' name='catlim' id='catlim' min='10' max='300' value='" + String(cfg::catalog_card_limit) + "'>"
     "<small>Maximum cards loaded into grid memory (default: 60). Lower values optimize RAM and scrolling speed.</small></label>" +
@@ -858,9 +863,20 @@ static void handle_post(WebServer& w){
 
     v = w.arg("catlim"); if(v.length()){ int n = v.toInt(); if(n >= 10 && n <= 300) cfg::catalog_card_limit = n; }
   v = w.arg("rothr");  if(v.length()){ int h = v.toInt(); if(h >= 0 && h <= 23) cfg::rotation_hour = h; }
+  v = w.arg("vollim"); if(v.length()){ int vl = v.toInt(); if(vl >= 10 && vl <= 100) cfg::vol_limit = vl; }
   cfg::save();
   v = w.arg("rt");
   if(v.length()) yoto::set_refresh(v);                  // also clears the cached access token
+
+  // Instantly apply volume limit and catalog card count changes
+  np_update_vol_ui();
+  if(cfg::op_mode == "core"){
+    fetch_library_core();
+  } else {
+    build_catalog_from_library();
+  }
+  build_grid();
+
   w.send(200, "text/html; charset=utf-8",
     "<!doctype html><body style='font-family:system-ui;background:#fbf7f0;padding:24px'>"
     "<h2 style='color:#3a6b50'>Saved.</h2>"

@@ -504,14 +504,24 @@ static int  s_thumb_cursor   = 0;
 static int  s_thumb_ok       = 0;
 static String s_thumb_first_err = "";
 
-// Kiosk App.syncActiveDevicePlayback() parity:
-// Binds the active target player's live playback state from Core to the Now Playing Mini-Bar and state vars
+// Static variable to track standalone Yoto player volumeMax from MQTT
+static int s_yoto_vol_max = 100;
+
+// Returns the effective volume limit for the active player across Core and Standalone modes,
+// clamped against parent-configured ceiling (cfg::vol_limit).
 inline int get_active_player_vol_max(){
-  const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
-  if(pi && pi->volume_max > 0){
-    return pi->volume_max;
+  int pmax = 100;
+  if(cfg::op_mode == "core"){
+    const core::PlayerInfo* pi = core::find_player_info(cfg::device_id);
+    if(pi && pi->volume_max > 0) pmax = pi->volume_max;
+  } else {
+    if(s_yoto_vol_max > 0 && s_yoto_vol_max <= 100) pmax = s_yoto_vol_max;
   }
-  return 100;
+  int cfg_lim = cfg::vol_limit;
+  if(cfg_lim >= 10 && cfg_lim <= 100){
+    if(cfg_lim < pmax) pmax = cfg_lim;
+  }
+  return pmax;
 }
 
 inline void sync_active_player_playback(){
